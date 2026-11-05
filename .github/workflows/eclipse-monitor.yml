@@ -1,0 +1,31 @@
+name: ECLIPSE Dahl monitor
+
+on:
+  schedule:
+    # Every 10 minutes, offset from the top of the hour to reduce queue delays.
+    - cron: "3,13,23,33,43,53 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: eclipse-dahl-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check OpenCode run and Dahl DeepSeek capacity
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          DAHL_API_KEY: \${{ secrets.DAHL_API_KEY }}
+          GITHUB_REPOSITORY: \${{ github.repository }}
+          MONITOR_ISSUE_NUMBER: "2"
+        run: python3 .github/scripts/monitor_dahl.py
