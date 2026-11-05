@@ -24,8 +24,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check OpenCode run and Dahl DeepSeek capacity
         env:
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-          DAHL_API_KEY: \${{ secrets.DAHL_API_KEY }}
-          GITHUB_REPOSITORY: \${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DAHL_API_KEY: ${{ secrets.DAHL_API_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           MONITOR_ISSUE_NUMBER: "2"
         run: python3 .github/scripts/monitor_dahl.py
