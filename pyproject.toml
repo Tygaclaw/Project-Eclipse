@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eclipse-core"
+version = "0.1.0"
+description = "Windows-first, local-first ECLIPSE AI ecosystem core"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Project ECLIPSE contributors" }]
+dependencies = []
+
+[project.scripts]
+eclipse = "eclipse.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

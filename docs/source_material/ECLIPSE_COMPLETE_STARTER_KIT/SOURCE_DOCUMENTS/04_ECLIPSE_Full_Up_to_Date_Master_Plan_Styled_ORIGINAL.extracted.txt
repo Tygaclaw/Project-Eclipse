@@ -1,0 +1,1521 @@
+# Original ECLIPSE v3.0 Master Plan — extracted text edition
+
+This file is the text extraction of the original 25-page PDF supplied in the ECLIPSE starter kit. It preserves searchable text, headings, tables and technical content for agent context. It is not a pixel-identical replacement for the original PDF; the original PDF remains in the user's uploaded source archive.
+
+Original file: `04_ECLIPSE_Full_Up_to_Date_Master_Plan_Styled_ORIGINAL.pdf`
+Original SHA-256: 49ecdd21365de0aa913cbf3bf16f7552277f2cfc0008c53b06331b846f5761af
+Extracted with `pdftotext -layout`. Page breaks and layout are represented as text.
+
+---
+
+   ECLIPSE / INTELLIGENCE ENGINEERING                                                       SYSTEM BLUEPRINT        03.0
+
+
+
+
+PROJECT
+
+
+
+
+ECLIPSE
+THE COMPLETE MASTER PLAN
+Speed-first. Intelligence-preserving. Hardware-aware.
+
+
+
+
+    THE MISSION
+
+    Make very large open-weight models as useful as possible on modest Windows hardware by
+    understanding their actual structure, preparing them intelligently, and executing them with a
+    hardware-aware memory and compute system.
+
+
+
+
+  CPU                           GPU                           MEMORY                        PLATFORM
+
+  Intel Core i7-8700K           RTX 2060 Super | 8            48 GB DDR4-3200               Windows 11
+                                GB
+
+
+
+
+PLAN VERSION 3.0
+
+November 3, 2026
+
+
+
+
+ENGINEERING STANDARD
+
+A technical vision and staged engineering blueprint - not a promise that every model can meet the target hardware
+limits.
+
+
+
+
+                                                                                           ECLIPSE / MASTER PLAN • 01
+      ECLIPSE       / MASTER PLAN                                                                                 PLAN GUIDE
+                                                                                                ECLIPSE / MASTER PLAN
+
+
+
+        Document guide
+        This document is the complete ECLIPSE plan, including the reasoning behind the design, known limits,
+        research notes, hypotheses to test, implementation sequence, and acceptance criteria. It contains the plan
+        only; it does not reproduce the surrounding conversation.
+
+
+        Contents
+          1. Executive summary and mission
+          2. User hardware, operating assumptions, and goals
+          3. The core technical problem: capacity, bandwidth, and compute
+          4. ECLIPSE design constitution
+          5. Complete system architecture
+          6. Model Intelligence Laboratory: inspect first, without inference
+          7. Model preparation and intelligence-aware compression
+          8. High-Speed Inference Engine and three-tier memory
+          9. Model strategy and feasibility tiers
+          10. NECS: Neural Error-Correction Sidecar
+          11. Capability Watchdog and externalized intelligence
+          12. Windows desktop, resource manager, and safety
+          13. Development roadmap and milestone gates
+          14. Benchmarking and quality evaluation
+          15. Risks, failure modes, and mitigations
+          16. Research hypotheses and questions worth investigating
+          17. Proposed project structure
+          18. First prototype: the smallest useful ECLIPSE
+          19. Free, safe, and maintainable project rules
+          20. Research references and how to interpret them
+
+         READ THIS FIRST The 10+ tokens/second goal is an acceptance target to investigate, not a guaranteed outcome.
+         The plan explicitly allows a model/hardware combination to fail the speed gate. Loading a huge model
+         successfully is not success if generation remains painfully slow.
+
+
+
+
+        1. Executive summary and mission
+        1.1 The mission
+        ECLIPSE is a Windows-native, hardware-aware AI model inspection, preparation, optimization, and
+        inference platform. Its purpose is to make the strongest practical use of large open-weight models on a
+        computer that cannot hold or run those models in their original form.
+
+        The primary objective is maximum useful intelligence at interactive generation speed. ECLIPSE is not merely
+        a model downloader, quantizer, file converter, model viewer, or launcher. It is a coordinated system that
+        studies a model before execution, chooses how it should be represented, plans where its pieces should live,
+        schedules work across CPU/GPU/RAM/VRAM/storage, and measures whether the result is both fast and
+        capable.
+
+
+
+
+                                                  ECLIPSE v3.0 | November 3, 2026 | Page 2
+ECLIPSE V3.0   •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                             02 / 25
+      ECLIPSE         / MASTER PLAN                                                                                               01 MISSION
+                                                                                                              ECLIPSE / MASTER PLAN
+
+
+        1.2 What counts as success
+          The system can inspect supported model files without running the full model locally.
+          It identifies the real architecture, tensor inventory, precision, expert structure, and memory requirements
+               instead of guessing from a model name or parameter count.
+          It builds a reproducible execution plan for the actual computer and explains which models/configurations are
+               viable, marginal, or unrealistic.
+          It achieves the best measured sustained generation rate and response latency available for a given model,
+               without pretending that cold SSD streaming is equivalent to fast memory residency.
+          It preserves important capabilities and measures any losses from compression, approximations, or
+               optimization.
+          It stays within configured RAM/VRAM limits, avoids uncontrolled Windows paging, and keeps the PC usable.
+          It evaluates completed, verified work - not only tokens per second.
+
+
+        1.3 Performance goals - proposed, not guaranteed
+         Level                                        Target                                   Meaning
+                                                                                               A strong interactive experience when a
+         Preferred                                    15-20+ tokens/second                     model and execution path can support
+                                                                                               it.
+                                                                                               The target for the everyday fast path,
+         Primary acceptance goal                      10+ sustained tokens/second              measured over long enough runs to
+                                                                                               avoid cherry-picked bursts.
+                                                                                               May still be useful for research, batch
+                                                      Not acceptable as the primary everyday
+         Below 5 tokens/second                                                                 tasks, or a quality-only mode, but must
+                                                      mode
+                                                                                               be labeled honestly.
+                                                                                               Fast average speed is not enough if the
+                                                      TTFT, variance, RAM/VRAM, disk
+         Always measure                                                                        first token is very slow, memory spills,
+                                                      reads/token, quality
+                                                                                               or output quality collapses.
+
+
+
+         IMPORTANT These thresholds are product goals for ECLIPSE, not predictions for the i7-8700K and RTX 2060
+         Super. If no tested method meets them for a model, ECLIPSE must report that honestly and offer the fastest
+         verified alternative.
+
+
+
+
+        1.4 The central correction
+        The design cannot depend on the user first running a huge model locally. A model that does not fit is
+        precisely the model ECLIPSE needs to inspect. Therefore the first major subsystem is static model
+        intelligence: read the checkpoint and its metadata in bounded chunks, map the architecture and weights,
+        and produce a model atlas without full-model inference.
+
+        Runtime activation tracing, live routing observation, and learning from the model’s actual token-by-token
+        behavior are valuable later additions. They are not prerequisites for the first usable design or the first local
+        inference milestone.
+
+
+
+
+                                                    ECLIPSE v3.0 | November 3, 2026 | Page 3
+ECLIPSE V3.0     •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                             03 / 25
+      ECLIPSE         / MASTER PLAN                                                                                             02 HARDWARE
+                                                                                                              ECLIPSE / MASTER PLAN
+
+
+
+        2. User hardware, operating assumptions, and goals
+        2.1 Target computer
+         Component                                    Known configuration                      Design implication
+                                                                                               Six-core / twelve-thread class CPU;
+         CPU                                          Intel Core i7-8700K                      schedule carefully and avoid assuming
+                                                                                               abundant CPU compute.
+                                                                                               GPU memory is scarce. Keep kernels
+         GPU                                          NVIDIA RTX 2060 Super, 8 GB VRAM         compatible with the GPU generation;
+                                                                                               benchmark each low-bit path.
+                                                                                               RAM is a larger staging/residency tier
+                                                                                               than VRAM, but Windows, applications,
+         System RAM                                   48 GB DDR4-3200
+                                                                                               model runtime, and KV cache all need
+                                                                                               room.
+                                                                                               Native Windows is the primary
+         OS                                           Windows 11                               supported environment. WSL is not a
+                                                                                               requirement.
+                                                                                               Measure actual sequential and random-
+                                                                                               read performance; do not assume
+         Storage                                      User-selected SSD/HDD
+                                                                                               advertised speeds equal sustained
+                                                                                               model-serving bandwidth.
+
+
+
+
+        2.2 User-facing constraints
+          Windows-first and free/open-source wherever practical. No mandatory paid inference APIs or cloud service.
+          No Linux/WSL dependency for the core workflow. Optional backends can be evaluated separately, but the
+               baseline path must be Windows-native.
+          The interface should be approachable to a beginner: plain language, clear status, safe defaults, and
+               explanations before risky changes.
+          Use established, maintained projects and pinned dependencies where practical. ECLIPSE should orchestrate
+               proven building blocks instead of rebuilding every kernel.
+          Preserve original model files. All preparation outputs and experiments must be separate, named, and
+               reversible.
+          Store logs, diagnostics, manifests, experiment results, and a root STATUS.md in the project folder.
+
+
+        2.3 Design assumptions
+        ECLIPSE initially targets open-weight models and formats whose architecture and weights can be legally and
+        technically inspected. It does not assume access to the private original weights of closed models such as
+        proprietary hosted services. It does not claim to recreate a closed model from its outputs.
+
+        A model’s total parameter count is not enough to predict performance. Architecture, active parameters,
+        quantization format, layer dimensions, memory access pattern, kernel implementation, prompt length,
+        context cache, and actual memory bandwidth all affect the result.
+
+
+
+
+                                                    ECLIPSE v3.0 | November 3, 2026 | Page 4
+ECLIPSE V3.0     •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                           04 / 25
+      ECLIPSE         / MASTER PLAN                                                                                            03 BOTTLENECKS
+                                                                                                              ECLIPSE / MASTER PLAN
+
+
+
+        3. The core technical problem: capacity, bandwidth, and
+        compute
+        3.1 Three different constraints
+         Constraint                                   Plain-language meaning                   Why ECLIPSE cares
+                                                      How much data can fit in a memory tier   A file may fit on an SSD but not in RAM
+         Capacity
+                                                      at once.                                 or VRAM.
+                                                                                               A weight can be available but still
+         Bandwidth                                    How quickly data can be moved.           arrive too slowly for interactive
+                                                                                               generation.
+                                                                                               Even if weights arrive on time, the
+                                                      How quickly the CPU/GPU can perform
+         Compute                                                                               processor may not multiply them fast
+                                                      the required math.
+                                                                                               enough.
+
+
+
+
+        3.2 Why putting a giant model on an SSD is not enough
+        An SSD is excellent for storing large models and for loading or prefetching data. It is much slower than
+        VRAM and usually slower than RAM for the fine-grained, repeated access needed during decoding. If every
+        generated token requires reading many gigabytes of expert weights from storage, the system becomes
+        storage-bound. The fact that the complete model fits on disk does not mean it can generate quickly.
+
+        Colibri’s public benchmark notes provide a useful warning example: its documented cold GLM-5.2 path
+        estimates about 11 GB of disk reads per token and roughly 0.05-0.1 tokens/second on a drive around 1 GB/s.
+        The same project reports much higher results when experts are resident in RAM/VRAM, including a six-
+        RTX-5090 experiment. These are measurements from that project’s configurations, not predictions for this
+        PC.
+
+
+        3.3 The working-set principle
+
+         CORE ENGINEERING RULE Optimize the weights and data actually needed for the next token - the working set
+         - rather than merely maximizing the total number of parameters that can be stored somewhere.
+
+
+        For a Mixture-of-Experts (MoE) model, only some experts are selected for a token, although shared layers
+        and routing logic may also be required. If the selected experts are already in RAM or VRAM, ECLIPSE may
+        avoid a large storage penalty. If the selected experts are cold on SSD, prefetching can help only when the
+        system has enough lead time and bandwidth. The router’s actual selection remains authoritative.
+
+
+        3.4 Why no single trick fixes everything
+          Quantization reduces memory use and data movement but can reduce quality; lower bit width does not
+               automatically mean higher speed on every GPU.
+          Offloading increases capacity but can increase transfer time and CPU involvement.
+          Pruning can reduce work but may remove useful capacity or alter model behavior.
+          Caching avoids repeated transfers only when future requests reuse cached data; workload changes can defeat
+               simple frequency assumptions.
+          Predictive prefetch can hide some transfer latency but cannot guarantee that a prediction is correct or replace
+               the model’s router decision.
+
+
+                                                    ECLIPSE v3.0 | November 3, 2026 | Page 5
+ECLIPSE V3.0     •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                            05 / 25
+      ECLIPSE        / MASTER PLAN                                                                                              04 CONSTITUTION
+                                                                                                                ECLIPSE / MASTER PLAN
+
+
+          Speculative decoding can speed generation in compatible cases but can add compute and memory overhead,
+               and acceptance rates vary.
+        The system must treat these as interacting choices and measure the combined system, not optimize each one
+        in isolation.
+
+
+        4. ECLIPSE design constitution
+        These rules govern every subsystem, experiment, and future feature. A feature that violates them should not
+        become a default path.
+
+         1. Never require the original oversized model to run locally before ECLIPSE can inspect or prepare it.
+         2. Optimize for interactive output speed and useful capability, not merely successful loading.
+         3. Treat 10+ sustained tokens/second as a goal to test, not a result to claim without measurement.
+         4. Minimize routine SSD-to-weight transfers during token generation.
+         5. Maximize useful GPU and RAM residency while preserving Windows headroom.
+         6. Never overwrite or modify the user’s original model weights.
+         7. Never assume quantization, pruning, or compression automatically improves speed.
+         8. Never sacrifice intelligence without measuring which capabilities changed and by how much.
+         9. Never replace actual router-selected experts with predicted experts.
+         10. Never publish a speed improvement without a reproducible benchmark.
+         11. Use teacher-independent verification wherever practical; do not require the original giant model for
+               every test.
+         12. Add runtime learning only after a workable inference path exists.
+         13. Protect Windows responsiveness and prevent uncontrolled paging.
+         14. Do not make paid APIs, remote compute, or subscriptions mandatory.
+         15. Automate hardware detection, budgets, model preparation, and configuration selection with safe
+               overrides.
+         16. Measure verified useful work completed, not just token throughput.
+
+
+        5. Complete system architecture
+        5.1 The five major subsystems
+         Subsystem                                    Main responsibility                         Primary output
+                                                      Inspect model files and discover
+                                                      architecture, tensors, precision, routing
+         1. Model Intelligence Laboratory                                                         Model Atlas and inspection report.
+                                                      structure, and constraints without full
+                                                      inference.
+                                                      Create prepared, indexed, converted,
+                                                                                                  Prepared model packages and
+         2. Model Preparation and Optimization        and optionally compressed variants
+                                                                                                  manifests.
+                                                      while preserving originals.
+                                                      Coordinate CPU, GPU, RAM, VRAM, SSD,        Interactive model execution with
+         3. High-Speed Inference Engine
+                                                      caches, and expert movement.                telemetry.
+                                                      Measure capability changes and
+         4. Intelligence Preservation and                                                         Quality reports and optional correction
+                                                      experiment with correction sidecars
+         Recovery                                                                                 modules.
+                                                      and verification.
+
+
+
+
+                                                    ECLIPSE v3.0 | November 3, 2026 | Page 6
+ECLIPSE V3.0    •   NOVEMBER 3, 2026   •    WINDOWS-NATIVE AI                                                                               06 / 25
+      ECLIPSE        / MASTER PLAN                                                                                       05 ARCHITECTURE
+                                                                                                           ECLIPSE / MASTER PLAN
+
+
+         Subsystem                                   Main responsibility                      Primary output
+                                                     Give the user a simple interface, safe
+         5. ECLIPSE Desktop and Resource
+                                                     controls, monitoring, logs, and          A manageable Windows application.
+         Manager
+                                                     reproducible profiles.
+
+
+
+
+        5.2 End-to-end lifecycle
+         1. Import a model folder or supported model file without loading the entire model into RAM or VRAM.
+         2. Inspect metadata, tensor shapes, architecture, tokenizer, and checkpoint organization; create the Model
+               Atlas.
+         3. Estimate memory, bandwidth, compute, compatibility, and feasible execution paths for this PC.
+         4. Prepare one or more reversible variants using the least destructive optimizations first.
+         5. Build an execution manifest defining tensor layout, device placement, precision, cache policy, and
+               memory budgets.
+         6. Launch a proven inference backend through ECLIPSE’s orchestration layer.
+         7. Measure real latency, token speed, resource use, storage traffic, and output quality.
+         8. Use evidence to tune residency, prefetch, and precision. Add runtime observations only when supported.
+         9. Keep the winning profile and its benchmark record; preserve failed experiments for diagnosis.
+
+
+        5.3 Build around existing inference kernels
+        ECLIPSE should own model inspection, planning, preparation policy, memory orchestration, measurement,
+        and user experience. It should reuse established inference engines and optimized kernels whenever they are
+        compatible. For example, llama.cpp documents CPU SIMD, CUDA, Vulkan, and CPU/GPU hybrid execution
+        paths, as well as multiple quantization formats. Colibri is a specialized point of comparison for hierarchical
+        MoE residency and SSD/RAM/VRAM scheduling.
+
+        The exact backend choice must be decided by model format, operator support, Windows compatibility, GPU
+        architecture, and measured performance. Do not assume a backend supports every model or every precision
+        on the RTX 2060 Super. ECLIPSE should have a compatibility matrix and small smoke tests before
+        committing to a path.
+
+         DESIGN DECISION Do not build a new matrix-multiplication kernel library as the first project milestone. A new
+         kernel is justified only when profiling identifies a specific gap that existing, maintained backends cannot meet
+         and a test can prove the new kernel is faster and correct.
+
+
+
+
+        6. Model Intelligence Laboratory: inspect first, without
+        inference
+        6.1 The first major milestone
+        The Laboratory is the foundation because the user cannot run a model that does not fit. Its first version must
+        accept a model package and report what can be learned from the files alone. It must not attempt to allocate
+        the complete parameter set into system memory or VRAM.
+
+
+
+
+                                                   ECLIPSE v3.0 | November 3, 2026 | Page 7
+ECLIPSE V3.0    •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                      07 / 25
+      ECLIPSE         / MASTER PLAN                                                                                             06 MODEL LAB
+                                                                                                              ECLIPSE / MASTER PLAN
+
+
+        6.2 Supported input formats
+          GGUF files: parse metadata, tensor names, dimensions, tensor types, tokenizer information when present, and
+               file layout.
+          Safetensors: read headers and tensor metadata, then access tensor bytes by offset in bounded chunks.
+          Hugging Face-style model folders: inspect config files, shard indexes, tokenizer files, generation configuration,
+               and weight shards.
+          Other formats only after a documented parser, test fixtures, and a safe failure path exist.
+
+
+        6.3 Architecture discovery
+        Extract and normalize what the checkpoint actually declares: architecture family, number of layers, hidden
+        size, intermediate size, attention heads, key/value heads, head dimensions, vocabulary size, normalization
+        and positional-embedding choices, layer types, and any multimodal components. For MoE architectures,
+        discover expert count, experts per token, shared experts, router dimensions, and expert tensor shapes when
+        represented in the metadata.
+
+        The parser should distinguish confirmed facts from inferred details. If a model config is incomplete,
+        contradictory, or custom, the Atlas should display “unknown” or “needs adapter” rather than silently
+        assuming a familiar architecture.
+
+
+        6.4 Weight and tensor analysis
+          Inventory tensor names, shapes, dtypes, byte ranges, shard locations, alignment, and total byte counts.
+          Analyze weights in bounded chunks, with a hard memory ceiling. Never read every tensor into RAM merely to
+               inspect it.
+          Calculate useful statistics where feasible: min/max, mean, standard deviation, norm estimates, histograms,
+               sparsity patterns, outlier counts, and per-channel/per-block distributions.
+          Compare related tensor groups and expert tensors for similarity or redundancy, while treating similarity as a
+               candidate clue - not proof that weights can be merged or deleted.
+          Record format limitations: a quantized checkpoint may not expose original full-precision values, and some
+               quantization metadata or scales may be format-specific.
+
+
+        6.5 Tokenizer and prompt interface inspection
+        Record tokenizer type, vocabulary size, special token IDs, chat template, stop tokens, and any known context-
+        window metadata. Flag missing or inconsistent files. A model that loads but uses the wrong tokenizer or chat
+        template may behave incorrectly even if its weights are intact.
+
+
+        6.6 Model Atlas output
+         Atlas section                                                   What it should show
+                                                                         Model name, format, revision/hash when available, source
+         Identity
+                                                                         folder, tokenizer assets.
+                                                                         Layer count, layer types, attention/MLP structure, MoE
+         Architecture map
+                                                                         organization, multimodal modules.
+                                                                         Tensor names, shapes, types, shard positions, byte totals, and
+         Tensor map
+                                                                         anomalies.
+                                                                         Estimated storage size by tensor group, plus runtime
+         Memory estimate
+                                                                         buffers/KV cache estimates with assumptions.
+                                                                         Known backend/operator support, format conversions
+         Compatibility
+                                                                         required, GPU-generation concerns.
+
+
+                                                    ECLIPSE v3.0 | November 3, 2026 | Page 8
+ECLIPSE V3.0     •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                             08 / 25
+      ECLIPSE            / MASTER PLAN                                                                                            06 MODEL LAB
+                                                                                                               ECLIPSE / MASTER PLAN
+
+
+         Atlas section                                                      What it should show
+                                                                            Measured from metadata, derived mathematically, inferred,
+         Confidence labels
+                                                                            or unknown.
+                                                                            Possible no-loss layout changes and candidate compression
+         Preparation options
+                                                                            experiments with expected trade-offs.
+
+
+
+
+        6.7 What static inspection cannot tell us
+        Static weights alone cannot reliably reveal which experts will be chosen for a particular prompt, the full
+        distribution of activations under a real workload, actual end-to-end tokens/second, or exactly which
+        capabilities a quantization will harm. Some statistical or layerwise analysis may estimate risk, but it is not
+        the same as behavioral testing. ECLIPSE must keep these categories separate.
+
+         NO LIVE MODEL REQUIRED The first Atlas, tensor inventory, static memory estimate, and initial compatibility
+         report must be generated without launching inference or requiring the complete weights in RAM/VRAM.
+
+
+
+
+        7. Model preparation and intelligence-aware compression
+        7.1 Preserve the original
+        The imported model is immutable from ECLIPSE’s perspective. Preparation writes new files to a separate
+        output directory, records the source hash and tool versions, and provides a manifest describing every
+        transformation. A failed run must not damage or partially replace the original checkpoint.
+
+
+        7.2 Start with low-risk preparation
+          Create indexed metadata and tensor lookup tables so the runtime can access tensors without repeatedly
+               scanning large files.
+          Use memory mapping or bounded file access where supported; avoid unnecessary copies and peak-memory
+               spikes.
+          Normalize tensor ordering and alignment only where the selected backend benefits and correctness can be
+               tested.
+          Group tensors and experts in a layout that supports contiguous reads and efficient transfer.
+          Generate a manifest containing offsets, sizes, dtype, alignment, checksums, and device-placement hints.
+
+
+        7.3 Compression methods to evaluate
+         Method family                                 Why test it                               Important caution
+                                                       Keep sensitive tensors at higher
+                                                                                                 Requires a credible sensitivity estimate
+         Mixed precision                               precision while reducing less-sensitive
+                                                                                                 and kernel support for mixed dtypes.
+                                                       tensors.
+                                                                                                 Quality and speed depend on
+                                                       Established post-training weight
+         GPTQ / AWQ                                                                              calibration, architecture, format, and
+                                                       quantization families.
+                                                                                                 available kernels.
+                                                       Alternative quantization approaches
+                                                                                                 Not interchangeable; hardware kernels
+         HQQ / AQLM / QuIP#                            worth benchmarking on supported
+                                                                                                 may be missing or slower.
+                                                       models.
+
+
+
+
+                                                     ECLIPSE v3.0 | November 3, 2026 | Page 9
+ECLIPSE V3.0     •   NOVEMBER 3, 2026    •   WINDOWS-NATIVE AI                                                                              09 / 25
+      ECLIPSE        / MASTER PLAN                                                                                                07 PREPARATION
+                                                                                                                 ECLIPSE / MASTER PLAN
+
+
+         Method family                               Why test it                                 Important caution
+                                                                                                 Importance scores are estimates; test
+                                                     Spend more bits on weights or channels
+         Importance-aware quantization                                                           whether they predict actual capability
+                                                     shown to matter more.
+                                                                                                 retention.
+                                                     Potentially reduce work or storage if the   Unstructured sparsity often does not
+         Pruning / sparsity                          runtime can exploit the resulting           produce speedups on ordinary
+                                                     structure.                                  hardware.
+                                                     Transfer behavior into a smaller model      This is a training project, not a simple
+         Distillation                                where a suitable teacher and training       weight-file optimization; the original
+                                                     data exist.                                 teacher may be inaccessible.
+                                                                                                 Can reduce storage but can add
+                                                     Replace large matrices with factorized
+         Low-rank approximation                                                                  operations or memory traffic;
+                                                     approximations or correction terms.
+                                                                                                 benchmark end-to-end.
+
+
+
+
+        7.4 Quality-first optimization sequence
+         1. Baseline: run a supported reference configuration and save output-quality and speed measurements.
+         2. Lossless preparation: change indexing/layout only; verify numerical equivalence and benchmark.
+         3. Conservative quantization: test one known-supported format at a time.
+         4. Mixed precision: retain higher precision for sensitive tensors if evidence justifies the extra bytes.
+         5. More aggressive quantization or structured sparsity: evaluate only after the safe path has a baseline.
+         6. Capability correction: add only when testing identifies a repeatable weakness and a correction
+               demonstrably helps.
+
+
+        7.5 Compression is not automatically acceleration
+        A smaller representation can reduce memory traffic and allow more weights to remain resident. But an
+        unsupported or inefficient low-bit format can require expensive unpacking, dequantization, extra kernels, or
+        CPU fallback. A lower-bit model may therefore run slower than a slightly larger format. The planner must
+        evaluate actual kernel support and measured token speed, not choose the smallest file by default.
+
+
+        7.6 Model preparation package
+        Each prepared variant should include: source identity and hash; transformation history;
+        quantization/configuration details; tensor manifest; compatibility checks; tokenizer/chat-template
+        references; validation results; and a short human-readable report explaining expected trade-offs. Prepared
+        variants should be reproducible from the documented command or UI action.
+
+
+        8. High-Speed Inference Engine and three-tier memory
+        8.1 Three-tier memory plan
+         Tier                              Role                           Typical contents                    Rules
+                                                                          GPU-resident layers/experts,        Hard budget. Reserve room
+                                                                          active matrices, selected           for CUDA/runtime overhead
+         VRAM - 8 GB                       Fastest working space
+                                                                          KV/cache buffers, temporary         and Windows display use.
+                                                                          workspaces.                         Never assume all 8 GB is free.
+
+
+
+
+                                                   ECLIPSE v3.0 | November 3, 2026 | Page 10
+ECLIPSE V3.0    •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                                   10 / 25
+      ECLIPSE         / MASTER PLAN                                                                                            08 INFERENCE
+                                                                                                          ECLIPSE / MASTER PLAN
+
+
+         Tier                               Role                         Typical contents              Rules
+                                                                         Dense weights or warm
+                                                                                                       Keep a Windows/application
+                                                                         experts, predicted prefetch
+                                            Main warm residency and                                    reserve. Avoid memory
+         System RAM - 48 GB total                                        candidates, memory-mapped
+                                            staging tier                                               pressure and pagefile
+                                                                         pages, KV cache, runtime
+                                                                                                       thrashing.
+                                                                         buffers.
+                                                                         Original checkpoints,         Use for storage and
+                                            Persistent model pool and    prepared packages, cold       background reads. Avoid
+         SSD / storage
+                                            cold source                  experts, calibration data,    large repeated cold reads on
+                                                                         logs.                         the per-token critical path.
+
+
+
+
+        8.2 Memory budget manager
+        ECLIPSE should determine safe budgets from actual free resources at launch and monitor them during
+        generation. The user can set maximum RAM and VRAM budgets, but the default must leave room for
+        Windows, the desktop, browser tabs, and other foreground software. A run should not be considered
+        successful if it achieves a benchmark by pushing the PC into constant paging or making the desktop
+        unusable.
+
+
+        8.3 Expert Residency Optimizer
+        For MoE models, the engine can maintain a hierarchy of hot and warm experts. It should consider model
+        layer, expert size, recent use, measured frequency under a task profile, router information when available,
+        and transfer cost. The goal is to keep frequently selected experts in RAM/VRAM while moving less-used
+        experts out of the fastest tiers.
+
+          The router-selected experts are always the experts the model actually uses. A cache prediction is only a
+               prefetch hint.
+          If prediction is wrong, ECLIPSE must still fetch and execute the selected experts - never silently substitute the
+               predicted experts.
+          Track per-layer and per-expert hit rates, misses, load time, bytes transferred, and evictions.
+          Do not assume a single global frequency table fits coding, math, and general conversation equally well.
+
+
+        8.4 Predictive prefetch
+        Prefetching attempts to load a likely-needed tensor or expert before it is requested. It may overlap storage
+        reads and transfers with computation. In the first iteration, static metadata and simple observed access
+        patterns can inform policy. After inference is possible, actual router outputs and runtime traces can improve
+        decisions.
+
+        A prefetch system needs confidence thresholds, bandwidth limits, cancellation, and priority handling. It
+        should not flood the SSD, RAM, or VRAM with guesses. If a selected expert is not cached, correctness takes
+        priority over speed.
+
+
+        8.5 Workload-aware caching
+        Cache policy should be evaluated against real workloads and changes between workloads. Candidate signals
+        include recency, measured frequency, layer position, task profile, router confidence, expert transfer size,
+        and observed hit/miss cost. LRU can be a baseline, not an assumed final solution. ECLIPSE should compare
+        simple baselines with workload-aware and router-informed alternatives.
+
+
+
+                                                    ECLIPSE v3.0 | November 3, 2026 | Page 11
+ECLIPSE V3.0     •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                         11 / 25
+      ECLIPSE        / MASTER PLAN                                                                                08 INFERENCE
+                                                                                                    ECLIPSE / MASTER PLAN
+
+
+        8.6 CPU/GPU coordination
+          Use asynchronous I/O and transfer queues where the backend supports them.
+          Overlap data movement with independent computation only when correctness and dependency ordering are
+               guaranteed.
+          Avoid oversubscribing the i7-8700K. Reserve CPU capacity for Windows and foreground applications.
+          Use GPU kernels for supported operations; CPU fallback must be visible in diagnostics because a fallback can
+               become a major bottleneck.
+          Profile the complete critical path: storage read, decompression/dequantization, RAM copy, PCIe transfer,
+               compute, synchronization, and next-token scheduling.
+
+
+        8.7 KV cache and context management
+        KV cache stores the model’s attention history as a conversation grows. Its memory requirement depends on
+        architecture, number of layers, key/value heads, precision, and context length. ECLIPSE should estimate it
+        from actual architecture metadata and provide safe context options rather than blindly set the largest
+        advertised context.
+
+          Initial context goal: investigate 32K where model architecture, KV size, and speed allow it.
+          Quantized KV cache can reduce memory use when the backend/model supports it and quality remains
+               acceptable.
+          Reuse prefix cache where it is safe and useful; manage eviction and session memory explicitly.
+          Context length must be a real runtime-supported value, not just a UI setting.
+
+
+        8.8 Speculative decoding and multi-token prediction
+        Evaluate speculative decoding or model-native multi-token prediction only when the model and backend
+        support it. Measure draft acceptance rate, verifier cost, extra memory, first-token delay, and sustained
+        decode speed. A draft model can consume scarce VRAM/RAM and may slow generation if acceptance is low.
+
+
+        8.9 The fast-path rule
+
+         PRIMARY EXECUTION RULE The everyday fast path should keep the normal per-token working set resident in
+         GPU memory and/or RAM as much as possible. SSD is the persistent model pool and a background source for
+         rare or prefetchable pieces - not the default place from which huge amounts of active weights are fetched for
+         every token.
+
+
+
+
+        9. Model strategy and feasibility tiers
+        9.1 Prioritize architecture, not headline size
+        MoE models are a logical first research target because only a subset of expert blocks is selected for each
+        token. They are not automatically fast: shared layers, router behavior, cold expert transfers, and CPU/GPU
+        scheduling still matter. Dense models are useful baselines, but their weights are generally involved much
+        more broadly in each forward pass.
+
+
+
+
+                                                   ECLIPSE v3.0 | November 3, 2026 | Page 12
+ECLIPSE V3.0    •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                              12 / 25
+      ECLIPSE         / MASTER PLAN                                                                                           09 MODEL STRATEGY
+                                                                                                               ECLIPSE / MASTER PLAN
+
+
+         Architecture class                           Priority                                  Reason and caveat
+                                                                                                Potential gap between total stored
+                                                                                                parameters and active expert weights.
+         Efficient MoE                                First
+                                                                                                Must control expert residency and cold
+                                                                                                reads.
+                                                                                                Useful for validating import,
+         Dense 8-14B                                  Second / baseline                         quantization, kernels, and quality tests.
+                                                                                                May still be heavy for this GPU/CPU.
+                                                                                                Can be promising but may need custom
+         Hybrid / unusual architectures               After adapters exist
+                                                                                                operator support.
+                                                                                                Large per-token weight traffic makes
+         Huge dense models                            Low                                       interactive speed difficult on limited
+                                                                                                memory bandwidth.
+                                                                                                Possible to store across tiers but speed
+         Very large MoE (70B+ / hundreds of
+                                                      Research / experimental                   is highly dependent on selected expert
+         billions)
+                                                                                                delivery and active compute.
+                                                                                                Not an everyday expectation for this
+                                                                                                computer; use published systems as
+         Trillion-parameter class                     Long-term research target
+                                                                                                algorithmic references, not
+                                                                                                performance promises.
+
+
+
+
+        9.2 Development size tiers
+          8B-14B: establish import, preparation, execution, quality baselines, and performance telemetry.
+          20B-35B MoE: first major large-model target if architecture and active working set are favorable.
+          35B-70B MoE: investigate residency, access patterns, and speed limits after the smaller targets work.
+          70B+: experimental; do not market as interactive until sustained tests meet the acceptance gate.
+          Hundreds of billions to trillion-parameter models: research targets only unless a concrete configuration proves
+               otherwise.
+
+
+        9.3 Model Feasibility Planner
+        Before preparation, ECLIPSE should produce a report that estimates feasibility and explains assumptions. It
+        should separate: total on-disk size; expected resident weight size by precision; active parameters per token if
+        known; shared and non-expert weights; KV cache at the selected context; runtime/workspace overhead;
+        transfer bytes; available memory; and expected compute path.
+
+        The planner may provide a theoretical lower bound or broad risk category, but it must not invent a precise
+        tokens/second forecast. Actual speed needs a backend and benchmark on the user’s hardware. Reports
+        should use categories such as likely feasible, borderline, storage-bound, compute-bound, unsupported, or
+        unknown.
+
+
+        10. NECS: Neural Error-Correction Sidecar
+        10.1 Purpose
+        NECS is an experimental capability-preservation system. The idea is to use a compressed neural backbone
+        for speed and memory efficiency, then attach small, selective correction data that may recover specific
+        behavior lost during compression. The correction is a research hypothesis, not a guaranteed feature.
+
+
+
+
+                                                    ECLIPSE v3.0 | November 3, 2026 | Page 13
+ECLIPSE V3.0    •    NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                               13 / 25
+      ECLIPSE         / MASTER PLAN                                                                                     10 NECS
+                                                                                                     ECLIPSE / MASTER PLAN
+
+
+        10.2 Behavior-first compression
+        Instead of optimizing only for tensor error or file size, evaluate which tasks become worse after each
+        compression step. Capability areas include mathematics, science, programming, multi-step reasoning, multi-
+        file software engineering, debugging, 3D development, instruction following, and reliability.
+
+
+        10.3 Low-rank correction concept
+        For an original weight matrix W and an approximated/quantized matrix Wq, define the difference as ΔW =
+        W - Wq. A low-rank approximation may represent part of that difference as ΔW ≈ A B. The corrected output
+        becomes Wq x + A(Bx). This can reduce the size of a correction relative to storing the full residual, but adds
+        extra operations and memory access.
+
+         CRITICAL TRADE-OFF A correction can improve quality while reducing speed. NECS is worthwhile only when
+         the quality gain is repeatable, the correction is small enough, and end-to-end verified task performance
+         improves after accounting for its runtime cost.
+
+
+
+
+        10.4 How candidate corrections are discovered
+          Run a fixed benchmark suite against a reference configuration and one or more compressed variants where
+               possible.
+          Find repeatable regressions, not one-off bad answers.
+          Localize the likely source to layers, tensor groups, or quantization choices using offline analysis and controlled
+               experiments.
+          Test a correction on held-out data to avoid overfitting the benchmark examples.
+          Measure quality gain, latency, extra memory, and whether the correction generalizes across prompts.
+
+
+        10.5 Teacher-independent recovery
+        ECLIPSE should not rely on the full-precision giant model being available at runtime. Potential sources of
+        evidence include public datasets, independently verified math problems, Python execution, compilers, unit
+        tests, Three.js runtime tests, documented APIs, and optional external reference outputs if a user has access.
+        These can identify errors and support external verification without requiring the original model to answer
+        every question.
+
+        This does not mean an external tool can recreate arbitrary neural knowledge lost by compression. Some
+        capabilities may not be recoverable with small correction modules. ECLIPSE must be willing to conclude that
+        a compressed variant cannot preserve a desired capability at the required speed.
+
+
+        10.6 Sidecar management
+          Sidecars are optional, small, versioned, and separate from the base model.
+          Load only when a tested task profile or verification signal justifies them.
+          Cache correction data only within the resource budget.
+          Record which model hash, quantization recipe, and benchmark set a sidecar was validated against.
+          Never silently apply a correction to an incompatible model revision.
+
+
+
+
+                                                    ECLIPSE v3.0 | November 3, 2026 | Page 14
+ECLIPSE V3.0     •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                   14 / 25
+      ECLIPSE       / MASTER PLAN                                                                                              11 WATCHDOG
+                                                                                                             ECLIPSE / MASTER PLAN
+
+
+
+        11. Capability Watchdog and externalized intelligence
+        11.1 Capability Watchdog
+        The Watchdog decides when the fast path is sufficient and when additional verification or a slower
+        enhanced path is justified. It should operate mainly at the task/workflow level, not add complex decision
+        overhead to every generated token.
+
+        Fast path
+        Use the best known fast model configuration for ordinary conversation, drafting, and tasks whose risk is low
+        and whose benchmark history shows reliable performance.
+
+        Enhanced path
+        For difficult or high-impact work, the Watchdog can request additional reasoning, a specialized tool, a
+        second pass, execution tests, or a correction sidecar. It should weigh the expected quality benefit against
+        latency and resource cost.
+
+
+        11.2 Evidence signals
+          Task type and complexity, known benchmark weaknesses, and prior success/failure history.
+          Tool output such as compiler errors, failing tests, math checks, schema validation, or runtime exceptions.
+          Consistency across independent methods or checks where available.
+          Available memory, current latency, and whether the enhanced path would disrupt the fast path.
+        A model’s own confidence statement is not sufficient evidence that an answer is correct. Confidence can be
+        recorded, but independent checks should carry more weight when the task permits them.
+
+
+        11.3 Externalized intelligence: four cooperating systems
+         System                                     Role                                      Examples
+                                                    Generates plans, explanations, code,      Local model and optional task-specific
+         Neural reasoning core
+                                                    and candidate solutions.                  model profiles.
+                                                    Provides context the model does not       Project files, documentation, indexed
+         External knowledge and memory
+                                                    need to memorize.                         notes, source search, history.
+                                                                                              Python, compilers, debuggers, math
+         Deterministic tools                        Performs exact or testable operations.    libraries, unit tests, browser
+                                                                                              automation.
+                                                    Checks whether a result works or          Tests, builds, numerical checks, static
+         Independent verification
+                                                    agrees with trusted evidence.             analysis, runtime tests, review passes.
+
+
+
+
+        11.4 Software-engineering workflow
+         7. Inspect the project tree and identify its framework, entry points, tests, and relevant documentation.
+         8. Read the necessary files before editing; preserve existing conventions and working features.
+         9. Create a small implementation plan and make focused changes.
+         10. Run formatters, linters, builds, and tests appropriate to the project.
+         11. Launch the project when practical, reproduce failures, inspect logs, and fix verified causes.
+         12. Re-run the relevant checks and summarize what passed, failed, or remains unverified.
+
+
+                                                  ECLIPSE v3.0 | November 3, 2026 | Page 15
+ECLIPSE V3.0   •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                             15 / 25
+      ECLIPSE        / MASTER PLAN                                                                                               12 DESKTOP
+                                                                                                              ECLIPSE / MASTER PLAN
+
+
+        This architecture can increase the amount of useful work completed by a smaller local model. It does not
+        make a smaller model identical to a frontier hosted model; it gives it reliable tools, memory, and
+        independent checks.
+
+
+        12. Windows desktop, resource manager, and safety
+        12.1 Desktop modes
+         Mode                                        Goal                                      Behavior
+                                                                                               Prefer resident weights, conservative
+         Fast                                        Lowest practical latency                  context, low-overhead decoding,
+                                                                                               minimal optional verification.
+                                                                                               Balance speed, memory use, quality,
+         Balanced                                    Normal recommended mode
+                                                                                               and selected verification.
+                                                                                               Allow more memory/compute, stronger
+                                                                                               checks, and optional correction
+         Quality                                     Best verified result
+                                                                                               modules; clearly show slower expected
+                                                                                               behavior.
+                                                                                               Selects a profile based on model, task,
+         Auto                                        Default                                   memory pressure, compatibility, and
+                                                                                               measured history.
+
+
+
+
+        12.2 Dashboard
+          Active model, backend, precision, profile, and context limit.
+          Tokens/second, time to first token, prompt processing, and latency trend.
+          GPU memory used/free, RAM used/free, CPU use, GPU use, and storage reads.
+          Expert cache hit/miss rate and bytes moved, when model/backend expose those metrics.
+          Current warnings: CPU fallback, cold storage reads, memory pressure, thermal throttling, unsupported
+               operations.
+
+
+        12.3 Resource Guardian
+        The Guardian manages memory limits, CPU thread counts, GPU budgets, temperature warnings, storage
+        activity, and safe unloading. It should avoid aggressive system changes and should never change Windows
+        virtual-memory settings or drivers without explicit user approval and a clear explanation.
+
+          Set conservative defaults and let the user raise budgets knowingly.
+          Pause or stop cleanly when RAM/VRAM reaches configured safety thresholds.
+          Detect likely paging or low-memory pressure and explain why performance is falling.
+          Provide a one-click safe stop that releases model resources and preserves logs.
+          Keep the desktop responsive; do not use every CPU thread by default.
+
+
+        12.4 Reproducibility and diagnostics
+        Each run should save a run ID, model hash, prepared variant, backend/version, settings, hardware snapshot,
+        benchmark configuration, logs, and outcome. A bug report should include enough context to reproduce the
+        issue without uploading private prompts or model data by default.
+
+
+
+
+                                                   ECLIPSE v3.0 | November 3, 2026 | Page 16
+ECLIPSE V3.0    •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                             16 / 25
+      ECLIPSE       / MASTER PLAN                                                                                  13 ROADMAP
+                                                                                                    ECLIPSE / MASTER PLAN
+
+
+        12.5 Root project status
+        The repository root must include STATUS.md with: what is done; what works now; exact run instructions;
+        next milestone; known problems; blocked items; last tested environment; benchmark summary; and a Free
+        & Safe Checklist. Keep it updated as the source of truth for the project’s current state.
+
+
+        13. Development roadmap and milestone gates
+        Build ECLIPSE in small working stages. Every phase must produce something testable. Do not start by
+        scaffolding the entire proposed folder tree or attempting a trillion-parameter model.
+
+
+        Phase 0 - Foundation and hardware profile
+        Work: Detect CPU, GPU, VRAM, RAM, storage, OS, driver, and available backends. Build diagnostics and a
+        repeatable baseline benchmark.
+
+        Deliverable: A hardware report, safe resource-budget defaults, STATUS.md, and baseline test results.
+
+        Exit gate: Hardware values are correct; benchmark is repeatable; Windows remains responsive.
+
+
+        Phase 1 - Model Intelligence Laboratory
+        Work: Implement bounded GGUF and Safetensors inspection, config/tokenizer reading, tensor inventory,
+        and first Model Atlas.
+
+        Deliverable: A CLI or simple UI that inspects a model without full inference.
+
+        Exit gate: Can inspect a model too large to run; peak memory remains bounded; all outputs cite file
+        offsets/metadata.
+
+
+        Phase 2 - Feasibility and compatibility planner
+        Work: Estimate storage, RAM/VRAM, KV cache, tensor types, supported ops, and possible backends.
+
+        Deliverable: Plain-language feasibility report and compatibility matrix.
+
+        Exit gate: Clear distinction between measured, derived, and speculative values; no fake tokens/sec promises.
+
+
+        Phase 3 - Lossless preparation
+        Work: Build indexes, manifests, aligned layouts, checksums, and safe output packages.
+
+        Deliverable: Prepared package that can be compared to source and reopened by a backend.
+
+        Exit gate: Original untouched; transformation is reproducible; numerical or file-level integrity passes.
+
+
+        Phase 4 - First inference foundation
+        Work: Integrate a proven engine for one supported model and one compatible backend. Test CPU, CUDA, or
+        Vulkan paths as appropriate.
+
+        Deliverable: First working local model with complete logging and simple UI.
+
+        Exit gate: Correct output; supported operators; baseline speed/latency measured; resource use bounded.
+
+
+
+
+                                                  ECLIPSE v3.0 | November 3, 2026 | Page 17
+ECLIPSE V3.0   •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                              17 / 25
+      ECLIPSE       / MASTER PLAN                                                                               13 ROADMAP
+                                                                                                  ECLIPSE / MASTER PLAN
+
+
+        Phase 5 - Fast-path optimization
+        Work: Optimize memory budgets, placement, asynchronous movement, expert residency, prefetch, and
+        caching.
+
+        Deliverable: A measured faster profile and telemetry for cache/transfer behavior.
+
+        Exit gate: Improvement is sustained and repeatable; no accuracy loss from routing substitution; no memory
+        thrash.
+
+
+        Phase 6 - Runtime model intelligence
+        Work: Add tracing only for backends that expose reliable activation/router information.
+
+        Deliverable: Observed routing/access statistics and per-workload profiles.
+
+        Exit gate: Tracing overhead measured; missing signals handled safely; no dependency on tracing for basic
+        inference.
+
+
+        Phase 7 - Advanced compression
+        Work: Test quantization, mixed precision, sensitivity analysis, and structured sparsity.
+
+        Deliverable: A portfolio of quality/speed/size trade-off profiles.
+
+        Exit gate: Every method compared against baseline; no unmeasured quality claims.
+
+
+        Phase 8 - NECS and Capability Watchdog
+        Work: Prototype selective corrections and task-level enhanced verification.
+
+        Deliverable: Optional sidecars plus capability regression/repair reports.
+
+        Exit gate: Held-out tests show real quality gains and acceptable speed/memory cost.
+
+
+        Phase 9 - Externalized intelligence
+        Work: Add project memory, tools, execution harnesses, and verification workflows.
+
+        Deliverable: Useful coding/debugging workflow with deterministic checks.
+
+        Exit gate: Changes are tested; actions are logged; permissions and file boundaries are clear.
+
+
+        Phase 10 - Complete ECLIPSE Desktop
+        Work: Polish UI, profiles, resource guardian, model library, import/export, crash recovery, and
+        documentation.
+
+        Deliverable: Usable Windows application.
+
+        Exit gate: Install/uninstall and upgrade tested; safe defaults; logs and recovery are reliable.
+
+
+        14. Benchmarking and quality evaluation
+        14.1 Compare configurations fairly
+        Use the same prompts, context length, sampling settings, output length, warm/cold cache state, and
+        benchmark environment when comparing variants. Record the exact model revision, backend version,
+
+
+                                                  ECLIPSE v3.0 | November 3, 2026 | Page 18
+ECLIPSE V3.0   •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                           18 / 25
+      ECLIPSE         / MASTER PLAN                                                                                            14 BENCHMARKS
+                                                                                                              ECLIPSE / MASTER PLAN
+
+
+        quantization, and hardware state. Separate cold-start behavior from warm-session performance. Repeat
+        runs and report median plus variability, not only the best run.
+
+
+        14.2 Baseline comparison matrix
+         Track                                        Configuration                             Question answered
+                                                      Existing supported inference backend
+                                                                                                What does the current engine achieve
+         A                                            with original/available baseline
+                                                                                                before ECLIPSE optimization?
+                                                      precision.
+                                                                                                What does ordinary quantization
+                                                      Conventional compression with
+         B                                                                                      change in speed, memory, and
+                                                      standard settings.
+                                                                                                capability?
+                                                      ECLIPSE preparation plus measured         Do ECLIPSE’s preparation and quality-
+         C                                            mixed precision/compression and           preservation methods improve the
+                                                      optional corrections.                     trade-off?
+                                                                                                Do residency, caching, prefetch, and
+                                                      ECLIPSE memory/execution
+         D                                                                                      scheduling improve real generation
+                                                      orchestration with comparable weights.
+                                                                                                speed?
+                                                      Full system including Watchdog, tools,    Does the user complete more correct
+         E
+                                                      memory, and verification.                 work per unit time?
+
+
+
+
+        14.3 Performance metrics
+          Time to first token (TTFT), with prompt length recorded.
+          Prompt processing speed and sustained decode tokens/second.
+          Median, p90/p95, and variance of inter-token latency.
+          Peak and steady-state RAM/VRAM, CPU/GPU utilization, and temperatures.
+          SSD bytes read per token and per request; cold expert miss cost.
+          Expert cache hit rate and prefetch usefulness when metrics are available.
+          Long-session stability, memory growth, crashes, and Windows responsiveness.
+
+
+        14.4 Capability metrics
+          Math/science: independently checkable answers, calculations, and reasoning tasks.
+          Programming: compile success, tests passed, runtime correctness, and bug-fix success.
+          Multi-file software engineering: change requests across a small existing codebase, preserving conventions and
+               working features.
+          Debugging: ability to interpret actual error logs, identify root causes, and verify repairs.
+          3D/game development: build/run success, interaction correctness, and frame/runtime checks for representative
+               Three.js projects.
+          Instruction following: constraints preserved, requested output complete, no skipped requirements.
+          Reliability: repeated trials, regression rates, hallucinated APIs, and recovery from failure.
+
+
+        14.5 Verified Capability Throughput (VCT)
+        Tokens per second is an important speed metric, but it does not directly say whether the model completed
+        useful work. ECLIPSE should develop a Verified Capability Throughput score: successful, independently
+        verified task outcomes per unit time, with accuracy and resource consumption recorded alongside the score.
+
+
+
+
+                                                    ECLIPSE v3.0 | November 3, 2026 | Page 19
+ECLIPSE V3.0     •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                           19 / 25
+      ECLIPSE        / MASTER PLAN                                                                                              14 BENCHMARKS
+                                                                                                                ECLIPSE / MASTER PLAN
+
+
+        A simple initial report can show tasks completed correctly per hour, pass rate, median completion time, and
+        peak memory. Avoid a single opaque score until task weighting is defensible. Show the raw measurements
+        so the user can understand why a profile wins.
+
+
+        14.6 Reference-model limitations
+        Some large full-precision models cannot be run locally on the target computer. ECLIPSE must not pretend it
+        has a perfect local reference in those cases. It can use public evaluation datasets, trusted expected answers,
+        compilers, unit tests, and optional remote/reference outputs when available. The report must identify where
+        the reference is incomplete.
+
+
+        15. Risks, failure modes, and mitigations
+         Risk                                        Why it matters                            Mitigation
+                                                                                               Define hard acceptance gates; test small
+                                                     A model may demand more compute or
+         The target speed is physically                                                        prototypes; classify models honestly; do
+                                                     memory bandwidth than this PC can
+         unattainable for a chosen model                                                       not call a slow research mode the
+                                                     provide.
+                                                                                               everyday path.
+                                                                                               Track SSD bytes/token; increase useful
+                                                     Active experts are not resident or        residency; redesign placement; reject
+         SSD cold reads dominate token time
+                                                     prefetch cannot keep up.                  models/configurations that require
+                                                                                               excessive cold traffic.
+                                                                                               Profile CPU utilization and kernel path;
+                                                     The i7-8700K may not deliver enough
+                                                                                               avoid oversubscription; favor
+         CPU becomes the bottleneck                  CPU-side expert math or
+                                                                                               supported GPU kernels; benchmark
+                                                     dequantization.
+                                                                                               before adding more workers.
+                                                                                               Build a tested compatibility matrix; run
+         GPU kernel incompatibility or poor low-     A quantization format may fall back to
+                                                                                               kernel smoke tests; expose fallback; do
+         bit performance                             CPU or have slow kernels on Turing.
+                                                                                               not assume new low-bit formats work.
+                                                                                               Dynamic budgets, headroom, memory-
+                                                     Model weights plus KV cache and
+         RAM exhaustion and Windows paging                                                     pressure alarms, safe stop, and per-
+                                                     applications consume too much RAM.
+                                                                                               model memory estimates.
+                                                                                               Use adapters, schema validation,
+                                                     Custom or evolving checkpoints may
+         Incorrect architecture parsing                                                        confidence labels, unknown states, and
+                                                     not match known layouts.
+                                                                                               test fixtures.
+                                                                                               Maintain capability-specific tests, held-
+                                                     Aggregate scores hide a regression in
+         Compression damages a key capability                                                  out evaluations, and rollback to
+                                                     code or math.
+                                                                                               immutable originals.
+                                                                                               Keep optional; measure end-to-end;
+                                                     Corrections increase operations and
+         NECS adds more overhead than value                                                    remove corrections that do not improve
+                                                     complexity.
+                                                                                               verified work per second.
+         Predicted expert differs from actual        Prefetch guesses are mistaken for         Prediction is only a cache hint; always
+         router output                               authoritative selection.                  honor the actual model router.
+                                                                                               Publish cold and warm results, repeated
+                                                     A warm-cache or short run looks much
+         Benchmark cherry-picking                                                              trials, request shape, exact
+                                                     faster than normal.
+                                                                                               model/backend, and variance.
+                                                                                               Follow milestone gates; one model, one
+                                                     Trying to build every subsystem at once
+         Project scope becomes too large                                                       backend, one reliable benchmark
+                                                     delays the first working result.
+                                                                                               before broad support.
+
+
+
+
+                                                   ECLIPSE v3.0 | November 3, 2026 | Page 20
+ECLIPSE V3.0    •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                               20 / 25
+      ECLIPSE        / MASTER PLAN                                                                                                  15 RISKS
+                                                                                                              ECLIPSE / MASTER PLAN
+
+
+         Risk                                        Why it matters                            Mitigation
+                                                                                               Pin versions, use official release
+                                                     Unmaintained packages or unnecessary
+                                                                                               sources, minimize dependencies, isolate
+         Dependency or installer risk                admin privileges create security
+                                                                                               model processing, explain any elevated
+                                                     problems.
+                                                                                               permission.
+
+
+
+
+        16. Research hypotheses and questions worth investigating
+        The ideas below are research directions, not claims of invention or proven breakthroughs. Before calling a
+        method novel, compare it with existing expert caching, dynamic precision, mixed-precision quantization,
+        SSD-native inference, predictive prefetch, routing analysis, and model-correction research.
+
+
+        16.1 Joint optimization of precision, placement, and cache
+        Most decisions are often discussed separately: quantize weights, place some on GPU, cache frequently used
+        experts, or prefetch likely next experts. ECLIPSE should test a joint planner that chooses precision, residency
+        tier, and cache policy together under a fixed quality and memory budget. A smaller representation may
+        allow more experts to stay warm, while a high-precision hot subset may preserve quality. The optimal
+        combination must be measured.
+
+
+        16.2 Static-first behavior-aware preparation
+        Can static tensor metadata, weight statistics, architecture, and public workload data predict which layers or
+        expert groups are most sensitive to quantization or placement? Start with offline inspection; later compare
+        those predictions to actual runtime measurements. Measure whether the static analysis meaningfully
+        reduces the number of expensive calibration runs.
+
+
+        16.3 Prefetch value rather than raw prediction accuracy
+        A prediction is useful only if it saves wall-clock time and does not waste too much bandwidth or memory.
+        Evaluate prefetch by latency avoided, bytes wasted, cache pollution, and impact on actual decode speed - not
+        simply prediction accuracy.
+
+
+        16.4 Capability-specific correction
+        Can a small residual or adapter restore a repeatable capability lost during compression without adding
+        enough compute to erase the speed benefit? Test only after a specific regression is identified, use held-out
+        data, and compare task throughput against the uncorrected variant.
+
+
+        16.5 Task-aware scheduling
+        Do coding, mathematics, and general conversation produce meaningfully different expert or memory access
+        patterns? If yes, can lightweight profiles improve cache placement without overfitting to one prompt or
+        forcing routing? This must be proven with repeated measurements.
+
+
+        16.6 External verification as a quality multiplier
+        For some task types, deterministic tests can compensate for a smaller reasoning model’s weaker self-
+        checking. Test whether model plus tools can complete more verified software work than the same model
+        alone, while including tool setup and repair time in the measurement.
+
+
+                                                   ECLIPSE v3.0 | November 3, 2026 | Page 21
+ECLIPSE V3.0    •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                             21 / 25
+      ECLIPSE               / MASTER PLAN                                                                                                         16 RESEARCH
+                                                                                                                                 ECLIPSE / MASTER PLAN
+
+
+        16.7 Research questions that could disprove ECLIPSE assumptions
+          Can the target hardware keep enough of a given MoE model’s real selected working set resident to meet the
+               speed gate?
+          Does the CPU/GPU path provide enough compute once storage stalls are reduced?
+          Can useful compression be made fast on this GPU generation, or do kernels become the limiting factor?
+          Do static importance measures correlate with task-level capability retention?
+          Can the Watchdog improve verified task success without making ordinary tasks feel slow?
+          Does the complete system outperform simpler use of an existing inference backend enough to justify its
+               complexity?
+
+         SCIENTIFIC DISCIPLINE A negative result is valuable. If a proposed optimization does not improve sustained
+         speed, quality, or verified work, ECLIPSE should document the result and move on instead of defending the idea.
+
+
+
+
+        17. Proposed project structure
+        The directory tree is a target architecture, not a requirement to create every folder on day one. Begin with
+        the folders needed for Phase 0 and Phase 1; add the rest only when a working feature requires them.
+               ECLIPSE/
+               |-- STATUS.md | README.md
+               |-- foundation/{hardware_detection, benchmarking, resource_limits, diagnostics}/
+               |-- model_intelligence/{importer, architecture, tensor_inspector, weight_analysis, model_atlas, compatibility}/
+               |-- preparation/{tensor_layout, conversion, compression, calibration, manifests}/
+               |-- inference/{engine, cpu, cuda, vulkan, gpu_scheduler, memory_engine, expert_residency, prefetch, caching, kv_cache, speculative_decoding}/
+               |-- optimization/{precision_planner, capability_watchdog, necs, runtime_tracing, benchmarks}/
+               |-- intelligence/{reasoning, project_memory, knowledge, tools, verification}/
+               |-- desktop/
+               |-- models/
+               |-- experiments/
+               |-- documentation/
+               `-- logs/
+
+
+        17.1 Implementation technology strategy
+          Windows-native first. Do not require WSL or Linux for the core path.
+          Use proven C/C++ inference backends and optimized kernels where needed; use a high-level language for
+               orchestration, analysis, UI integration, and experiment automation when suitable.
+          Pin dependencies and record exact versions. Prefer official projects and release channels.
+          Isolate parsers and model-processing steps so malformed or untrusted model files cannot freely execute code.
+          Make each operation resumable or safely restartable when processing multi-gigabyte files.
+
+
+        18. First prototype: the smallest useful ECLIPSE
+        The first prototype should prove the most distinctive premise: ECLIPSE can understand a model too large to
+        run on the user’s computer. Do not begin with MoE caching, NECS, a 3D dashboard, or a custom inference
+        engine.
+
+
+        Prototype A - Static Model Inspector
+         1. Create a small Windows project with a clean command-line entry point and a simple status report.
+         2. Add GGUF parsing first, then Safetensors/Hugging Face folder inspection after the first format is stable.
+
+
+
+                                                           ECLIPSE v3.0 | November 3, 2026 | Page 22
+ECLIPSE V3.0      •        NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                                            22 / 25
+      ECLIPSE         / MASTER PLAN                                                                                 17-19 PROTOTYPE
+                                                                                                     ECLIPSE / MASTER PLAN
+
+
+         3. Read metadata and tensor headers without loading all tensor bytes into RAM.
+         4. Generate an architecture summary and tensor inventory with source offsets and file sizes.
+         5. Add bounded weight-statistics sampling as an optional analysis, with explicit memory and time limits.
+         6. Write a Model Atlas report in a human-readable format plus machine-readable JSON.
+         7. Create tests using small fixtures and at least one real model that is too large for the PC to run in full.
+         8. Write STATUS.md, exact install/run steps, known limits, and the Free & Safe Checklist.
+
+
+        Prototype A acceptance gate
+          The inspector can analyze a checkpoint that cannot be executed on the target PC.
+          Peak memory stays within a configured limit independent of full model size, aside from bounded
+               metadata/statistics buffers.
+          Tensor counts, dimensions, data types, and byte totals reconcile with the file or shard index.
+          Unknown/custom architecture fields are clearly marked, not guessed.
+          The report separates confirmed metadata from calculated estimates and unknown runtime behavior.
+          No original model file is modified.
+
+
+        Prototype B - Feasibility Report
+        Once the Atlas exists, calculate estimated storage and memory needs for candidate precisions, KV cache
+        options, and residency tiers. Provide a “why it may fail” section. Do not produce unsupported tokens/second
+        estimates.
+
+
+        Prototype C - One working inference path
+        Only after A and B work, integrate one established backend, one model known to be supported, and one
+        measured configuration. The purpose is to establish the actual runtime baseline and validate that the model
+        package and execution manifest are correct.
+
+         WHY THIS ORDER Static inspection solves the immediate blocker without asking the computer to perform the
+         impossible. It also creates the facts needed to decide which model and runtime path are worth trying next.
+
+
+
+
+        19. Free, safe, and maintainable project rules
+          Free-first: no mandatory subscription, paid API key, hosted inference endpoint, or proprietary cloud
+               dependency.
+          Local-first: the core model inspection and local inference workflow runs on the user’s Windows PC.
+          Optional remote reference only: any remote inference or API-assisted evaluation is opt-in, clearly labeled, and
+               never required to use ECLIPSE.
+          Official sources: download runtimes, drivers, libraries, and releases from official or well-established project
+               channels.
+          Pinned dependencies: record versions and hashes where practical; avoid floating “latest” installs in
+               reproducible builds.
+          Least privilege: avoid administrator rights unless a clearly explained feature truly requires them.
+          Original preservation: never edit the source checkpoint; write prepared variants separately.
+          Safe file handling: do not execute code embedded in model files; treat imported artifacts as untrusted data.
+          Privacy: keep prompts, logs, and model paths local by default; let the user inspect what a diagnostic bundle
+               contains before sharing.
+
+
+
+                                                    ECLIPSE v3.0 | November 3, 2026 | Page 23
+ECLIPSE V3.0     •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                                23 / 25
+      ECLIPSE        / MASTER PLAN                                                                                20 REFERENCES
+                                                                                                     ECLIPSE / MASTER PLAN
+
+
+          Clear status: update STATUS.md with what works, what is broken, and the exact next action.
+          No fake guarantees: distinguish theory, estimates, experiments, and reproducible results.
+
+
+        20. Research references and interpretation notes
+        The following sources informed the current plan and were checked for this version on November 3, 2026.
+        They are reference points for design and comparison, not proof that the same performance is achievable on
+        the target computer.
+
+
+        20.1 Colibri: hierarchical MoE inference and benchmarks
+        The Colibri project describes an inference engine that places hot experts on GPU, warm experts in RAM, and
+        cold experts on NVMe storage. Its benchmark documentation explicitly distinguishes cold decode from full-
+        resident operation. One documented setup reports approximately 11 GB of disk reads per token on a cold
+        path and approximately 0.05-0.1 tok/s under a roughly 1 GB/s drive ceiling; a separate six-RTX-5090 full-
+        resident experiment reports roughly 5.8-6.8 tok/s. These results illustrate the importance of residency and
+        the danger of cold per-token reads. They are not direct forecasts for an RTX 2060 Super.
+        Colibri official repository - https://github.com/JustVugg/colibri
+
+        Colibri benchmark notes - https://github.com/JustVugg/colibri/blob/main/docs/benchmarks.md
+
+
+        20.2 SSD-LLaMA research (September 16, 2026)
+        The paper “SSD-LLaMA: SSD-Native Inference for Trillion-Parameter MoE at 1+ Token/s on a Consumer PC”
+        studies SSD-native expert delivery, three-tier storage management, and CPU-GPU hybrid execution. Its
+        abstract reports greater than 1 token/second for a trillion-parameter model with one RTX 5090 and no more
+        than 32 GB RAM. This is an important research direction for ECLIPSE, but its hardware and implementation
+        differ substantially from the user’s RTX 2060 Super and i7-8700K. The result demonstrates a research path,
+        not transferability.
+        SSD-LLaMA paper on arXiv - https://arxiv.org/abs/2609.18110
+
+
+        20.3 llama.cpp: established inference infrastructure
+        The official llama.cpp README lists CPU SIMD support, custom NVIDIA CUDA kernels, Vulkan, multiple
+        quantization formats, and CPU/GPU hybrid inference. This supports the strategy of reusing mature inference
+        infrastructure where model support and hardware compatibility are confirmed, while ECLIPSE focuses on
+        inspection, planning, orchestration, and verification.
+        llama.cpp official repository and backend overview - https://github.com/ggml-org/llama.cpp
+
+
+        20.4 How to read the research claims
+          A result on an RTX 5090 is not an estimate for an RTX 2060 Super. Different GPU generations, memory sizes,
+               bandwidth, kernels, and CPU platforms matter.
+          A high benchmark on one model does not establish support for all architectures or quantization formats.
+          A peak result, warm-cache result, or short test does not prove sustained interactive performance.
+          A model’s total parameter count alone cannot tell us its active compute or memory traffic.
+          Research papers and project benchmarks should guide experiments, not replace measurements on the target
+               computer.
+
+
+
+
+                                                     ECLIPSE v3.0 | November 3, 2026 | Page 24
+ECLIPSE V3.0    •   NOVEMBER 3, 2026    •   WINDOWS-NATIVE AI                                                            24 / 25
+      ECLIPSE       / MASTER PLAN                                                                              FINAL POSITION
+                                                                                                ECLIPSE / MASTER PLAN
+
+
+
+        Final engineering position
+        ECLIPSE should begin by understanding models that the computer cannot run, not by trying to force those
+        models into memory. Static inspection is the entry point. A compatibility and feasibility planner turns the
+        resulting facts into a realistic execution plan. Preparation creates reversible variants. A proven inference
+        backend provides the first working runtime. Only then should ECLIPSE add deeper runtime tracing,
+        predictive residency, advanced compression, NECS, and task-level intelligence management.
+
+        The hardest requirement is not storing a very large model. It is delivering the weights and computation
+        needed for each token fast enough, while preserving useful capabilities and keeping the computer
+        responsive. If the selected model demands more data movement or compute than the PC can sustain,
+        software cannot simply wish that bottleneck away. The project must find model-specific ways to reduce the
+        active working set, use better representations, exploit compatible kernels, and verify that every optimization
+        actually helps.
+
+         NORTH STAR Maximum verified useful intelligence at a speed that feels interactive - with no hidden
+         substitution of model behavior, no unmeasured claims, and no requirement that the original oversized model
+         run locally before ECLIPSE can study it.
+
+
+
+
+                                                  ECLIPSE v3.0 | November 3, 2026 | Page 25
+ECLIPSE V3.0   •   NOVEMBER 3, 2026   •   WINDOWS-NATIVE AI                                                            25 / 25
+

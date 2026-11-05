@@ -1,0 +1,33 @@
+# ECLIPSE Decision Log
+
+## D-001 — One product, three workspaces
+
+**Decision:** ECLIPSE is one application with Model Intelligence & Inference Platform, Capability Amplification & Knowledge System, and ECLIPSE Agent as its three primary destinations.
+
+**Reason:** This preserves both original technical workstreams while adding the everyday conversational AI surface. A shared Core coordinates them.
+
+## D-002 — Preserve the original five internal subsystems
+
+**Decision:** The five Master Plan subsystems remain internal architecture, not five additional top-level workspaces.
+
+## D-003 — Static inspection precedes inference
+
+**Decision:** Model inspection and the first Model Atlas must work without loading or executing the target model.
+
+**Reason:** The target use case includes models that cannot fit the available computer.
+
+## D-004 — Python core; desktop shell decision deferred
+
+**Decision:** Begin with a Python 3.11+ core and keep the UI framework undecided until a focused Windows-native comparison/spike is completed.
+
+**Reason:** Python is already the natural integration layer for model formats and agent tooling; delaying the shell avoids premature commitment before backend boundaries are proven.
+
+## D-005 — Use the existing repository by explicit user direction
+
+**Decision:** Continue in `Tygaclaw/Project-Eclipse`.
+
+**Reason:** The user directly instructed that work continue in the existing repository. This supersedes conflicting greenfield/new-repository language in the uploaded handoff kit. The repository's existing history and `main` branch are preserved; implementation work is isolated on a feature branch.
+
+## D-006 — Leave project license undecided
+
+**Decision:** Do not add a license until the repository owner selects one. Public visibility does not itself grant reuse rights.
