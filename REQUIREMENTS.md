@@ -4,14 +4,14 @@
 |---|---|---|
 | R-001 | Continue in `Tygaclaw/Project-Eclipse` at the user's direct instruction | Repository identity and write access verified; feature branch used |
 | R-002 | One integrated ECLIPSE product | Three workspaces and shared Core recorded in `ARCHITECTURE.md` |
-| R-003 | Model Intelligence & Inference Platform | GGUF v2/v3 static parser implemented; real-file validation pending |
+| R-003 | Model Intelligence & Inference Platform | GGUF v2/v3 and Safetensors static parsers implemented; GGUF sizes derived from pinned registry; real-file validation pending |
 | R-004 | Capability Amplification & Knowledge System | Architecture recorded; planner/watchdog/execution work pending |
 | R-005 | ECLIPSE Agent | Architecture recorded; working chat and tools pending |
 | R-006 | Preserve five Master Plan technical subsystems | Recorded in `ARCHITECTURE.md` and `docs/ORIGINAL_PHASE_MAP.md` |
-| R-007 | Inspect models without executing/loading full weights | Synthetic tests verify 0 tensor payload bytes read; real-file test pending |
-| R-008 | Bounded parser and explicit unknowns | Parser limits and unknown tensor IDs implemented; synthetic tests present |
-| R-009 | Model Atlas with evidence labels and source offsets | Initial machine-readable tensor index present; full Atlas pending |
-| R-010 | Feasibility and compatibility planner | Pending |
+| R-007 | Inspect models without executing/loading full weights | Synthetic tests verify 0 tensor payload bytes read for GGUF and Safetensors; real-file test pending |
+| R-008 | Bounded parser and explicit unknowns | Parser limits and unknown tensor IDs implemented; derived GGUF sizes and Safetensors offsets added; synthetic tests present |
+| R-009 | Model Atlas with evidence labels and source offsets | Machine-readable tensor index with evidence labels (`observed`/`derived`/`unknown`) present; full Atlas UI pending |
+| R-010 | Feasibility and compatibility planner | Pending; exact GGUF storage bytes now available as an input |
 | R-011 | Reversible preparation and transformation lineage | Pending |
 | R-012 | Proven local inference adapter and resource manager | Pending; preserve existing Qwen/llama.cpp configuration |
 | R-013 | Predictive prefetch with true router authority | Research/implementation pending |

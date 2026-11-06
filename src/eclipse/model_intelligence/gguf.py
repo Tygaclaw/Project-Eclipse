@@ -16,6 +16,8 @@ from pathlib import Path
 import struct
 from typing import Any, BinaryIO
 
+from .ggml_types import GGML_TYPE_TRAITS_REVISION, get_ggml_type, tensor_storage_bytes, type_name
+
 
 class GGUFError(Exception):
     """Base class for expected GGUF inspection failures."""
@@ -65,43 +67,6 @@ _METADATA_TYPES: dict[int, tuple[str, str]] = {
     11: ("int64", "q"),
     12: ("float64", "d"),
 }
-
-_GGML_TYPE_NAMES: dict[int, str] = {
-    0: "f32",
-    1: "f16",
-    2: "q4_0",
-    3: "q4_1",
-    4: "q4_2_removed",
-    5: "q4_3_removed",
-    6: "q5_0",
-    7: "q5_1",
-    8: "q8_0",
-    9: "q8_1",
-    10: "q2_k",
-    11: "q3_k",
-    12: "q4_k",
-    13: "q5_k",
-    14: "q6_k",
-    15: "q8_k",
-    16: "iq2_xxs",
-    17: "iq2_xs",
-    18: "iq3_xxs",
-    19: "iq1_s",
-    20: "iq4_nl",
-    21: "iq3_s",
-    22: "iq2_s",
-    23: "iq4_xs",
-    24: "i8",
-    25: "i16",
-    26: "i32",
-    27: "i64",
-    28: "f64",
-    29: "iq1_m",
-    30: "bf16",
-    34: "tq1_0",
-    35: "tq2_0",
-}
-
 
 def _align_up(value: int, alignment: int) -> int:
     return value + ((alignment - (value % alignment)) % alignment)
@@ -341,15 +306,22 @@ def inspect_gguf(path: str | os.PathLike[str], limits: InspectionLimits | None =
                 if tensor_elements > (1 << 63) - 1:
                     raise GGUFResourceLimitError(f"Tensor {name!r} element count is too large")
 
+            ggml_type = get_ggml_type(type_id)
+            storage_bytes, unknown_reason = tensor_storage_bytes(type_id, dimensions)
             tensors.append(
                 {
                     "name": name,
                     "dimensions": list(dimensions),
                     "element_count": tensor_elements,
                     "type_id": type_id,
-                    "type_name": _GGML_TYPE_NAMES.get(type_id, f"unknown_{type_id}"),
+                    "type_name": type_name(type_id),
+                    "block_size": ggml_type.block_size if ggml_type else None,
+                    "type_size_bytes": ggml_type.type_size if ggml_type else None,
                     "relative_data_offset": relative_offset,
                     "descriptor_offset": name_start,
+                    "storage_bytes": storage_bytes,
+                    "storage_bytes_evidence": "derived" if storage_bytes is not None else "unknown",
+                    "storage_bytes_unknown_reason": unknown_reason,
                 }
             )
             if reader.offset > limits.max_header_bytes:
@@ -359,6 +331,9 @@ def inspect_gguf(path: str | os.PathLike[str], limits: InspectionLimits | None =
         if tensor_data_start > file_size:
             raise GGUFFormatError("Aligned tensor-data region starts beyond the end of the file")
         tensor_data_bytes = file_size - tensor_data_start
+        total_tensor_storage_bytes = 0
+        complete_tensor_storage = True
+        oversized_tensors: list[str] = []
         for tensor in tensors:
             absolute_offset = tensor_data_start + tensor["relative_data_offset"]
             if absolute_offset >= file_size:
@@ -366,7 +341,12 @@ def inspect_gguf(path: str | os.PathLike[str], limits: InspectionLimits | None =
                     f"Tensor {tensor['name']!r} points outside the tensor-data region"
                 )
             tensor["file_data_offset"] = absolute_offset
-            tensor["storage_bytes"] = None
+            if tensor["storage_bytes"] is None:
+                complete_tensor_storage = False
+            else:
+                total_tensor_storage_bytes += tensor["storage_bytes"]
+                if absolute_offset + tensor["storage_bytes"] > file_size:
+                    oversized_tensors.append(tensor["name"])
 
         architecture = metadata.get("general.architecture")
         model_name = metadata.get("general.name") or metadata.get("general.basename")
@@ -379,8 +359,26 @@ def inspect_gguf(path: str | os.PathLike[str], limits: InspectionLimits | None =
                 "Unrecognized tensor type IDs were preserved without guessing their storage layout: "
                 + ", ".join(unknown_types)
             )
+        unknown_storage = [
+            tensor["name"]
+            for tensor in tensors
+            if tensor["storage_bytes"] is None
+        ]
+        if unknown_storage:
+            warnings.append(
+                "Exact storage size could not be derived for tensors with unverified type or "
+                f"layout: {', '.join(unknown_storage[:10])}"
+                + (" …" if len(unknown_storage) > 10 else "")
+            )
+        if oversized_tensors:
+            warnings.append(
+                "Declared tensor storage extends past the end of the file (file may be truncated): "
+                + ", ".join(oversized_tensors[:10])
+                + (" …" if len(oversized_tensors) > 10 else "")
+            )
         warnings.append(
-            "Tensor payload sizes are not calculated in this version; no tensor payload bytes were read."
+            "Tensor storage sizes are derived from a versioned GGML type registry; no tensor "
+            "payload bytes were read. Declared sizes were not verified against a full checkpoint."
         )
 
         return {
@@ -401,6 +399,12 @@ def inspect_gguf(path: str | os.PathLike[str], limits: InspectionLimits | None =
             "metadata": metadata,
             "tensor_count": tensor_count,
             "tensors": tensors,
+            "tensor_storage": {
+                "registry_revision": GGML_TYPE_TRAITS_REVISION,
+                "total_bytes": total_tensor_storage_bytes,
+                "total_is_complete": complete_tensor_storage,
+                "evidence": "derived" if complete_tensor_storage else "partial",
+            },
             "inspection": {
                 "mode": "static_read_only",
                 "tensor_payload_bytes_read": 0,

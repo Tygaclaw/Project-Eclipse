@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from eclipse.model_intelligence import (
+    GGML_TYPE_TRAITS_REVISION,
     GGUFFormatError,
     GGUFResourceLimitError,
     InspectionLimits,
@@ -110,7 +111,8 @@ class GGUFInspectionTests(unittest.TestCase):
         report = inspect_gguf(self.write(build_gguf()))
         self.assertEqual(report["inspection"]["tensor_payload_bytes_read"], 0)
         self.assertFalse(report["inspection"]["tensor_payloads_loaded"])
-        self.assertTrue(all(tensor["storage_bytes"] is None for tensor in report["tensors"]))
+        self.assertEqual(report["tensors"][0]["storage_bytes"], 128)
+        self.assertEqual(report["tensors"][0]["storage_bytes_evidence"], "derived")
 
     def test_string_array_preview_is_bounded(self) -> None:
         metadata = [meta_string_array("tokenizer.tokens", ["one", "two", "three"]), meta_uint32("general.alignment", 32)]
@@ -214,6 +216,46 @@ class GGUFInspectionTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(), before)
         self.assertEqual(report["source_file_name"], path.name)
         self.assertNotIn(str(path.parent), json.dumps(report))
+
+    def test_derives_exact_storage_bytes_for_quantized_tensor(self) -> None:
+        data = build_gguf(tensors=[("w", (32,), 2, 0)])
+        report = inspect_gguf(self.write(data))
+        tensor = report["tensors"][0]
+        self.assertEqual(tensor["storage_bytes"], 18)
+        self.assertEqual(tensor["storage_bytes_evidence"], "derived")
+        self.assertEqual(tensor["block_size"], 32)
+        self.assertEqual(tensor["type_size_bytes"], 18)
+
+    def test_derives_multi_block_storage_bytes(self) -> None:
+        data = build_gguf(tensors=[("w", (256,), 12, 0)])
+        report = inspect_gguf(self.write(data))
+        self.assertEqual(report["tensors"][0]["storage_bytes"], 144)
+        self.assertEqual(report["tensor_storage"]["total_bytes"], 144)
+        self.assertTrue(report["tensor_storage"]["total_is_complete"])
+        self.assertEqual(report["tensor_storage"]["registry_revision"], GGML_TYPE_TRAITS_REVISION)
+
+    def test_unknown_tensor_type_leaves_storage_unknown(self) -> None:
+        data = build_gguf(tensors=[("w", (4,), 65500, 0)])
+        report = inspect_gguf(self.write(data))
+        tensor = report["tensors"][0]
+        self.assertIsNone(tensor["storage_bytes"])
+        self.assertEqual(tensor["storage_bytes_evidence"], "unknown")
+        self.assertEqual(tensor["storage_bytes_unknown_reason"], "unknown_type")
+        self.assertTrue(any("could not be derived" in warning for warning in report["warnings"]))
+
+    def test_undivisible_row_leaves_storage_unknown(self) -> None:
+        data = build_gguf(tensors=[("w", (8, 2), 2, 0)])
+        report = inspect_gguf(self.write(data))
+        tensor = report["tensors"][0]
+        self.assertIsNone(tensor["storage_bytes"])
+        self.assertEqual(tensor["storage_bytes_unknown_reason"], "row_not_divisible_by_block")
+        self.assertFalse(report["tensor_storage"]["total_is_complete"])
+
+    def test_warns_when_declared_storage_exceeds_file(self) -> None:
+        data = build_gguf(tensors=[("w", (4, 8), 0, 0)], payload_bytes=16)
+        report = inspect_gguf(self.write(data))
+        self.assertEqual(report["tensors"][0]["storage_bytes"], 128)
+        self.assertTrue(any("past the end of the file" in warning for warning in report["warnings"]))
 
 
 if __name__ == "__main__":

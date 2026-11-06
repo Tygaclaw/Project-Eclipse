@@ -16,6 +16,6 @@ Everyday chat and model selection → history/files/project context → shared C
 
 ## Current gate
 
-The first static GGUF implementation is present as source code and synthetic tests. The next evidence gate is a verified GitHub Actions run plus a read-only real-file run on Windows. Work can then continue into Safetensors and model-folder support while the desktop framework is evaluated separately.
+Static GGUF and Safetensors inspection are present as source code with synthetic tests. GGUF tensor storage bytes are derived from a versioned GGML type registry, and Safetensors storage bytes are observed from declared header offsets. The next evidence gate is a verified GitHub Actions run plus a read-only real-file run on Windows. Work can then continue into Hugging Face model-folder and shard-index discovery and the evidence-labelled Model Atlas while the desktop framework is evaluated separately.
 
 See [`ORIGINAL_PHASE_MAP.md`](ORIGINAL_PHASE_MAP.md) for both canonical phase sequences and the five internal subsystems.

@@ -31,3 +31,15 @@
 ## D-006 — Leave project license undecided
 
 **Decision:** Do not add a license until the repository owner selects one. Public visibility does not itself grant reuse rights.
+
+## D-007 — Derive GGUF sizes from a versioned GGML type registry
+
+**Decision:** Calculate exact GGUF tensor storage bytes from a single registry pinned to a reviewed upstream llama.cpp/GGML revision, and leave sizes explicitly unknown for unregistered types or rows that are not block-multiple.
+
+**Reason:** Quantized GGML tensors store whole blocks, so a bits-per-weight approximation is not an exact byte count. Pinning the registry and its revision makes the derivation auditable and reproducible, and keeping unknown cases unknown preserves the project's evidence rules. Safetensors sizes are observed header offsets and need no registry.
+
+## D-008 — Static inspection covers GGUF and Safetensors before any runtime work
+
+**Decision:** Implement bounded static Safetensors inspection alongside GGUF before preparing an inference adapter.
+
+**Reason:** Both formats share the same read-only, no-payload trust boundary and satisfy the "inspect oversized models without loading them" requirement. This widens Model Atlas coverage without adding runtime dependencies.

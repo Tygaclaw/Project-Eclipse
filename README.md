@@ -8,26 +8,32 @@ ECLIPSE is a single, Windows-first AI ecosystem with three connected user worksp
 
 The five model-engineering subsystems from the original ECLIPSE v3.0 plan remain internal parts of the first workspace and shared Core; they are not additional primary navigation destinations.
 
-## Current working feature
+## Current working features
 
-The first code increment is a **read-only GGUF v2/v3 inspector**. It reads the format header, bounded metadata and tensor descriptors, then emits JSON. It does not load, map, decode, or execute tensor weights. Unknown tensor type IDs remain explicitly unknown. Tensor payload byte sizes are intentionally not guessed until a verified upstream type-layout table is implemented.
+Two read-only, static inspectors emit JSON without loading model weights:
+
+- **GGUF v2/v3 inspector** — reads the header, bounded metadata, tensor descriptors and per-tensor storage bytes. Storage bytes are derived from a versioned GGML type registry pinned to a reviewed upstream llama.cpp/GGML revision. Unknown tensor type IDs and rows that are not block-multiple remain explicitly unknown.
+- **Safetensors inspector** — reads the 8-byte header length, the bounded JSON header and the declared tensor byte ranges. It does not read, map or decode tensor payloads.
+
+Neither inspector loads, maps, decodes or executes tensor weights.
 
 ## Requirements
 
-- Windows 11 is the primary target. The core parser is portable Python.
+- Windows 11 is the primary target. The core parsers are portable Python.
 - Python 3.11 or newer.
-- No third-party runtime packages are required by the current feature.
+- No third-party runtime packages are required by the current features.
 
 ## Run from PowerShell
 
-From the repository root, point Python at the source folder and run the inspector:
+From the repository root, point Python at the source folder and run an inspector:
 
 ```powershell
 $env:PYTHONPATH = "src"
 py -3 -m eclipse inspect-gguf "D:\Models\model.gguf"
+py -3 -m eclipse inspect-safetensors "D:\Models\model.safetensors"
 ```
 
-For a compact JSON report:
+For a compact JSON report, add `--compact` to either command:
 
 ```powershell
 $env:PYTHONPATH = "src"

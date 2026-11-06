@@ -2,7 +2,7 @@
 
 ## Current automated suite
 
-The first parser suite uses only Python's standard library and synthetic binary fixtures. It covers:
+The static-inspection suite uses only Python's standard library and synthetic binary fixtures. It currently contains 60 tests and covers:
 
 - GGUF v2/v3 and big-endian v3 header handling.
 - Metadata and tensor descriptor parsing.
@@ -11,6 +11,8 @@ The first parser suite uses only Python's standard library and synthetic binary 
 - Invalid magic/version and truncated headers.
 - Excessive counts, duplicate keys/names, invalid alignment, bad dimensions and out-of-region offsets.
 - Read-only behavior, path privacy and JSON CLI output.
+- GGML type registry block/type sizes, derived exact GGUF storage bytes, non-block-multiple rows and truncated-file warnings.
+- Safetensors header parsing, metadata, unknown dtypes, shape/range mismatch warnings, overlapping/out-of-range/negative offsets, invalid JSON, header limits and read-only behavior.
 
 Run:
 
@@ -27,6 +29,6 @@ Synthetic tests prove parser behavior for the cases represented by their fixture
 
 1. Real GGUF files from multiple architectures and quantization types.
 2. Large metadata arrays and resource-limit behavior on Windows.
-3. Safetensors header and shard-index fixtures.
-4. Compare metadata/tensor descriptor output with a trusted upstream loader.
+3. Real multi-shard Safetensors folders and shard-index fixtures.
+4. Compare metadata/tensor descriptor output and derived sizes with a trusted upstream loader.
 5. Later: static memory estimator, preparation integrity, runtime correctness and capability evaluation.

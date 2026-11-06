@@ -22,9 +22,9 @@ The original Master Plan's five subsystems are retained inside the Model Intelli
 
 ## Current vertical slice
 
-`src/eclipse/model_intelligence/gguf.py` is a standard-library-only static parser. It reads a GGUF file sequentially in read-only mode, applies explicit header, string, metadata, tensor and array limits, and returns a JSON-safe report. Tensor payloads are neither loaded nor memory-mapped. The parser records metadata/tensor descriptor offsets and the absolute start of each tensor in the payload region.
+`src/eclipse/model_intelligence/gguf.py` and `src/eclipse/model_intelligence/safetensors.py` are standard-library-only static parsers. Each reads a checkpoint's header/index sequentially in read-only mode, applies explicit limits, and returns a JSON-safe report. Tensor payloads are neither loaded nor memory-mapped. The parsers record metadata/tensor descriptor offsets, the absolute start of each tensor in the payload region and per-tensor storage bytes.
 
-The first slice deliberately does not calculate exact tensor storage bytes: that requires a verified, versioned GGML type-layout table. A tensor type it does not recognize is reported as `unknown_<id>`.
+`src/eclipse/model_intelligence/ggml_types.py` is a versioned registry of GGML tensor types pinned to a reviewed upstream llama.cpp/GGML revision. It supplies the block size and encoded type size used to derive exact GGUF tensor storage bytes (`type_size * elements / block_size`). A tensor type absent from the registry is reported as `unknown_<id>` with its storage size explicitly unknown, and a quantized row whose length is not a block multiple is left unknown rather than guessed. Safetensors storage bytes are observed directly from the declared header offsets.
 
 ## Technology direction
 
