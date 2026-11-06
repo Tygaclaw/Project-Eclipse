@@ -41,8 +41,9 @@
 
 ## Local verification evidence
 
-- Windows GitHub Actions run [#42169639645](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639645), Python 3.12 + PySide6 `6.12.0`: **110 tests passed**, including all 8 offscreen desktop UI tests; none were skipped.
-- Python GitHub Actions matrix run [#42169639803](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639803): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in that dependency-free matrix; the dedicated desktop job above runs them with PySide6 installed.
+- Latest Windows desktop run [#42170364882](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364882), Python 3.12 + PySide6 `6.12.0`: **110 tests passed**, including all 8 offscreen desktop UI tests; PyInstaller build, packaged backend smoke test, ZIP and artifact upload all succeeded.
+- Latest Python matrix run [#42170364898](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364898): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in that dependency-free matrix; the dedicated desktop job above runs them with PySide6 installed.
+- Uploaded GitHub artifact: `ECLIPSE-windows-x64` (50,929,677 bytes). A direct package copy is available as `ECLIPSE-Desktop-Windows-x64.zip` in this conversation.
 - Python 3.14.4: `python -m compileall -q src tests packaging` — passed.
 - Python 3.14.4: `inspect-safetensors --compact`, `inspect-hf-folder --compact`, `build-atlas --compact` and desktop offscreen startup smoke tests — exit 0 with valid JSON / a shown window.
 
@@ -50,8 +51,8 @@
 
 - Baseline CI on `main` (parent commit `122fc56`) is **success**: workflow "Python checks" run [#17](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42157195462) on `windows-latest`, Python 3.11, 3.12, 3.13 and 3.14, all four jobs passed "Run unit tests".
 - The prior increment's pull-request CI run is **success**: PR #3 run [#42164928747](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42164928747), all four Windows jobs passed on Python 3.11, 3.12, 3.13 and 3.14; that suite contained **86 tests**.
-- The active Windows desktop workflow [run #42169639645](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639645) passed: PyInstaller build, packaged `ECLIPSE.exe --atlas-backend --help` smoke test, ZIP creation and artifact upload all succeeded. Artifact: `ECLIPSE-windows-x64`, 50,931,558 bytes.
-- The four-version core matrix [run #42169639803](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639803) passed Python 3.11–3.14.
+- The latest active Windows desktop workflow [run #42170364882](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364882) passed: PyInstaller build, packaged `ECLIPSE.exe --atlas-backend --help` smoke test, ZIP creation and artifact upload. Artifact: `ECLIPSE-windows-x64`, 50,929,677 bytes.
+- The latest four-version core matrix [run #42170364898](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364898) passed Python 3.11–3.14.
 - Real Windows/model-file validation has not run.
 
 ## Not completed / not claimed
