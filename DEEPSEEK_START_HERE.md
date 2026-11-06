@@ -5,7 +5,8 @@ Read this file before doing any work.
 ## Repository and operating mode
 - Work in the existing repository `Tygaclaw/Project-Eclipse`. Do not create a second repository. The user's later explicit instruction supersedes older handoff text proposing a separate greenfield repository.
 - GitHub is the permanent source of truth. The user wants cloud-based work in this repository and to download/test the finished project from GitHub. Do not require a separate local checkout on the user's PC for normal development.
-- You run as OpenCode in GitHub Actions through Token Harbor's OpenAI-compatible API. The default model is tokenharbor/deepseek-v4.1-flash:free; the manual free fallback is tokenharbor/mimo-v2.6-flash:free via /oc-mimo. The API key is supplied only as the TOKENHARBOR_API_KEY GitHub Actions secret. Never use a paid model ID or fall back to a paid route.
+- You run as OpenCode in GitHub Actions. The default is Token Harbor DeepSeek V4.1 Flash Free (`/oc`). The only configured API providers are Dahl, Google Gemini, Groq, OpenRouter, Token Harbor and Z.AI; each has exactly two selected models. The exact model IDs, commands and secret names are in `docs/FREE_MODEL_PROVIDER_POOL.md`. The only repository API secrets are `DAHL_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `TOKENHARBOR_API_KEY` and `ZAI_API_KEY`. Never add other providers, use paid model IDs, activate paid usage or create a paid fallback.
+- The OpenRouter routes are manual provider selections at this stage. Do not claim cross-provider automatic failover exists until a tested coordinator is implemented.
 - Work on feature branches and use pull requests for meaningful milestones. Preserve existing history. Never force-push or overwrite unrelated work.
 - Never claim work, tests, file changes or CI passed unless tool/output evidence confirms it.
 
@@ -13,7 +14,7 @@ Read this file before doing any work.
 1. The user's latest explicit instructions.
 2. This `DEEPSEEK_START_HERE.md`.
 3. Current repository records: `STATUS.md`, `CONTINUATION.md`, `REQUIREMENTS.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `TESTING.md`, `SECURITY.md` and `README.md`.
-4. Current product/roadmap documents in `docs/`.
+4. Current product/roadmap documents in `docs/`, including `docs/FREE_MODEL_PROVIDER_POOL.md`.
 5. Archived starter-kit materials under `docs/source_material/ECLIPSE_COMPLETE_STARTER_KIT/`.
 The archived kit contains conflicting repository instructions: its old `START_HERE.md`, `MASTER_EXECUTION_PROMPT.md` and `GITHUB_OPERATING_PROTOCOL.md` may propose a new repository. Preserve these as historical material; do not follow that obsolete direction. See `REPOSITORY_OVERRIDE_README.md`.
 
@@ -37,14 +38,25 @@ Preserve both separate maps: original Master Plan Phase 0, Phases 1–9, Phase 1
 - UX should be colourful, spacious, beginner-friendly and uncluttered. No dense dashboard, fake metrics or fake buttons.
 
 ## Existing implementation baseline and next gates
-The root project source includes a bounded read-only GGUF v2/v3 inspector, JSON CLI and standard-library synthetic tests. The imported status reports 23 synthetic tests and compileall passing in the preparation environment; GitHub Actions and real Windows/model-file validation were pending. Re-run tests and inspect actual CI before claiming success.
-Next recorded gates: verify CI; hand off a safe real-file Windows validation without uploading checkpoints; verify GGML type layouts before exact tensor-byte calculation; add bounded Safetensors and Hugging Face folder discovery; build evidence-labelled Model Atlas and feasibility estimator; continue Capability Amplification and ECLIPSE Agent work without repeating Qwen setup or the completed A* evaluation.
+The repository contains a working Windows desktop shell, bounded model inspectors, an evidence-labelled Model Atlas, tokenizer/chat-template inspection in PR #5, and static hardware/RAM/VRAM feasibility work in PR #8. Verify each PR's current state and CI before treating unmerged work as shipped. Continue through small reviewable milestones; do not repeat completed Qwen setup or A* evaluation.
 
 ## Provider allowance, privacy and recovery
-- Use only Token Harbor model IDs ending in :free. The free route has a value-based rolling seven-day allowance and free-account request limits; it is not unlimited. Never substitute the paid model ID, use wallet credits, top up, or enable a paid fallback.
-- Token Harbor free-route prompts and responses may be retained and reviewed under its free-route policy and upstream provider terms. Never send secrets, private credentials, personal data, or confidential material.
-- The GitHub status monitor is GitHub-only and must not make test inference calls or consume provider allowance.
-- Work in small, independently testable milestones. Update STATUS.md and CONTINUATION.md and preserve verified progress in a reviewable pull request before the Actions timeout. If the free allowance is exhausted or the provider fails, stop safely and leave a clear continuation record.
+
+- The approved provider set is exactly six: Dahl, Google Gemini, Groq, OpenRouter, Token Harbor and Z.AI. Do not add a seventh provider or retain old provider integrations.
+- There are exactly two approved model IDs per provider. The canonical route/secret inventory is `docs/FREE_MODEL_PROVIDER_POOL.md`.
+- GitHub Actions secrets are exactly: `DAHL_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `TOKENHARBOR_API_KEY`, `ZAI_API_KEY`.
+- The workflow checks only the selected credential and passes only that credential to OpenCode. Never request, expose, print or commit key values.
+- Dahl's public docs describe a 100-million-token signup grant, allocated from an account pool to the key. It is not recurring unlimited free inference; no top-ups or purchases.
+- Gemini must stay on the AI Studio free tier; Groq must stay on its Free plan; OpenRouter and Token Harbor use only explicit `:free` model IDs; Z.AI uses only the two $0 Flash API models listed in the provider document.
+- Free quotas can be exhausted or changed. Treat rate limits, quota-exhausted responses and empty Dahl balances as stop/cooldown conditions, never as permission to switch to a paid route.
+- OpenRouter's chosen NVIDIA-hosted free endpoints may log prompts for model improvement. Google free-tier data handling also has separate conditions. Do not send credentials, personal data or confidential information to these services.
+- Preserve the 350-minute Actions timeout and `permission.external_directory = deny`.
+- The current OpenCode workflow selects one model per run by comment command. **Automatic cross-provider failover, cooldown memory and progress-safe retries are not implemented yet.**
+- A configured route is not a verified route. Run small, non-confidential live text and tool-call smoke tests before marking provider capability as operational. Test future failover with mocked provider failures first.
+
+### Final ECLIPSE model leaderboard
+
+The owner requires an evidence-based ranked list, strongest model for ECLIPSE tasks first and weakest last. Do not rank from vendor slogans, parameter count, context-window size, OpenRouter usage popularity or one benchmark alone. Use current, version-specific published evidence (SWE-bench Verified/Pro, Terminal-Bench, Aider Polyglot, LiveCodeBench, Artificial Analysis Coding/Agentic indices, and relevant tool-use benchmarks where the task/harness is comparable), then run an ECLIPSE-controlled task suite with identical repo snapshot, prompts, tools, budgets and acceptance tests. Report raw scores, provenance, version, date, repeat count and caveats. Keep model capability distinct from provider reliability, latency and free quota. Do not invent a blended score from incomparable benchmarks; document any weighting transparently. The canonical plan is in `docs/FREE_MODEL_PROVIDER_POOL.md`.
 
 ## Autonomous engineering expectations
 Do real multi-file engineering, not just planning or snippets. Inspect existing code/tests first; reuse completed work; define acceptance criteria; implement; run tests/build/lint/type/security checks; diagnose and fix failures; rerun; update STATUS, CONTINUATION, REQUIREMENTS, DECISIONS and test evidence. Make ordinary reversible decisions yourself. Continue independent work when a user-only Windows/GPU gate is pending. Ask only for truly essential user decisions. Never fabricate results.
@@ -54,3 +66,8 @@ Never request, print or commit secrets. Read credentials only through Actions en
 
 ## First execution instruction
 **GO.** Read the full handoff, inspect current source/history and workflow, run the actual CI checks, then proceed into the next meaningful implementation milestone. Do not stop after an assessment. Submit reviewable PRs with code and test evidence. Leave Windows/GPU-only work as an honest validation gate.
+
+
+## Autonomous implementation and recovery contract
+
+The owner has explicitly authorised autonomous engineering through the complete, integrated ECLIPSE application. Follow `docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md` and `AUTONOMOUS_BACKLOG.md` as the controlling execution contract. Work in bounded, reviewable milestones; preserve a durable checkpoint; retry a failed model up to five times after its initial attempt when the error is plausibly transient; then continue the same OpenCode session with the next ranked approved free model. Quota exhaustion, invalid credentials and model-not-found errors should trigger immediate recorded failover rather than futile retries. Never use paid routes. Commit only after deterministic checks and secret/large-file guards pass. A model's statement of completion is not proof; the independent test/build/evidence gates decide whether work may land on `main`.
