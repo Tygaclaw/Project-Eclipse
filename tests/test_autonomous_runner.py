@@ -102,6 +102,9 @@ class SafetyScanTests(unittest.TestCase):
         def fake_runner(command, **kwargs):
             captured["command"] = command
             captured["env"] = kwargs["env"]
+            with open(kwargs["env"]["BASH_ENV"], encoding="utf-8") as scrub_file:
+                captured["scrubber"] = scrub_file.read()
+            captured["scrubber_path"] = kwargs["env"]["BASH_ENV"]
             return __import__("subprocess").CompletedProcess(
                 command, 0,
                 stdout='{"type":"session.updated","sessionID":"ses_abcdefgh12345678"}\\n',
@@ -130,6 +133,9 @@ class SafetyScanTests(unittest.TestCase):
         self.assertIn("--model", captured["command"])
         self.assertIn(route.open_code_id, captured["command"])
         self.assertEqual(captured["env"]["GOOGLE_GENERATIVE_AI_API_KEY"], "gemini-test-key")
+        self.assertIn("unset GOOGLE_GENERATIVE_AI_API_KEY\\n", captured["scrubber"])
+        self.assertIn("unset GITHUB_TOKEN\\n", captured["scrubber"])
+        self.assertFalse(__import__("os").path.exists(captured["scrubber_path"]))
         self.assertNotIn("TOKENHARBOR_API_KEY", captured["env"])
         self.assertNotIn("GITHUB_TOKEN", captured["env"])
 
