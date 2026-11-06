@@ -1,6 +1,6 @@
 # ECLIPSE Project Status
 
-**Status:** `ACTIVE — TOKENIZER_AND_CHAT_TEMPLATE_INTELLIGENCE`
+**Status:** `ACTIVE — PR5_REVIEW_CORRECTIONS_IN_PROGRESS`
 
 **Last updated:** 2026-11-06
 
@@ -26,6 +26,8 @@
 - [x] Added desktop boundary and offscreen Qt smoke tests.
 - [x] Added a PyInstaller spec/launcher and pinned desktop requirements.
 - [x] Installed the Windows x64 desktop build workflow at `.github/workflows/desktop.yml` using the owner-level GitHub connection; the reference copy remains at `docs/desktop-build-workflow.yml`.
+- [x] Reviewed and squash-merged desktop milestone PR #4 into `main` at `4c887160a4131ab6f6ebe5259f8f3405f242a9b0`.
+- [ ] PR #5 tokenizer/chat-template implementation is present on its feature branch, but reviewer-requested corrections and PR-head CI are still outstanding.
 - [x] Manually validated the packaged desktop-to-Atlas flow on Windows 11 using a real local GGUF file; the UI rendered the atlas and reported zero tensor payload bytes read and no source modification.
 - [x] Added a bounded, read-only tokenizer and chat-template inspector (`tokenizer.py`) for local Hugging Face folders: tokenizer class/model/pre-tokenizer/decoder/normalizer, declared and observed vocabulary size candidates, added tokens, special tokens, and declared max length are read from small control files only.
 - [x] Inventoried all supported tokenizer assets (`tokenizer.json`, `tokenizer_config.json`, `special_tokens_map.json`, `added_tokens.json`, `vocab.json`, `vocab.txt`, `merges.txt`, legacy `chat_template.json`, and SentencePiece `*.model` files as inventory-only).
@@ -48,10 +50,10 @@
 
 ## Local verification evidence
 
-- Tokenizer/chat-template increment, Python 3.14.4 with PySide6 `6.12.0` installed: `python -m compileall -q src tests` passed; `PYTHONPATH=src python -m unittest discover -s tests` → **131 tests passed** (0 skipped). This includes 21 new `tests/test_tokenizer.py` tests and the extended Model Intelligence desktop assertions; no tensor payloads are read and no Jinja is imported or rendered.
-- Latest Windows desktop run [#42173214699](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699), Python 3.12 + PySide6 `6.12.0`: **110 tests passed**, including all 8 offscreen desktop UI tests; PyInstaller build, packaged backend smoke test, ZIP and artifact upload all succeeded.
-- Latest Python matrix run [#42173214668](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214668): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in that dependency-free matrix; the dedicated desktop job above runs them with PySide6 installed.
-- Latest uploaded GitHub artifact from desktop run [#42173214699](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699): `ECLIPSE-windows-x64` (50,929,741 bytes).
+- Initial PR #5 feature-head local verification only (before review corrections): Python 3.14.4 with PySide6 `6.12.0`; `python -m compileall -q src tests` passed and `PYTHONPATH=src python -m unittest discover -s tests` reported **131 tests passed** (0 skipped). This is local evidence, not GitHub Actions CI and not validation of the requested corrections.
+- Latest Windows desktop run [#42178385983](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42178385983), Python 3.12 + PySide6 `6.12.0`: **110 tests passed**, including all 8 offscreen desktop UI tests; PyInstaller build, packaged backend smoke test, ZIP and artifact upload all succeeded.
+- Latest Python matrix run [#42178385942](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42178385942): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in that dependency-free matrix; the dedicated desktop job above runs them with PySide6 installed.
+- Latest uploaded GitHub artifact from desktop run [#42178385983](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42178385983): `ECLIPSE-windows-x64` (50,931,411 bytes).
 
 User-reported manual Windows 11 real-file validation (packaged application):
 - Selected `Qwen3.5-9B-Q4_K_M.gguf` from the Model Intelligence workspace and pressed Inspect model.
@@ -64,17 +66,19 @@ User-reported manual Windows 11 real-file validation (packaged application):
 
 ## CI verification evidence
 
+- No GitHub Actions workflow runs were associated with the original PR #5 head `17c2d4e0da480374a33c4de95debf9dce4e77d07` at the last check. The 131-test result above is local-only. PR-head CI must be run after the review corrections and main-branch synchronization.
 - Baseline CI on `main` (parent commit `122fc56`) is **success**: workflow "Python checks" run [#17](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42157195462) on `windows-latest`, Python 3.11, 3.12, 3.13 and 3.14, all four jobs passed "Run unit tests".
 - The prior increment's pull-request CI run is **success**: PR #3 run [#42164928747](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42164928747), all four Windows jobs passed on Python 3.11, 3.12, 3.13 and 3.14; that suite contained **86 tests**.
-- The latest Windows desktop workflow [run #42173214699](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699) passed: all 110 tests (including the 8 PySide6 UI tests), PyInstaller build, packaged backend smoke test, ZIP creation and artifact upload. Artifact `ECLIPSE-windows-x64`: 50,929,741 bytes.
-- The latest four-version core matrix [run #42173214668](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214668) passed on Windows Python 3.11–3.14.
+- The latest Windows desktop workflow [run #42178385983](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42178385983) passed: all 110 tests (including the 8 PySide6 UI tests), PyInstaller build, packaged backend smoke test, ZIP creation and artifact upload. Artifact `ECLIPSE-windows-x64`: 50,931,411 bytes.
+- The latest four-version core matrix [run #42178385942](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42178385942) passed on Windows Python 3.11–3.14.
 - One real local GGUF file has now been inspected through the packaged UI on Windows 11. No GPU runtime or inference was tested.
 
 ## Not completed / not claimed
 
 - [x] One real local GGUF file inspected through the packaged desktop UI on Windows 11 (details recorded above).
 - [ ] Real Safetensors file and multi-shard Hugging Face folder validation.
-- [x] Local tokenizer/chat-template inspection (folder and GGUF metadata), with no template execution.
+- [x] Initial local tokenizer/chat-template implementation (folder and GGUF metadata), with no template execution.
+- [ ] Reviewer corrections, bounded-resource hardening, and CI acceptance for PR #5.
 - [ ] Remote model-card metadata retrieval (no network access is used).
 - [ ] Derived GGUF sizes reconciled against a trusted full checkpoint.
 - [ ] Memory/VRAM feasibility planner.
