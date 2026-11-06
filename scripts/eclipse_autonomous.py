@@ -15,6 +15,7 @@ import random
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -237,6 +238,28 @@ def run_opencode(
 ) -> tuple[RunResult, str | None]:
     env_source = source_env if source_env is not None else dict(os.environ)
     child_env = safe_child_environment(route, env_source)
+    # Bash sources BASH_ENV for non-interactive commands. Remove all provider/GitHub
+    # credentials from the shell and its descendants before the model can run tools.
+    scrub_names = (
+        "DAHL_API_KEY", "GEMINI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY",
+        "GROQ_API_KEY", "OPENROUTER_API_KEY", "TOKENHARBOR_API_KEY", "ZAI_API_KEY",
+        "GITHUB_TOKEN", "GH_TOKEN",
+    )
+    fd, scrub_path = tempfile.mkstemp(prefix="eclipse-bash-scrub-", suffix=".sh")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as scrub_file:
+            for name in scrub_names:
+                scrub_file.write(f"unset {name}\\n")
+            scrub_file.write("unset BASH_ENV\\n")
+        os.chmod(scrub_path, 0o600)
+        child_env["BASH_ENV"] = scrub_path
+    except Exception:
+        try:
+            os.unlink(scrub_path)
+        except OSError:
+            pass
+        raise
+
     command = [
         "opencode", "run", "--standalone", "--format", "json", "--agent", "eclipse-autonomous",
         "--model", route.open_code_id, "--title", run_title, "--auto",
@@ -249,14 +272,19 @@ def run_opencode(
             command, cwd=ROOT, env=child_env, text=True, capture_output=True,
             timeout=timeout, check=False,
         )
-        output = (completed.stdout or "") + "\n" + (completed.stderr or "")
+        output = (completed.stdout or "") + "\\n" + (completed.stderr or "")
         return RunResult(completed.returncode, completed.stdout or "", completed.stderr or ""), (
             extract_session_id(output) or session_id
         )
     except subprocess.TimeoutExpired as exc:
         stdout = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
         stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
-        return RunResult(124, stdout, stderr, True), extract_session_id(stdout + "\n" + stderr) or session_id
+        return RunResult(124, stdout, stderr, True), extract_session_id(stdout + "\\n" + stderr) or session_id
+    finally:
+        try:
+            os.unlink(scrub_path)
+        except OSError:
+            pass
 
 
 def validate_worktree() -> tuple[bool, str]:
