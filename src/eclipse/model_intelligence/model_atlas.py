@@ -161,10 +161,29 @@ def _atlas_from_safetensors(path: Path, limits: ModelAtlasLimits) -> dict[str, A
 
 def _atlas_from_folder(path: Path, limits: ModelAtlasLimits) -> dict[str, Any]:
     folder = inspect_hf_folder(path, limits.folder)
-    shard_names = [shard["name"] for shard in folder["safetensors"]["shards"]]
+    discovered_shards = [shard["name"] for shard in folder["safetensors"]["shards"]]
+    index = folder["safetensors"]["index"]
+    index_is_valid = isinstance(index, dict) and "error" not in index
+
+    # When a valid index exists, it defines the model's shard set. Do not count
+    # unrelated or stale .safetensors files as model weights.
+    if index_is_valid:
+        available = set(discovered_shards)
+        shard_names = [
+            name for name in index["referenced_shards"] if name in available
+        ]
+        missing_shards = list(index["missing_shards"])
+        index_coverage_is_complete = not missing_shards
+    else:
+        # Without a readable index, a lone standard model.safetensors file can
+        # still be inspected completely. Multiple files have no proven mapping.
+        shard_names = discovered_shards
+        missing_shards = []
+        index_coverage_is_complete = index is None and len(shard_names) == 1
+
     if len(shard_names) > limits.max_shards:
         raise ModelAtlasError(
-            f"Folder has {len(shard_names):,} Safetensors shards; limit is {limits.max_shards:,}"
+            f"Folder has {len(shard_names):,} referenced Safetensors shards; limit is {limits.max_shards:,}"
         )
 
     tensors: list[dict[str, Any]] = []
@@ -186,7 +205,11 @@ def _atlas_from_folder(path: Path, limits: ModelAtlasLimits) -> dict[str, Any]:
         )
 
     summary = _summarize_tensors(tensors, kind_key="dtype")
-    complete = summary["total_storage_is_complete"] and not shard_errors
+    complete = (
+        summary["total_storage_is_complete"]
+        and not shard_errors
+        and index_coverage_is_complete
+    )
     config = folder["config"] or {}
     architecture = config.get("model_type")
     architectures = config.get("architectures") if isinstance(config.get("architectures"), list) else None
@@ -201,6 +224,15 @@ def _atlas_from_folder(path: Path, limits: ModelAtlasLimits) -> dict[str, Any]:
             + ", ".join(error["shard"] for error in shard_errors[:10])
             + (" ..." if len(shard_errors) > 10 else "")
         )
+
+    declared_total = index.get("declared_total_size_bytes") if index_is_valid else None
+    if complete and declared_total is not None and declared_total != summary["total_storage_bytes"]:
+        warnings.append(
+            "Observed Safetensors tensor-data bytes "
+            f"({summary['total_storage_bytes']:,}) differ from the index metadata.total_size "
+            f"({declared_total:,})"
+        )
+        complete = False
 
     return {
         "source_kind": "huggingface_folder",
@@ -221,10 +253,16 @@ def _atlas_from_folder(path: Path, limits: ModelAtlasLimits) -> dict[str, Any]:
         },
         "components": {
             "folder": {
-                "shard_count": len(shard_names),
+                "shard_count": (
+                    index["referenced_shard_count"]
+                    if index_is_valid
+                    else len(discovered_shards)
+                ),
+                "available_shard_count": len(discovered_shards),
+                "missing_shard_count": len(missing_shards),
                 "inspected_shard_count": len(inspected_shards),
                 "shards": inspected_shards,
-                "index": folder["safetensors"]["index"],
+                "index": index,
             }
         },
         "warnings": warnings,
