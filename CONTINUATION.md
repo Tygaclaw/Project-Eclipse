@@ -21,12 +21,14 @@
 - The Model Atlas core composes the three inspectors, counts tensor elements from observed shapes, aggregates storage bytes with evidence labels, and reports incomplete coverage when referenced shards are missing or cannot be inspected. Unreferenced files are not counted as model weights.
 - Hugging Face folder scans are lazy and stop at the configured entry limit; control-file reads are capped even if a file changes during inspection. Index `metadata.total_size` is compared with observed tensor-data bytes, not whole Safetensors file sizes.
 - Baseline CI on `main` (parent commit `122fc56`) is green: "Python checks" run #17 on `windows-latest` passed all four Python 3.11–3.14 jobs.
-- The preceding increment's PR CI run #42164928747 is green: all four Windows jobs passed Python 3.11–3.14, with 86 tests. This increment's desktop CI has not run: its workflow is only proposed at `docs/desktop-build-workflow.yml`.
+- The current core PR matrix [#42169639803](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639803) is green on Windows Python 3.11–3.14. The eight desktop tests skip in that matrix because it intentionally omits PySide6; all eight ran and passed in the dedicated desktop job [#42169639645](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639645).
 - No real user model file, Windows desktop build or GPU runtime was tested in this environment.
 
 ## Next engineering actions
 
-1. Inspect the active `Windows desktop build` pull-request workflow run; verify the PySide6 UI tests, PyInstaller Windows x64 build, `ECLIPSE.exe --atlas-backend --help` smoke step and uploaded `ECLIPSE-windows-x64` artifact.
+1. Have the user run the portable package on Windows 11 and inspect a real GGUF/Safetensors/model folder without modifying it.
+2. Review and include the Qt/PySide6 LGPL notices, relinking instructions and corresponding-source offer in the public release package.
+3. Reconcile derived GGUF sizes against a trusted upstream loader on a full real checkpoint.
 2. Run the inspectors and the desktop app on real GGUF, Safetensors and multi-shard folders on Windows without moving or modifying the model; keep this as a user-validation gate rather than a prerequisite for unrelated work.
 3. Reconcile derived GGUF sizes against a trusted upstream loader on a full real checkpoint.
 4. Add tokenizer/chat-template file inspection and optional remote model-card metadata.
