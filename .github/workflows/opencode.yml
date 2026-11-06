@@ -26,20 +26,32 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Verify Token Harbor key is present
+      - name: Verify selected provider key is present
         env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
           TOKENHARBOR_API_KEY: ${{ secrets.TOKENHARBOR_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
-          if [ -z "$TOKENHARBOR_API_KEY" ]; then
-            echo "::error::Add the repository Actions secret TOKENHARBOR_API_KEY before starting an agent run."
-            exit 1
+          if [[ "$COMMENT_BODY" == *"/oc-openrouter"* ]]; then
+            if [ -z "$OPENROUTER_API_KEY" ]; then
+              echo "::error::Add the repository Actions secret OPENROUTER_API_KEY before using /oc-openrouter."
+              exit 1
+            fi
+          else
+            if [ -z "$TOKENHARBOR_API_KEY" ]; then
+              echo "::error::Add the repository Actions secret TOKENHARBOR_API_KEY before starting a Token Harbor agent run."
+              exit 1
+            fi
           fi
 
-      - name: Run OpenCode with Token Harbor free models
+      - name: Run OpenCode with the selected free model
         uses: anomalyco/opencode/github@latest
         env:
           TOKENHARBOR_API_KEY: ${{ secrets.TOKENHARBOR_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         with:
-          # /oc-mimo is a manual fallback if DeepSeek's free route is unavailable.
-          model: ${{ contains(github.event.comment.body, '/oc-mimo') && 'tokenharbor/mimo-v2.6-flash:free' || 'tokenharbor/deepseek-v4.1-flash:free' }}
+          # Commands: /oc (DeepSeek), /oc-mimo (MiMo),
+          # /oc-openrouter (Cohere North Mini Code), /oc-openrouter-flint (Recursive Flint).
+          # Check the longer Flint command first because it contains /oc-openrouter.
+          model: ${{ contains(github.event.comment.body, '/oc-openrouter-flint') && 'openrouter/recursive/flint-v1.0:free' || contains(github.event.comment.body, '/oc-openrouter') && 'openrouter/cohere/north-mini-code:free' || contains(github.event.comment.body, '/oc-mimo') && 'tokenharbor/mimo-v2.6-flash:free' || 'tokenharbor/deepseek-v4.1-flash:free' }}
           agent: build
