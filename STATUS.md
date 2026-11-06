@@ -50,7 +50,8 @@
 
 - Baseline CI on `main` (parent commit `122fc56`) is **success**: workflow "Python checks" run [#17](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42157195462) on `windows-latest`, Python 3.11, 3.12, 3.13 and 3.14, all four jobs passed "Run unit tests".
 - The prior increment's pull-request CI run is **success**: PR #3 run [#42164928747](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42164928747), all four Windows jobs passed on Python 3.11, 3.12, 3.13 and 3.14; that suite contained **86 tests**.
-- The active desktop workflow at `.github/workflows/desktop.yml` is now installed. Its first pull-request run against this increment must be inspected before claiming Windows build validation; no verified Windows desktop artifact exists yet.
+- The active Windows desktop workflow [run #42169639645](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639645) passed: PyInstaller build, packaged `ECLIPSE.exe --atlas-backend --help` smoke test, ZIP creation and artifact upload all succeeded. Artifact: `ECLIPSE-windows-x64`, 50,931,558 bytes.
+- The four-version core matrix [run #42169639803](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639803) passed Python 3.11–3.14.
 - Real Windows/model-file validation has not run.
 
 ## Not completed / not claimed
@@ -59,7 +60,7 @@
 - [ ] Tokenizer/chat-template inspection and remote model-card metadata.
 - [ ] Derived GGUF sizes reconciled against a trusted full checkpoint.
 - [ ] Memory/VRAM feasibility planner.
-- [ ] Windows desktop artifact built and smoke-tested on a Windows runner (workflow installed; run pending).
+- [ ] Interactive desktop launch and model inspection on the user's own Windows 11 machine.
 - [ ] Model preparation/transformation, runtime adapters or inference.
 - [ ] Capability Amplification system, Obsidian integration, or a working ECLIPSE Agent (placeholder screens only).
 
@@ -98,7 +99,7 @@ The result is `dist\ECLIPSE\ECLIPSE.exe`. No administrator privileges, model run
 - Tensor payloads are not decoded. GGUF sizes are derived from a pinned GGML registry; Safetensors and folder shard sizes are observed.
 - Derived GGUF sizes are not yet reconciled against a trusted full checkpoint.
 - Architecture-specific interpretation is still limited to metadata directly present in the checkpoint.
-- The desktop shell is verified by offscreen Qt tests on Linux; the PyInstaller Windows build and the packaged executable have not been run on a Windows machine.
+- The packaged Windows x64 build and backend smoke test passed on a GitHub-hosted Windows runner; the GUI shell passed offscreen Qt tests there. A manual interactive launch on the user's own Windows 11 desktop remains pending.
 - The agent workspace is a placeholder with no model adapter and no chat input, by design.
 
 ## Free & Safe Checklist
