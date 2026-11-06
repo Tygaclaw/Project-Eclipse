@@ -55,9 +55,16 @@ _CONFIG_SCALAR_KEYS = (
     "intermediate_size",
     "num_attention_heads",
     "num_key_value_heads",
+    "head_dim",
     "vocab_size",
     "max_position_embeddings",
+    "max_sequence_length",
     "tie_word_embeddings",
+    "num_local_experts",
+    "num_experts",
+    "num_experts_per_tok",
+    "num_experts_per_token",
+    "num_shared_experts",
 )
 
 _CONFIG_PRESENCE_KEYS = ("text_config", "vision_config", "quantization_config")
