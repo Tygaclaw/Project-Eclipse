@@ -1,6 +1,6 @@
 # ECLIPSE Project Status
 
-**Status:** `ACTIVE — DESKTOP_SHELL_AND_MODEL_ATLAS_UI`
+**Status:** `ACTIVE — DESKTOP_AND_MODEL_ATLAS_REAL_GGUF_VALIDATED`
 
 **Last updated:** 2026-11-06
 
@@ -26,6 +26,7 @@
 - [x] Added desktop boundary and offscreen Qt smoke tests.
 - [x] Added a PyInstaller spec/launcher and pinned desktop requirements.
 - [x] Installed the Windows x64 desktop build workflow at `.github/workflows/desktop.yml` using the owner-level GitHub connection; the reference copy remains at `docs/desktop-build-workflow.yml`.
+- [x] Manually validated the packaged desktop-to-Atlas flow on Windows 11 using a real local GGUF file; the UI rendered the atlas and reported zero tensor payload bytes read and no source modification.
 
 ## What works now
 
@@ -43,7 +44,14 @@
 
 - Latest Windows desktop run [#42170364882](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364882), Python 3.12 + PySide6 `6.12.0`: **110 tests passed**, including all 8 offscreen desktop UI tests; PyInstaller build, packaged backend smoke test, ZIP and artifact upload all succeeded.
 - Latest Python matrix run [#42170364898](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364898): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in that dependency-free matrix; the dedicated desktop job above runs them with PySide6 installed.
-- Uploaded GitHub artifact: `ECLIPSE-windows-x64` (50,929,677 bytes). A direct package copy is available as `ECLIPSE-Desktop-Windows-x64.zip` in this conversation.
+- Latest uploaded GitHub artifact from desktop run [#42173214699](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699): `ECLIPSE-windows-x64` (50,929,741 bytes).
+
+User-reported manual Windows 11 real-file validation (packaged application):
+- Selected `Qwen3.5-9B-Q4_K_M.gguf` from the Model Intelligence workspace and pressed Inspect model.
+- Atlas rendered successfully: GGUF v3, architecture `qwen35`, model name `Qwen3.5-9B`, 427 tensors and 8,953,803,264 parameters.
+- Registry-derived tensor storage: 5,669,554,176 bytes (5.28 GiB); displayed file size: 5.29 GiB; storage coverage reported complete.
+- Safety panel reported 0 tensor payload bytes read, payloads not loaded and source not modified.
+- The warning correctly says GGUF storage is derived from the pinned type registry and has not yet been reconciled against a trusted full-checkpoint loader. This was a static inspection only; it did not test inference or GPU feasibility.
 - Python 3.14.4: `python -m compileall -q src tests packaging` — passed.
 - Python 3.14.4: `inspect-safetensors --compact`, `inspect-hf-folder --compact`, `build-atlas --compact` and desktop offscreen startup smoke tests — exit 0 with valid JSON / a shown window.
 
@@ -51,18 +59,18 @@
 
 - Baseline CI on `main` (parent commit `122fc56`) is **success**: workflow "Python checks" run [#17](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42157195462) on `windows-latest`, Python 3.11, 3.12, 3.13 and 3.14, all four jobs passed "Run unit tests".
 - The prior increment's pull-request CI run is **success**: PR #3 run [#42164928747](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42164928747), all four Windows jobs passed on Python 3.11, 3.12, 3.13 and 3.14; that suite contained **86 tests**.
-- The latest active Windows desktop workflow [run #42170364882](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364882) passed: PyInstaller build, packaged `ECLIPSE.exe --atlas-backend --help` smoke test, ZIP creation and artifact upload. Artifact: `ECLIPSE-windows-x64`, 50,929,677 bytes.
-- The latest four-version core matrix [run #42170364898](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364898) passed Python 3.11–3.14.
-- Real Windows/model-file validation has not run.
+- The latest Windows desktop workflow [run #42173214699](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699) passed: all 110 tests (including the 8 PySide6 UI tests), PyInstaller build, packaged backend smoke test, ZIP creation and artifact upload. Artifact `ECLIPSE-windows-x64`: 50,929,741 bytes.
+- The latest four-version core matrix [run #42173214668](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214668) passed on Windows Python 3.11–3.14.
+- One real local GGUF file has now been inspected through the packaged UI on Windows 11. No GPU runtime or inference was tested.
 
 ## Not completed / not claimed
 
-- [ ] Real user GGUF/Safetensors/folder validated on Windows.
+- [x] One real local GGUF file inspected through the packaged desktop UI on Windows 11 (details recorded above).
+- [ ] Real Safetensors file and multi-shard Hugging Face folder validation.
 - [ ] Tokenizer/chat-template inspection and remote model-card metadata.
 - [ ] Derived GGUF sizes reconciled against a trusted full checkpoint.
 - [ ] Memory/VRAM feasibility planner.
 - [x] User-reported Windows 11 manual launch and navigation smoke test: app opened successfully and all three workspaces were clickable and displayed without an observed problem.
-- [ ] Manual inspection of an actual GGUF/Safetensors model file on the user's Windows 11 machine.
 - [ ] Model preparation/transformation, runtime adapters or inference.
 - [ ] Capability Amplification system, Obsidian integration, or a working ECLIPSE Agent (placeholder screens only).
 
@@ -101,7 +109,7 @@ The result is `dist\ECLIPSE\ECLIPSE.exe`. No administrator privileges, model run
 - Tensor payloads are not decoded. GGUF sizes are derived from a pinned GGML registry; Safetensors and folder shard sizes are observed.
 - Derived GGUF sizes are not yet reconciled against a trusted full checkpoint.
 - Architecture-specific interpretation is still limited to metadata directly present in the checkpoint.
-- The packaged Windows x64 build and backend smoke test passed on a GitHub-hosted Windows runner; the GUI shell passed 8 offscreen Qt tests there. The user has now confirmed that the packaged app launches interactively on Windows 11 and all three workspace pages are navigable. Actual local model-file inspection remains untested on the user's machine.
+- The packaged Windows x64 build and backend smoke test passed on a GitHub-hosted Windows runner; the GUI shell passed 8 offscreen Qt tests there. The user confirmed interactive Windows 11 launch/navigation and successfully inspected one real GGUF through the packaged UI. The Atlas reported 0 tensor payload bytes read and no source modification. Real Safetensors/Hugging Face-folder validation, GPU runtime and inference remain untested.
 - The agent workspace is a placeholder with no model adapter and no chat input, by design.
 
 ## Free & Safe Checklist
@@ -111,7 +119,7 @@ The result is `dist\ECLIPSE\ECLIPSE.exe`. No administrator privileges, model run
 - [x] Source checkpoint opened read-only; payload bytes are not loaded.
 - [x] No credentials, private prompts, or model weights in the repository.
 - [x] No administrator privileges needed for current commands.
-- [ ] Windows real-file validation pending.
+- [x] One real GGUF file validated through the packaged UI on Windows 11; Safetensors/Hugging Face-folder validation remains pending.
 - [ ] Secret/dependency scanning and repository settings review pending.
 - [ ] License selection remains with repository owner.
 - [ ] PySide6/Qt LGPL license notices, relinking instructions and corresponding-source offer need review and inclusion in the public release package before broader redistribution.
