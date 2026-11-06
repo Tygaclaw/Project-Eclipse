@@ -27,6 +27,7 @@ PROVIDER_CONFIG_IDS = {
     "cohere": "cohere",
     "orcarouter": "orcarouter",
     "kilo": "kilo",
+    "zai": "zai",
 }
 
 PROVIDER_SECRET_NAMES = {
@@ -43,6 +44,7 @@ PROVIDER_SECRET_NAMES = {
     "cohere": ("COHERE_API_KEY",),
     "orcarouter": ("ORCAROUTER_API_KEY",),
     "kilo": ("KILO_API_KEY",),
+    "zai": ("ZAI_GLM_API_KEY",),
 }
 
 
@@ -144,6 +146,13 @@ def main() -> int:
 
         if workflow_provider == "kilo" and model_id != "kilo-auto/free":
             fail(f"{command}: Kilo route is not explicitly Auto Free: {model!r}")
+
+        if workflow_provider == "zai" and model_id not in {
+            "glm-4.7-flash",
+            "glm-4.5-flash",
+            "glm-4.6v-flash",
+        }:
+            fail(f"{command}: Z.AI route is not one of its documented free Flash models: {model!r}")
 
     # The agent step must conditionally pass provider credentials rather than
     # giving every key to every model.
