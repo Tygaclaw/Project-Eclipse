@@ -41,7 +41,8 @@
 
 ## Local verification evidence
 
-- Python 3.14.4 with PySide6 `6.12.0` + PyInstaller `6.22.3` in a local venv: `QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m unittest discover -s tests -v` — **109 tests passed**, including 8 desktop tests; the 8 desktop tests skip cleanly when PySide6 is not installed.
+- Windows GitHub Actions run [#42169639645](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639645), Python 3.12 + PySide6 `6.12.0`: **110 tests passed**, including all 8 offscreen desktop UI tests; none were skipped.
+- Python GitHub Actions matrix run [#42169639803](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639803): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in that dependency-free matrix; the dedicated desktop job above runs them with PySide6 installed.
 - Python 3.14.4: `python -m compileall -q src tests packaging` — passed.
 - Python 3.14.4: `inspect-safetensors --compact`, `inspect-hf-folder --compact`, `build-atlas --compact` and desktop offscreen startup smoke tests — exit 0 with valid JSON / a shown window.
 
@@ -110,5 +111,6 @@ The result is `dist\ECLIPSE\ECLIPSE.exe`. No administrator privileges, model run
 - [ ] Windows real-file validation pending.
 - [ ] Secret/dependency scanning and repository settings review pending.
 - [ ] License selection remains with repository owner.
+- [ ] PySide6/Qt LGPL license notices, relinking instructions and corresponding-source offer need review and inclusion in the public release package before broader redistribution.
 
 See `CONTINUATION.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `TESTING.md`, `SECURITY.md` and `MODEL_COMPATIBILITY.md` for details.
