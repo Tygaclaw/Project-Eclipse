@@ -5,7 +5,7 @@ Read this file before doing any work.
 ## Repository and operating mode
 - Work in the existing repository `Tygaclaw/Project-Eclipse`. Do not create a second repository. The user's later explicit instruction supersedes older handoff text proposing a separate greenfield repository.
 - GitHub is the permanent source of truth. The user wants cloud-based work in this repository and to download/test the finished project from GitHub. Do not require a separate local checkout on the user's PC for normal development.
-- You run as OpenCode in GitHub Actions. The default is Token Harbor DeepSeek (`/oc`). Current manual selections include Token Harbor MiMo; multiple OpenRouter free routes; Gemini 3.8 Flash, Gemini Flash-Lite and Gemma 4; Groq GPT-OSS/Qwen; NVIDIA NIM; Cloudflare Workers AI; and an optional Cohere evaluation route. The complete canonical command/model/secret inventory and restrictions live in `docs/FREE_MODEL_PROVIDER_POOL.md`. Keys are GitHub Actions secrets only. Never use a paid model ID, activate paid usage, or fall back to a paid route.
+- You run as OpenCode in GitHub Actions. The default is Token Harbor DeepSeek V4.1 Flash Free (`/oc`). The only configured API providers are Dahl, Google Gemini, Groq, OpenRouter, Token Harbor and Z.AI; each has exactly two selected models. The exact model IDs, commands and secret names are in `docs/FREE_MODEL_PROVIDER_POOL.md`. The only repository API secrets are `DAHL_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `TOKENHARBOR_API_KEY` and `ZAI_API_KEY`. Never add other providers, use paid model IDs, activate paid usage or create a paid fallback.
 - The OpenRouter routes are manual provider selections at this stage. Do not claim cross-provider automatic failover exists until a tested coordinator is implemented.
 - Work on feature branches and use pull requests for meaningful milestones. Preserve existing history. Never force-push or overwrite unrelated work.
 - Never claim work, tests, file changes or CI passed unless tool/output evidence confirms it.
@@ -42,22 +42,17 @@ The repository contains a working Windows desktop shell, bounded model inspector
 
 ## Provider allowance, privacy and recovery
 
-- Treat `docs/FREE_MODEL_PROVIDER_POOL.md` as the canonical provider inventory, model IDs, commands, secret names, current free terms and ECLIPSE-specific benchmark-ranking plan.
-- The current feature branch configures **40 free-tier model/router entries across nine provider connections**: Token Harbor (2), OpenRouter (13), Google Gemini/Gemma (8), Groq (3), NVIDIA NIM (4), Cloudflare Workers AI (4), OrcaRouter (2), Kilo Gateway (1) and Z.AI (3). Cohere has one additional evaluation-only model entry. These are configured candidates, not 40 verified working endpoints. A controlled smoke test is required before marking a route live.
-- The manual comment routes, model IDs, quotas, privacy constraints and excluded providers are in `docs/FREE_MODEL_PROVIDER_POOL.md`. Current Gemini choices include Gemini 3.8/3.7/3.6/3.5 Flash, Gemini 3.5/3.1 Flash-Lite and Gemma 4 31B/26B A4B. OpenRouter includes a lightweight Liquid helper route, which should not be used as a primary coding agent. NVIDIA routes use the NIM free-endpoint catalog. Cloudflare's soon-to-be-deprecated Nemotron route was removed and replaced with Qwen 3.8 27B (the old model's retirement date is 15 November 2026). OrcaRouter and Kilo Gateway provide dynamic free-model routers; Kilo Auto Free may use upstream providers that log and use prompts to improve their models. Z.AI's official pricing lists GLM-4.7-Flash, GLM-4.5-Flash and GLM-4.6V-Flash at $0 input/output.
-- The owner reports saving a Gemini key; the selected Gemini workflow has not yet verified which accepted secret alias is present. The workflow accepts `GEMINI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY` or `GOOGLE_API_KEY`.
-- The current OpenCode workflow uses one model per GitHub Actions run. The model/provider choice is manual through comment commands. **Automatic cross-provider failover, cooldown memory and progress-safe retries are not yet implemented.**
-- Use only explicit OpenRouter `:free` model IDs or the free router, plus routes which the provider currently identifies as no-charge. OpenRouter free variants currently allow 20 RPM and 50 RPD below the lifetime-credit threshold; failures count toward the daily cap. This limit is shared across the account's free variants, not multiplied by model count.
-- Token Harbor free IDs must end in `:free`; the free allowance is limited by its rolling seven-day budget and free-account limits. No wallet credits or top-ups.
-- Gemini free-tier quotas are per model/project and may change. Google states that free-tier content may be used to improve its products. Do not transmit secrets, private credentials, personal data or confidential material.
-- Groq is to remain on its Free plan. The current Free Plan base limits for the configured GPT-OSS 120B/20B and Qwen3.8 27B routes are 30 RPM, 1,000 RPD, 8K TPM and 200K TPD; the account Limits page wins if it differs.
-- NVIDIA API Catalog/NIM access is an experimental developer endpoint; verify that the specific endpoint remains a no-charge endpoint and do not create a paid deployment.
-- Cloudflare routes are permitted only while the account remains on Workers Free. It includes 10,000 Neurons/day. Do not upgrade, enable prepaid usage or select paid-only models; on Workers Paid, overage may be billable.
-- Cohere is evaluation-only (trial-key monthly/request limits); it must not be treated as a production fallback or used where its trial terms prohibit the activity.
-- OpenRouter Crouton Alpha is an anonymous third-party preview and may retain prompts/completions. Dots3-Note Preview is listed to retire on 31 December 2026. Keep both isolated as experimental routes; never send confidential material.
-- Mistral API Free mode, Cerebras one-time promotional credits, BytePlus one-time starter credits and other unclear/paid-after-trial plans are excluded from the dependable pool.
-- The workflow verifies only the selected provider's secret and passes only that selected credential to the OpenCode action. It must never print, upload, or commit key values. GitHub's status monitor must remain inference-free and must not consume provider quotas.
-- Preserve the 350-minute Actions job timeout. Work in small, independently reviewable commits/PRs and keep STATUS/CONTINUATION current. Test provider failover using mocked errors before sending live requests.
+- The approved provider set is exactly six: Dahl, Google Gemini, Groq, OpenRouter, Token Harbor and Z.AI. Do not add a seventh provider or retain old provider integrations.
+- There are exactly two approved model IDs per provider. The canonical route/secret inventory is `docs/FREE_MODEL_PROVIDER_POOL.md`.
+- GitHub Actions secrets are exactly: `DAHL_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `TOKENHARBOR_API_KEY`, `ZAI_API_KEY`.
+- The workflow checks only the selected credential and passes only that credential to OpenCode. Never request, expose, print or commit key values.
+- Dahl's public docs describe a 100-million-token signup grant, allocated from an account pool to the key. It is not recurring unlimited free inference; no top-ups or purchases.
+- Gemini must stay on the AI Studio free tier; Groq must stay on its Free plan; OpenRouter and Token Harbor use only explicit `:free` model IDs; Z.AI uses only the two $0 Flash API models listed in the provider document.
+- Free quotas can be exhausted or changed. Treat rate limits, quota-exhausted responses and empty Dahl balances as stop/cooldown conditions, never as permission to switch to a paid route.
+- OpenRouter's chosen NVIDIA-hosted free endpoints may log prompts for model improvement. Google free-tier data handling also has separate conditions. Do not send credentials, personal data or confidential information to these services.
+- Preserve the 350-minute Actions timeout and `permission.external_directory = deny`.
+- The current OpenCode workflow selects one model per run by comment command. **Automatic cross-provider failover, cooldown memory and progress-safe retries are not implemented yet.**
+- A configured route is not a verified route. Run small, non-confidential live text and tool-call smoke tests before marking provider capability as operational. Test future failover with mocked provider failures first.
 
 ### Final ECLIPSE model leaderboard
 
