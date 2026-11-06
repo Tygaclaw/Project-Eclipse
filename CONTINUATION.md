@@ -26,7 +26,7 @@
 
 ## Next engineering actions
 
-1. A maintainer installs `docs/desktop-build-workflow.yml` as `.github/workflows/desktop.yml`, runs it, and verifies the `ECLIPSE-windows-x64` artifact and the packaged `ECLIPSE.exe --atlas-backend --help` smoke step.
+1. Inspect the active `Windows desktop build` pull-request workflow run; verify the PySide6 UI tests, PyInstaller Windows x64 build, `ECLIPSE.exe --atlas-backend --help` smoke step and uploaded `ECLIPSE-windows-x64` artifact.
 2. Run the inspectors and the desktop app on real GGUF, Safetensors and multi-shard folders on Windows without moving or modifying the model; keep this as a user-validation gate rather than a prerequisite for unrelated work.
 3. Reconcile derived GGUF sizes against a trusted upstream loader on a full real checkpoint.
 4. Add tokenizer/chat-template file inspection and optional remote model-card metadata.
