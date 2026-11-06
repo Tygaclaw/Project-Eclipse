@@ -16,10 +16,10 @@
 | Dahl | `/oc-dahl-deepseek` | `dahl/deepseek-ai/DeepSeek-V4-Flash-0731` | Fast coding/reasoning alternative |
 | Google Gemini | `/oc-gemini` | `google/gemini-3.8-flash` | Primary Gemini coding/agent model |
 | Google Gemini | `/oc-gemini37` | `google/gemini-3.7-flash` | Previous stable Flash alternative |
-| Groq | `/oc-groq` | `groq/openai/gpt-oss-120b` | Larger reasoning/coding option |
-| Groq | `/oc-groq-small` | `groq/openai/gpt-oss-20b` | Faster, lighter alternative |
-| OpenRouter | `/oc-openrouter` | `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free` | Long-context agent/reasoning model |
-| OpenRouter | `/oc-openrouter-lightning` | `openrouter/nvidia/nemotron-3.5-lightning:free` | Smaller, faster agentic model |
+| Groq | `/oc-groq` | `groq/openai/gpt-oss-120b` | Largest selected Groq Free coding/reasoning option |
+| Groq | `/oc-groq-qwen` | `groq/qwen/qwen3.8-27b` | Parallel tool use; better fit than the smaller GPT-OSS alternative for multi-tool agent work |
+| OpenRouter | `/oc-openrouter` | `openrouter/cohere/north-mini-code:free` | Coding-agent specialist explicitly trained for OpenCode/SWE-Agent-style harnesses |
+| OpenRouter | `/oc-openrouter-ultra` | `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free` | Long-context reasoning, planning and agent orchestration alternative |
 | Z.AI | `/oc-zai` | `zai/glm-4.7-flash` | Primary GLM coding/agent model |
 | Z.AI | `/oc-zai-45` | `zai/glm-4.5-flash` | Alternate free Flash model |
 
@@ -56,9 +56,13 @@ Google's free-tier data handling differs from its paid tier. Do not include secr
 
 ### Groq
 
+The selected pair is deliberately `openai/gpt-oss-120b` plus `qwen/qwen3.8-27b`, not GPT-OSS 20B. Groq's official Free-plan table lists both at 30 RPM, 1,000 RPD, 8K TPM and 200K TPD. Groq's tool-use documentation confirms Qwen 3.8 27B supports parallel tool calls; GPT-OSS supports tool use but not parallel tool calls. This is a more useful pair for a coding agent that may need to call several repository tools. The account Limits page is authoritative and quotas can change.
+
 Keep the account on Groq's Free plan. The configured GPT-OSS models support tool use. Free-plan rate limits are model-specific and may change; the Groq console's Limits page is authoritative. Do not upgrade to a paid Developer plan or enable paid usage. When the free allowance is exhausted, treat a rate-limit response as a provider cooldown, not permission to spend money.
 
 ### OpenRouter
+
+The selected pair is `cohere/north-mini-code:free` plus `nvidia/nemotron-3-ultra-550b-a55b:free`. North Mini Code is explicitly designed for agentic coding and terminal tasks and has been trained to generalize across coding harnesses including OpenCode and SWE-Agent. OpenRouter documents 256K context, up to 64K output and tool calling. Nemotron 3 Ultra is the complementary long-context reasoning/planning model with 1M context and tool calling. Both are marked $0. OpenRouter free endpoints are rate-limited and the free pool may change; do not assume free quota is multiplied by the number of model IDs. The free model rankings on OpenRouter measure usage, not model quality.
 
 Both configured models use explicit `:free` model IDs. They are zero-price endpoints but rate-limited; availability can change. Free-model request limits are shared account-level limits, not multiplied by having two models. Do not remove `:free`, select a paid variant, or configure a paid fallback.
 
@@ -92,13 +96,17 @@ Only GLM-4.7-Flash and GLM-4.5-Flash are configured. Z.AI's public pricing table
 - [Dahl tokens and keys](https://inference.dahl.global/docs/tokens)
 - [Dahl pricing](https://inference.dahl.global/pricing)
 - [Google Gemini model catalogue](https://ai.google.dev/gemini-api/docs/models)
+- [Gemini 3.8 Flash Free-tier pricing](https://ai.google.dev/gemini-api/docs/pricing)
+- [Gemini 3.7 Flash Free-tier pricing](https://ai.google.dev/gemini-api/docs/pricing)
 - [Google Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing)
 - [Groq supported models](https://console.groq.com/docs/models)
 - [Groq tool-use support](https://console.groq.com/docs/tool-use/overview)
+- [Groq model rate limits](https://console.groq.com/docs/rate-limits)
 - [Groq free-plan rate limits](https://console.groq.com/docs/rate-limits)
 - [OpenRouter free model catalogue](https://openrouter.ai/collections/free-models)
 - [OpenRouter Nemotron 3 Ultra Free](https://openrouter.ai/nvidia/nemotron-3-ultra-550b-a55b:free)
-- [OpenRouter Nemotron 3.5 Lightning Free](https://openrouter.ai/nvidia/nemotron-3.5-lightning:free)
+- [OpenRouter Cohere North Mini Code Free](https://openrouter.ai/cohere/north-mini-code:free)
+- [OpenRouter Nemotron 3 Ultra Free](https://openrouter.ai/nvidia/nemotron-3-ultra-550b-a55b:free)
 - [Token Harbor free model catalogue](https://tokenharbor.ai/models?category=free)
 - [Token Harbor free-route FAQ](https://tokenharbor.ai/faq)
 - [Z.AI model pricing](https://docs.z.ai/guides/overview/pricing)
