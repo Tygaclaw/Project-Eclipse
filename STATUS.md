@@ -42,8 +42,8 @@
 
 ## Local verification evidence
 
-- Latest Windows desktop run [#42170364882](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364882), Python 3.12 + PySide6 `6.12.0`: **110 tests passed**, including all 8 offscreen desktop UI tests; PyInstaller build, packaged backend smoke test, ZIP and artifact upload all succeeded.
-- Latest Python matrix run [#42170364898](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364898): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in that dependency-free matrix; the dedicated desktop job above runs them with PySide6 installed.
+- Latest Windows desktop run [#42173214699](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699), Python 3.12 + PySide6 `6.12.0`: **110 tests passed**, including all 8 offscreen desktop UI tests; PyInstaller build, packaged backend smoke test, ZIP and artifact upload all succeeded.
+- Latest Python matrix run [#42173214668](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214668): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in that dependency-free matrix; the dedicated desktop job above runs them with PySide6 installed.
 - Latest uploaded GitHub artifact from desktop run [#42173214699](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699): `ECLIPSE-windows-x64` (50,929,741 bytes).
 
 User-reported manual Windows 11 real-file validation (packaged application):
