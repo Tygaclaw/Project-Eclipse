@@ -57,3 +57,19 @@ The global order is in `docs/FREE_MODEL_PROVIDER_POOL.md`; detailed public bench
 - The already completed A* evaluation.
 
 Never ask for, print or commit API-key values. Preserve the original model files and the known-good local setup. Continue independent engineering while a specific owner-only local gate is waiting.
+
+## Autonomous bootstrap CI checkpoint — 6 November 2026
+
+PR #12: https://github.com/Tygaclaw/Project-Eclipse/pull/12  
+Branch: `feature/autonomous-engineering-engine-2026-11-06`.
+
+Verified head `44a463732448c6faa544620760eb725ab8944563`:
+- Python checks run #42292375849 passed on Windows Python 3.11–3.14; each ran 210 tests with 11 optional-dependency skips.
+- Windows desktop build run #42292375824 passed the full Qt/offscreen suite, PyInstaller build, packaged-backend smoke test, ZIP and artifact upload.
+- Artifact `ECLIPSE-windows-x64`: 51,137,344 bytes.
+- Retry/failover, same-session switching, context compaction, quota skip and credential-scrubbing behavior have mocked regression coverage.
+- Actual live provider/tool-call smoke tests and an injected end-to-end CI-repair/resume exercise remain open.
+- PR #12 remains an owner-review draft due protected workflow/controller/security changes; do not merge or activate without that review. After merge, verify the first live Actions run before describing automation as active.
+
+The autonomous backlog now marks AUTO-01/02/03 in progress rather than complete, because operational acceptance is not yet proven.
+
