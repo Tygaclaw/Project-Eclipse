@@ -6,6 +6,7 @@
 
 - Status: ACTIVE
 - Active backlog item: RUN-01 (runtime capability contract) implemented locally this run; next READY backend-independent item is PREP-01 (source identity, checksums and prepared-variant registry).
+- Note: the PR #16 recovery of 2026-11-06 did not start PREP-01; it re-synchronised the stale branch with `main` (PR #15) so the independent review gate passes. See "Recovery — stale branch" below.
 - Base branch: main
 - Session ID: created by the autonomous controller at runtime and recorded in the runner log only; never place provider credentials here.
 - Last verified checkpoint: main includes merged PRs #5, #6, #7, #10 and #11.
@@ -64,3 +65,13 @@ Update this section after each milestone with changed files, commit/PR, selected
 - Checks actually run (Linux, Python 3.12.16, no PySide6): focused 30 tests OK; full `python -m unittest discover -s tests` = 269 tests OK, 11 skipped, with and without `PYTHONPATH`; `compileall` OK; `git diff --check` clean.
 - Limitation: static contract only. No backend is integrated; no model load/generate/stop, telemetry or performance evidence exists. RUN-02 (real Windows llama.cpp/Vulkan adapter) remains the integration gate with owner-only Windows validation, so only that gate is `WAITING_FOR_OWNER_VALIDATION`.
 - Next READY backend-independent milestone: PREP-01.
+
+### Recovery — stale branch versus main (PR #16) — 2026-11-06
+
+- Trigger: the recovered run received CI evidence showing the "Python checks" and "Windows desktop build" workflow runs in `action_required` state with no retrievable logs (the runs had not been approved/executed). The agent is not able to change GitHub-side run approval; the reproducible local failure was used instead.
+- Real reproducible failure: the branch was cut from `main` at PR #14 (`37419e9`) and therefore does not contain PR #15 (`84ce050`). The controller's independent review gate (`scripts/eclipse_review.py --base origin/main`, run inside `validate_worktree`) compares the working tree against `origin/main` and therefore reported two **deleted test files**, `tests/test_autonomous_orphans.py` and `tests/test_autonomous_parking.py`, and rejected the change set. Nothing was wrong with the RUN-01 product code; the branch was simply stale.
+- Fix: re-synchronised the branch with `main` by restoring the three files PR #15 changed — `scripts/eclipse_autonomous.py`, `tests/test_autonomous_orphans.py` and `tests/test_autonomous_parking.py` — from `origin/main`. No product code or test was weakened; the branch now contains the current controller test suite instead of appearing to delete it.
+- Regression coverage: `tests/test_recovery.py` reproduces the stale-base shape deterministically in a temporary Git repository and asserts (a) a branch behind an advanced base is rejected as a deleted test and (b) incorporating the base advance accepts the identical product change.
+- Local gates actually run (Linux, Python 3.12.16, PySide6 not installed): `python -m unittest discover -s tests` = **283 tests OK, 11 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed; `python -m compileall -q src tests .github/scripts scripts` OK; `python .github/scripts/validate_provider_pool.py` OK; `scripts/eclipse_review.py --base origin/main` accepted; `git diff --check` clean.
+- Consequence recorded honestly: restoring `scripts/eclipse_autonomous.py` and the `tests/test_autonomous_*` files touches controller/test paths that the controller classifies as protected, so this recovered PR is expected to remain owner-review only rather than auto-merge.
+- Not changed by this recovery: no new backlog item, no change to any milestone status, no commit/push/merge by the agent.
