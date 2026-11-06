@@ -86,6 +86,16 @@ class AtlasClientCommandTests(unittest.TestCase):
         with self.assertRaises(AtlasClientError):
             AtlasClient(command_factory=lambda path: [sys.executable, "-c", "print('{}')"]).build("")
 
+    def test_frozen_command_relaunches_the_packaged_executable(self) -> None:
+        from unittest.mock import patch
+
+        with patch("eclipse.desktop.atlas_client.sys.frozen", True, create=True):
+            command = default_backend_command(r"C:\Models\model.gguf", executable=r"C:\App\ECLIPSE.exe")
+        self.assertEqual(
+            command,
+            [r"C:\App\ECLIPSE.exe", "--atlas-backend", r"C:\Models\model.gguf", "--compact"],
+        )
+
     def test_rejects_invalid_command_vector(self) -> None:
         client = AtlasClient(command_factory=lambda path: [sys.executable, "  "])
         with self.assertRaises(AtlasClientError):
