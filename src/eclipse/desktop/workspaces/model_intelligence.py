@@ -108,9 +108,16 @@ def _render_templates(layout: QVBoxLayout, sources: Any) -> None:
         name = str(template.get("name") or "default")
         origin = str(template.get("origin") or "unknown")
         kind = str(template.get("kind") or "unknown").replace("_", " ")
-        add_plain_text(layout, f"{name} - {origin} ({kind})", "Muted")
+        status = template.get("status")
+        if status and status != "parsed":
+            add_plain_text(layout, f"{name} - {origin} ({kind}) [status: {status}]", "WarningText")
+        else:
+            add_plain_text(layout, f"{name} - {origin} ({kind})", "Muted")
+        reason = template.get("reason")
+        if isinstance(reason, str) and reason:
+            add_text(layout, reason, "WarningText")
         preview = template.get("preview")
-        if isinstance(preview, str) and preview.strip():
+        if status in (None, "parsed") and isinstance(preview, str) and preview.strip():
             add_plain_text(layout, preview, "CodeBlock", monospace=True)
 
 
@@ -626,11 +633,24 @@ class ModelIntelligenceWorkspace(QWidget):
             str(tokenizer.get("vocab_size_source") or "Unknown"),
         )
         candidates = tokenizer.get("vocab_size_candidates")
-        if isinstance(candidates, dict) and candidates:
-            detail = ", ".join(
-                f"{key}={human_count(value)}" for key, value in sorted(candidates.items())
-            )
-            add_plain_text(details_layout, f"Vocabulary candidates: {detail}")
+        if isinstance(candidates, list) and candidates:
+            add_plain_text(details_layout, "Vocabulary size candidates", "FactLabel")
+            for candidate in candidates:
+                if not isinstance(candidate, dict):
+                    continue
+                source_name = str(candidate.get("source") or "unknown source")
+                candidate_count = candidate.get("count")
+                count_text = (
+                    human_count(candidate_count)
+                    if isinstance(candidate_count, int) and not isinstance(candidate_count, bool)
+                    else "Unknown"
+                )
+                add_fact(
+                    details_layout,
+                    source_name,
+                    count_text,
+                    str(candidate.get("evidence") or "unknown"),
+                )
 
         for label, key in (
             ("Pre-tokenizer", "pre_tokenizer_type"),
