@@ -133,3 +133,22 @@ See `CONTINUATION.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `TESTING.md`, `SECURIT
 The branch `feature/openrouter-free-models-20261106` now contains expanded manual model selections for Token Harbor, OpenRouter, Google AI Studio, Groq, NVIDIA API Catalog/NIM, Cloudflare Workers AI and an optional Cohere evaluation route. These changes are not merged into `main`.
 
 The OpenCode workflow preserves the 350-minute timeout and the `external_directory: deny` rule. It checks the selected provider connection and gives the OpenCode process only that selected provider's credential. The owner reports Gemini has also been connected; the exact secret-name match still needs a workflow check. Groq, NVIDIA, Cloudflare and Cohere connections remain unconfirmed. No live inference smoke tests have been run for these newly added routes. Automatic provider failover is still future work.
+
+
+## Free-provider pool expansion — current branch checkpoint
+
+**Branch:** `feature/openrouter-free-models-20261106`  
+**PR:** [#9](https://github.com/Tygaclaw/Project-Eclipse/pull/9), stacked on PR #7; not merged into `main`.
+
+- [x] Nine recurring free-provider families are configured: Token Harbor, OpenRouter, Google AI Studio/Gemini, Groq, NVIDIA NIM, Cloudflare Workers AI, OrcaRouter, Kilo Gateway and Z.AI.
+- [x] The current OpenCode configuration has 40 free-tier model/router entries plus one Cohere evaluation-only entry (41 total configured model/router entries).
+- [x] Added OrcaRouter `orcarouter/free` and explicit `deepseek/deepseek-v4-flash-free`, with only zero-price free endpoints allowed by the validator.
+- [x] Added Kilo Gateway `kilo-auto/free`; its underlying curated free models can change dynamically and may route prompts to providers that log/use them for improvement.
+- [x] Added Z.AI GLM-4.7-Flash, GLM-4.5-Flash and GLM-4.6V-Flash, all listed as $0 input/output on Z.AI's official pricing page.
+- [x] Updated GitHub Actions comment selector, selected-credential routing, and standard-library provider validation for all nine free-provider families plus Cohere evaluation.
+- [x] Preserved the 350-minute timeout and `external_directory: deny` safeguard.
+- [x] Updated `docs/FREE_MODEL_PROVIDER_POOL.md` and the agent handoff with model/route descriptions, quota caveats, privacy restrictions, excluded offers and final ECLIPSE leaderboard methodology.
+
+**Credential state:** Owner reports Gemini and OpenRouter keys saved. Token Harbor is the existing working key. The new OrcaRouter and Kilo routes require `ORCAROUTER_API_KEY` and `KILO_API_KEY`. Z.AI requires `ZAI_GLM_API_KEY`. Groq requires `GROQ_API_KEY`; NVIDIA requires `NVIDIA_API_KEY`; Cloudflare requires `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN`. Cohere remains optional evaluation-only. Never paste key values into chat.
+
+**Not yet claimed:** No live inference smoke tests have verified the new routes. The 40 free model/router entries are configurations, not 40 proven working endpoints. Automatic cross-provider ECLIPSE failover, cooldown memory and progress-safe retry/resume are still unimplemented. The current pool uses manual model commands.
