@@ -51,53 +51,42 @@ User-reported manual Windows 11 real-file validation (packaged application):
 Never ask for, print or commit API-key values. The existing model and working 256K context baseline are historical known-good state; do not alter them without a narrowly justified test and rollback plan.
 
 
-## Provider-pool continuation (PR #9; feature branch only)
+## Six-provider OpenCode pool — current checkpoint
 
-Branch: `feature/openrouter-free-models-20261106`, stacked on PR #7. These changes are not on `main`.
+**Repository:** `Tygaclaw/Project-Eclipse`  
+**Branch:** `feature/openrouter-free-models-20261106`  
+**PR:** [#9](https://github.com/Tygaclaw/Project-Eclipse/pull/9), stacked on PR #7. Neither PR has been merged by this work.
 
-The current branch supports manual selections across Token Harbor, OpenRouter free models, Google Gemini/Gemma free-tier models, Groq Free-plan models, NVIDIA API Catalog/NIM, Cloudflare Workers AI free-plan models, and an optional Cohere evaluation-only route. The canonical command/model/limit list is `docs/FREE_MODEL_PROVIDER_POOL.md`.
+The provider allowlist is now exactly:
+1. Dahl — `DAHL_API_KEY`
+2. Google Gemini — `GEMINI_API_KEY`
+3. Groq — `GROQ_API_KEY`
+4. OpenRouter — `OPENROUTER_API_KEY`
+5. Token Harbor — `TOKENHARBOR_API_KEY`
+6. Z.AI — `ZAI_API_KEY`
 
-The GitHub Actions workflow preserves `timeout-minutes: 350`, the headless external-directory deny rule, selected-provider connection checks and selected-credential-only environment passing. The owner reports that a Gemini key was added; the selected Gemini workflow check has not yet confirmed the actual secret-name match. OpenRouter is already saved. Groq, NVIDIA, Cloudflare and optional Cohere connections remain unconfirmed.
+There are exactly two configured models per provider (12 routes total). The canonical IDs and comment commands are in `docs/FREE_MODEL_PROVIDER_POOL.md`.
 
-No live smoke tests were sent as part of this configuration change. Automatic cross-provider failover, cooldown memory and progress-safe retries are **not implemented yet**.
+The old direct provider configurations for NVIDIA, Cloudflare Workers AI, Cohere, OrcaRouter and Kilo Gateway have been removed. OpenRouter's two selected models happen to be NVIDIA models, but they are routed solely through OpenRouter and require only `OPENROUTER_API_KEY`.
 
-### Next steps
+The workflow preserves the 350-minute timeout and the `external_directory: deny` safeguard. It verifies the selected secret is present and passes only that provider's key into the OpenCode action. No key values are read, printed or committed.
 
-1. Inspect CI for the latest PR #9 head and read actual logs/test counts.
-2. Run one deliberate Gemini smoke test to confirm the saved key alias.
-3. Add only the additional provider credentials the owner wishes to use. Confirm Cloudflare remains on Workers Free before using its route. Cohere stays evaluation-only.
-4. Build and failure-test the external free-only failover coordinator before enabling automatic switching.
-5. Complete the ECLIPSE-specific model leaderboard using independent public benchmark evidence plus identical controlled ECLIPSE repository tasks. Do not invent a final ranking from provider marketing or usage popularity.
+### Free-access caveats
 
-Do not repeat Qwen installation, the general Windows hardware audit, Gemini/OpenRouter setup or the completed A* evaluation. Never request or print secret values.
+- Dahl's public docs describe a 100-million-token signup grant; the account must allocate tokens to the key. The grant is not recurring unlimited free capacity. Do not top up.
+- Gemini, Groq, OpenRouter, Token Harbor and Z.AI have model/account-specific quotas and can reject requests when free capacity is exhausted.
+- Only explicit `:free` model IDs are used for OpenRouter and Token Harbor.
+- No paid model, paid fallback or automatic billing upgrade is configured.
 
+### Verification state and next actions
 
-## Free-provider pool continuation — current checkpoint
+- [x] Provider configuration narrowed to six providers.
+- [x] Two model IDs selected for each provider.
+- [x] Workflow secret names aligned with the owner's repository screenshot.
+- [x] CI validator updated to reject provider/model/secret additions outside the six-provider allowlist.
+- [ ] Wait for and inspect CI on the updated PR #9 head; require the provider validator and the supported Python matrix to pass.
+- [ ] Run one small, non-confidential text completion and one tool-call smoke test per provider. Do not claim a provider works until both relevant checks pass.
+- [ ] Build and failure-test the separate free-only failover coordinator with capped retries, error classification, cooldown state and safe progress recovery.
+- [ ] Complete the ranked ECLIPSE model report using independent public benchmarks and identical controlled ECLIPSE repository tasks.
 
-**Branch:** `feature/openrouter-free-models-20261106`; **PR #9**, stacked on PR #7. Not merged to `main`.
-
-Current configuration: 9 recurring free-provider families with 40 free model/router entries (Token Harbor 2; OpenRouter 13; Google 8; Groq 3; NVIDIA 4; Cloudflare 4; OrcaRouter 2; Kilo 1; Z.AI 3), plus one Cohere evaluation-only entry. The authoritative command/model/secret/limit inventory is `docs/FREE_MODEL_PROVIDER_POOL.md`.
-
-New routes:
-- OrcaRouter: `/oc-orca` uses the free-only router; `/oc-orca-deepseek` uses its explicit $0 DeepSeek V4 Flash model. Do not use paid OrcaRouter models or `orcarouter/auto`.
-- Kilo Gateway: `/oc-kilo` uses only `kilo-auto/free`. This routes dynamically across the curated free model pool. Kilo warns some upstreams may log/use prompts to improve their services. No confidential source or credentials.
-- Z.AI: `/oc-zai`, `/oc-zai-45`, `/oc-zai-vision` use its three official $0 GLM Flash models. Z.AI has not published numeric free-tier rate caps on its pricing page; check the account console and treat rate limits as unknown until tested.
-
-Secret names newly required:
-- `ORCAROUTER_API_KEY`
-- `KILO_API_KEY`
-- `ZAI_GLM_API_KEY`
-
-Other not-yet-reported secrets remain `GROQ_API_KEY`, `NVIDIA_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, and optional `COHERE_API_KEY`. The owner reports a Gemini key and an OpenRouter key are saved. Never request or reveal secret values.
-
-The workflow preserves the 350-minute Actions timeout and `external_directory: deny`, checks the selected provider's secret, and passes only the selected provider's key into the OpenCode process. A CI script checks every command against its model entry, the provider secret name, free-route whitelist, provider-scoped key handoff and timeout/permission safeguards.
-
-No live inference smoke test has been made for the newly added routes. The manual selector is not automatic cross-provider failover. Next:
-1. Inspect CI after the current branch head settles; require all Python 3.11–3.14 jobs and the provider route validator to pass.
-2. Merge PR #7 first, then retarget/retest PR #9; do not merge without owner direction.
-3. Owner saves `ORCAROUTER_API_KEY`, `KILO_API_KEY`, `ZAI_GLM_API_KEY`, and whichever of Groq/NVIDIA/Cloudflare credentials they want to use. Keep Cloudflare on Workers Free.
-4. Run small, non-confidential live smoke tests, one provider at a time.
-5. Implement and failure-test the separate free-only failover coordinator with error classification, capped backoff, cross-provider switching, cooldown state, and safe commit/continuation recovery.
-6. Complete the ranked ECLIPSE model report from public benchmarks and controlled ECLIPSE repo tasks. Rank the strongest first and weakest last; do not fabricate missing results.
-
-Do not repeat Qwen setup, the general hardware audit, or the completed A* evaluation.
+**Current boundary:** The comment selector is manual. Automatic cross-provider failover, cooldown memory and progress-safe retry/resume are not implemented.
