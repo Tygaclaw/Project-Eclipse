@@ -6,17 +6,11 @@
 
 ## At a glance
 
-The current branch configures **six provider connections**:
+The current branch configures **six recurring free-provider connections**: Token Harbor, OpenRouter, Google AI Studio/Gemini, Groq, NVIDIA NIM/API Catalog and Cloudflare Workers AI. Cohere is an additional optional **evaluation-only** connection and is not counted as a dependable recurring free provider.
 
-1. Token Harbor — existing free routes.
-2. OpenRouter — multiple independently hosted free model routes behind one key.
-3. Google AI Studio / Gemini API — free-tier Gemini and Gemma.
-4. Groq — free-plan GPT-OSS and Qwen routes.
-5. NVIDIA API Catalog / NIM — developer/free prototype endpoint, subject to eligibility and capacity.
-6. Cloudflare Workers AI — models available on the Workers Free plan, subject to its daily Neurons cap.
-7. Cohere — separate **evaluation-only** key; not counted as a dependable production/survival connection.
+The current configuration contains **34 free-tier model/router selections** across those six providers, plus one Cohere evaluation selection. Model count is not the same as provider redundancy: OpenRouter has one shared account key and a shared free-request limit across its model routes.
 
-The workflow checks the selected provider's credential, passes only that provider's credential to OpenCode, and keeps the existing 350-minute job timeout.
+The workflow checks the selected provider's credential, passes only that provider's credential to OpenCode, and keeps the existing 350-minute job timeout. All new selections remain feature-branch-only until PR #9 and its base PR #7 are merged.
 
 ## Configured routes
 
@@ -47,15 +41,22 @@ One key unlocks the following explicit free/zero-price routes:
 | `/oc-openrouter-dots` | `openrouter/dots-studio/dots-3-note-preview:free` | 512K | Temporary preview; OpenRouter currently lists removal on **31 December 2026**. |
 | `/oc-openrouter-crouton` | `openrouter/stealth/crouton-alpha` | 1.05M | Free zero-price preview with tool calling; anonymous third-party operator. Treat as experimental and do not send confidential data. |
 | `/oc-openrouter-auto` | `openrouter/free` | Selected by router | OpenRouter chooses an eligible free model for each request; actual model may vary. |
+| `/oc-openrouter-liquid` | `openrouter/liquid/lfm-2.5-2.6b:free` | 66K | Lightweight helper only; not recommended for agentic coding or knowledge-heavy work. |
 
 OpenRouter's free catalogue ranks models by recent usage, **not quality**. The top-used list must never be mistaken for a benchmark leaderboard.
+
+The Liquid LFM2.5-2.6B route is included as a lightweight utility/helper only. Liquid explicitly advises against using it for agentic coding or knowledge-heavy work, and prompts/outputs may be retained and used for training. Keep it out of the main ECLIPSE coding leaderboard unless controlled tests show otherwise.
 
 ### Google AI Studio / Gemini API
 
 | Comment command | OpenCode model | Context | Notes |
 |---|---|---:|---|
 | `/oc-gemini` | `google/gemini-3.8-flash` | 1M | Long-horizon software engineering and autonomous-agent model. |
-| `/oc-gemini-lite` | `google/gemini-3.5-flash-lite` | 1M | Lower-cost/low-latency model for high-volume and subagent tasks. |
+| `/oc-gemini37` | `google/gemini-3.7-flash` | 1M | Previous-generation Flash for coding and multi-step tool use. |
+| `/oc-gemini36` | `google/gemini-3.6-flash` | 1M | Previous-generation Flash for general agentic tasks. |
+| `/oc-gemini35` | `google/gemini-3.5-flash` | 1M | Previous-generation Flash. |
+| `/oc-gemini-lite` | `google/gemini-3.5-flash-lite` | 1M | Lower-latency model for high-volume and subagent tasks. |
+| `/oc-gemini-lite31` | `google/gemini-3.1-flash-lite` | 1M | Small, cost-efficient model for simple subagent tasks. |
 | `/oc-gemini-gemma31` | `google/gemma-4-31b-it` | 256K | Gemma 4 31B hosted through Gemini API. |
 | `/oc-gemini-gemma26` | `google/gemma-4-26b-a4b-it` | 256K | Gemma 4 26B-A4B hosted through Gemini API. |
 
@@ -80,9 +81,11 @@ These are the published Free Plan base limits at the time of review; the owner's
 
 | Comment command | OpenCode model | Context | Notes |
 |---|---|---:|---|
-| `/oc-nvidia` | `nvidia/nemotron-3-super-120b-a12b` | 1M configured | NVIDIA Developer API Catalog endpoint for prototyping. Access/availability and request limits depend on the account and endpoint. |
+| `/oc-nvidia` | `nvidia/deepseek-ai/deepseek-v4.1-flash` | 1M | Free Endpoint in NVIDIA API Catalog; published ceiling 40 RPM / 10,000 RPD (can vary). |
+| `/oc-nvidia-lightning` | `nvidia/nemotron-3.5-lightning-30b-a3b` | 1M | Free Endpoint; 30B MoE for agentic and coding workloads. |
+| `/oc-nvidia-supervl` | `nvidia/nemotron-3.5-super-vl-120b-a12b` | 262K | Free Endpoint; multimodal text/image/video and tool use. |
 
-Use this only if NVIDIA's current API Catalog marks the chosen endpoint as free for the account. Do not select partner-hosted paid endpoints, create paid deployments, or accept a paid plan. There is no published uninterrupted-free capacity guarantee.
+NVIDIA's Developer Program gives members free API endpoint access for prototyping and experimentation. Only select models tagged **Free Endpoint** in the live NVIDIA API Catalog. Published limits can vary and a saved key does not prove every model is usable. Do not select partner-hosted paid endpoints, create paid deployments, or accept a paid plan.
 
 ### Cloudflare Workers AI
 
@@ -91,11 +94,13 @@ Use this only if NVIDIA's current API Catalog marks the chosen endpoint as free 
 | `/oc-cloudflare` | `cloudflare-workers-ai/@cf/openai/gpt-oss-20b` | 128K | Free-plan model |
 | `/oc-cloudflare-glm` | `cloudflare-workers-ai/@cf/zai-org/glm-4.7-flash` | 128K | Free-plan model |
 | `/oc-cloudflare-gemma` | `cloudflare-workers-ai/@cf/google/gemma-4-26b-a4b-it` | 256K | Free-plan model |
-| `/oc-cloudflare-nemotron` | `cloudflare-workers-ai/@cf/nvidia/nemotron-3-120b-a12b` | 256K | Free-plan model |
+| `/oc-cloudflare-qwen` | `cloudflare-workers-ai/@cf/qwen/qwen3.8-27b` | 256K | Free-plan model; vision, reasoning and function calling |
 
-Workers Free includes **10,000 Neurons per day**, resetting at 00:00 UTC. The workflow requires both `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
+Workers Free includes **10,000 Neurons per day**, resetting at 00:00 UTC. On Workers Free, requests beyond the daily allocation fail; the Paid plan bills beyond that allocation. The workflow requires both `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
 
-**Billing safety warning:** use these commands only while the Cloudflare account remains on the Workers Free plan. Do not upgrade to Workers Paid, enable prepaid usage, or configure a paid inference path. Workers Paid can bill beyond the free allocation. The model catalogue can change; re-check the Free-plan eligibility before any new route is added.
+**Upcoming deprecation:** Cloudflare announced that `@cf/nvidia/nemotron-3-120b-a12b` will be deprecated on **15 November 2026**. We removed that route and replaced it with `@cf/qwen/qwen3.8-27b`, which Cloudflare lists as a newer agentic model.
+
+**Billing safety warning:** use these commands only while the Cloudflare account remains on the Workers Free plan. Do not upgrade to Workers Paid, enable prepaid usage, or configure a paid inference path. Workers Paid can bill beyond the free allocation. Some models separately require a paid billing method; use only models explicitly eligible on Workers Free.
 
 ### Cohere — evaluation only
 
@@ -186,4 +191,14 @@ Keep **model capability** separate from **provider reliability** (availability, 
 - [Mistral usage and limits](https://docs.mistral.ai/admin/billing-usage/usage-limits)
 - [Cerebras pricing](https://www.cerebras.ai/pricing)
 - [BytePlus Free Tokens Only mode](https://docs.byteplus.com/en/docs/modelark/free-tokens-only-mode)
+- [Liquid LFM2.5-2.6B free model](https://openrouter.ai/liquid/lfm-2.5-2.6b:free)
+- [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing)
+- [Gemini API supported models](https://ai.google.dev/gemini-api/docs/interactions-overview)
+- [NVIDIA DeepSeek V4.1 Flash Free Endpoint](https://build.nvidia.com/deepseek-ai/deepseek-v4.1-flash)
+- [NVIDIA Nemotron 3.5 Lightning Free Endpoint](https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b)
+- [NVIDIA Nemotron 3.5 Super VL Free Endpoint](https://build.nvidia.com/nvidia/nemotron-3.5-super-vl-120b-a12b)
+- [NVIDIA NIM Developer FAQ](https://docs.api.nvidia.com/nim/docs/product)
+- [Cloudflare Qwen 3.8 27B model](https://developers.cloudflare.com/workers-ai/models/qwen3.8-27b/)
+- [Cloudflare Qwen 3.8 27B launch notes](https://developers.cloudflare.com/changelog/post/2026-08-17-qwen-3.8-27b-workers-ai/)
+- [Cloudflare Workers AI deprecation notice, 5 Nov 2026](https://developers.cloudflare.com/changelog/post/2026-11-05-planned-model-deprecations/)
 - [OpenCode provider configuration](https://docs.opencode.ai/docs/providers/)
