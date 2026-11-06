@@ -1,8 +1,8 @@
 # ECLIPSE Project Status
 
-**Status:** `AUTONOMOUS_BOOTSTRAP_CI_VERIFIED_ON_FEATURE_BRANCH — OWNER_REVIEW_PENDING`  
-**Last updated:** 2026-11-06  
-**Current main head audited:** `876034bc42566b79dcf144867664b443317a1a95`
+**Status:** `AUTONOMOUS_CONTROLLER_MERGED — AUTO-04_REVIEW_STAGE_OWNER_REVIEW_PENDING`
+**Last updated:** 2026-11-06
+**Current main head audited:** `acd7c41975fd6846fdfd4d7ac7c6616dd66765bb`
 
 ## Mainline history — verified
 
@@ -33,12 +33,11 @@ The old stacked PR #8 (hardware increment) and PR #9 (free provider pool) are cl
 
 A static estimate is not an executable placement plan or proof of inference. The Capability and Agent screens are not yet full implementations.
 
-## Autonomous bootstrap — feature branch only
+## Autonomous engineering controller — merged to main
 
-Branch: `feature/autonomous-engineering-engine-2026-11-06`  
-Base: current `main` at the time the branch was created.
+Bootstrap PRs #12 (controller/workflow/backlog/handoff) and #13 (OpenCode CLI invocation and config guard fixes) are merged on `main`. The controller, ranked free-only failover, session handoff and scheduled workflow are now part of the repository. A live autonomous run created the current `feature/eclipse-autonomous-*` branch.
 
-Implemented in this branch:
+Implemented by the bootstrap:
 - `docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md` — operating contract for autonomous milestones, retry/failover, same-session continuation, safety and merge gates.
 - `AUTONOMOUS_BACKLOG.md` — prioritized end-to-end implementation queue and evidence requirements.
 - `.eclipse/AUTONOMOUS_SESSION_HANDOFF.md` — durable sanitized context for runner/session recovery.
@@ -47,7 +46,19 @@ Implemented in this branch:
 - `.github/workflows/eclipse-autonomous.yml` — manual, main-push and six-hour scheduled entry points, serialized with concurrency protection.
 - Updated `DEEPSEEK_START_HERE.md`, `STATUS.md`, `CONTINUATION.md` and `README.md`.
 
-**This controller is not yet active on main.** It changes protected workflow/security/controller paths, so its bootstrap PR must remain a draft for owner review even if CI passes. The first live run, provider credentials and end-to-end recovery still need validation.
+Live provider text/tool-call smoke tests, observed cross-provider failover and an injected end-to-end CI-repair/resume exercise are still open acceptance gates. Do not describe those as proven.
+
+## Independent review stage — AUTO-04
+
+The autonomous controller now runs a deterministic, model-independent review gate (`scripts/eclipse_review.py`) as part of `validate_worktree`, after unit tests and before the controller commits. It reads Git metadata and small text files only and cannot edit the repository. It rejects:
+
+- a deleted test file or a newly introduced test skip (seeded regression);
+- a backlog item newly marked `VERIFIED*` without substantive acceptance evidence, an existing referenced test module, and either changed tests or a CI/PR record;
+- a newly added whole-project completion claim while backlog items remain unfinished.
+
+`tests/test_review.py` covers the pure checks and a real temporary-Git working-tree integration. `tests/test_autonomous_runner.py` asserts the controller's validation command list includes the separate reviewer. The local focused run passed 49 tests (20 reviewer, 28 controller, 1 import-bootstrap); the full portable suite result is recorded in `TESTING.md`. The first live controller validation exposed that its allowlisted child environment omitted `PYTHONPATH`, so every `eclipse.*` test module failed to import. Two complementary fixes now exist: `validation_environment()` sets `PYTHONPATH=<repo>/src` for fresh controller processes, and `tests/_bootstrap.py` (imported by every `eclipse`-importing test module) adds `src` when `PYTHONPATH` is absent. The latter lets an already-running controller pass without a restart.
+
+Because this milestone changes the protected controller, its PR remains draft for owner review and Windows CI; it is not auto-merged. Batch status remains `IN_PROGRESS` until CI and merge are confirmed.
 
 ## What is not yet complete as a working product
 
@@ -82,12 +93,13 @@ Keep these gates `WAITING_FOR_OWNER_VALIDATION` until real evidence exists. Do n
 - [x] Original model checkpoints remain read-only.
 - [x] Autonomous child receives only one selected provider key; controller GitHub token is not forwarded to it.
 - [x] Autonomous runner cannot push or commit through its agent permissions; controller owns Git operations.
-- [ ] Autonomous bootstrap PR reviewed/merged and first workflow run verified.
+- [x] Protected bootstrap PRs #12 and #13 reviewed and merged to `main`.
+- [ ] First live autonomous run verified end-to-end (milestone PR merged by the controller).
 - [ ] Each API route passes live non-confidential text and tool-call smoke tests.
 - [ ] Runtime, sandbox, Obsidian, Agent, security/dependency scans and release gates complete.
 - [ ] License selection remains an owner decision; Qt/PySide6 LGPL packaging obligations must be addressed before redistribution.
 
-## Autonomous bootstrap verification evidence — PR #12
+## Autonomous bootstrap verification evidence — PR #12 (merged)
 
 PR: https://github.com/Tygaclaw/Project-Eclipse/pull/12  
 Branch: `feature/autonomous-engineering-engine-2026-11-06`  
@@ -99,7 +111,8 @@ Last verified PR head before this documentation update: `44a463732448c6faa544620
 - [x] Mocked tests cover initial + five retries, same-session model switch, provider quota/auth handling, context compaction, standalone OpenCode session invocation and child credential scrubbing.
 - [ ] Live API text/tool-call smoke test across the 12 routes; these tests are not yet claimed.
 - [ ] End-to-end failure injection to prove GitHub CI repair and scheduled checkpoint resume.
-- [ ] Owner review/merge of protected bootstrap PR #12 and observation of its first live autonomous workflow run.
+- [x] Protected bootstrap PR #12 was reviewed and merged; the follow-up CLI/config fix PR #13 is also merged.
+- [ ] Observation of a completed live autonomous workflow run that produces a merged milestone PR.
 
-The PR remains a draft because it changes protected workflow/controller/security behavior. Do not mark AUTO-01/02/03 completely accepted before the remaining gates above are satisfied.
+PR #12/#13 are now on `main`; the historical draft state above is superseded. Do not mark AUTO-01/02/03 completely accepted before the remaining live gates are satisfied.
 

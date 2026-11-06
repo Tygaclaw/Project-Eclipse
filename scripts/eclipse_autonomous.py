@@ -41,6 +41,7 @@ MAX_CALLS_PER_MODEL = 6  # initial call + five retries
 DEFAULT_TURN_TIMEOUT = 2_400
 DEFAULT_RUN_BUDGET = 270 * 60
 MAX_BACKOFF = 90
+REVIEW_COMMAND = [sys.executable, "scripts/eclipse_review.py", "--base", "origin/main"]
 PROTECTED_PREFIXES = (
     ".github/workflows/",
     ".github/scripts/",
@@ -315,13 +316,19 @@ def run_opencode(
             pass
 
 
-def validate_worktree() -> tuple[bool, str]:
-    commands = (
+def validation_commands() -> tuple[tuple[str, list[str]], ...]:
+    """Ordered deterministic gates run before the controller commits a change."""
+    return (
         ("Compile", [sys.executable, "-m", "compileall", "-q", "src", "tests", ".github/scripts", "scripts"]),
         ("Provider configuration", [sys.executable, ".github/scripts/validate_provider_pool.py"]),
         ("Unit tests", [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"]),
+        ("Independent review", list(REVIEW_COMMAND)),
         ("Whitespace", ["git", "diff", "--check"]),
     )
+
+
+def validate_worktree() -> tuple[bool, str]:
+    commands = validation_commands()
     outputs: list[str] = []
     for title, command in commands:
         completed = subprocess.run(
@@ -412,6 +419,10 @@ def validation_environment(source_env: dict[str, str]) -> dict[str, str]:
     )
     env = {key: source_env[key] for key in allowed if key in source_env}
     env["CI"] = "true"
+    # The portable suite imports the ``eclipse`` package from ``src``. The
+    # controller must set this explicitly because its child environment is an
+    # allowlist that intentionally does not inherit an arbitrary PYTHONPATH.
+    env["PYTHONPATH"] = str(ROOT / "src")
     return env
 
 

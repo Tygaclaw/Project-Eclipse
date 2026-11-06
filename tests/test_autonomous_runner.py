@@ -4,6 +4,8 @@ import unittest
 
 from scripts.eclipse_autonomous import (
     MAX_CALLS_PER_MODEL,
+    REVIEW_COMMAND,
+    ROOT,
     ROUTES,
     Route,
     RunResult,
@@ -12,6 +14,7 @@ from scripts.eclipse_autonomous import (
     safe_child_environment,
     safety_scan,
     run_opencode,
+    validation_commands,
     validation_environment,
     build_repair_prompt,
 )
@@ -174,6 +177,13 @@ class SafetyScanTests(unittest.TestCase):
         self.assertNotIn("GEMINI_API_KEY", env)
         self.assertNotIn("TOKENHARBOR_API_KEY", env)
 
+    def test_validation_environment_exposes_source_package_on_pythonpath(self) -> None:
+        from pathlib import Path
+
+        env = validation_environment({"PATH": "/usr/bin"})
+        self.assertEqual(env["PYTHONPATH"], str(ROOT / "src"))
+        self.assertTrue((Path(env["PYTHONPATH"]) / "eclipse").is_dir())
+
 
 class FailoverLoopTests(unittest.TestCase):
     @staticmethod
@@ -333,6 +343,18 @@ class ConfigurationErrorTests(unittest.TestCase):
         self.assertFalse(success)
         self.assertEqual(len(calls), 1)
         self.assertIn("CONFIGURATION_ERROR", failure)
+
+
+class IndependentReviewWiringTests(unittest.TestCase):
+    def test_worktree_validation_runs_the_model_independent_review(self) -> None:
+        commands = dict(validation_commands())
+        self.assertIn("Independent review", commands)
+        self.assertEqual(commands["Independent review"], REVIEW_COMMAND)
+        self.assertIn("scripts/eclipse_review.py", REVIEW_COMMAND)
+        self.assertIn("--base", REVIEW_COMMAND)
+
+    def test_reviewer_is_separate_from_the_implementing_controller(self) -> None:
+        self.assertNotIn("scripts/eclipse_autonomous.py", REVIEW_COMMAND)
 
 
 class RankedPoolConsistencyTests(unittest.TestCase):

@@ -22,7 +22,7 @@ Each autonomous run performs one bounded, reviewable milestone:
 2. Select the highest-priority backlog item whose dependencies are satisfied and whose user-only gate is not blocking it.
 3. Define acceptance checks before editing. Reuse existing modules and interfaces.
 4. Implement the smallest coherent end-to-end increment. Add or update tests and user-facing documentation.
-5. Run compile checks, focused tests, the complete portable unit suite, provider/config validation, diff checks and secret/large-file guards.
+5. Run compile checks, focused tests, the complete portable unit suite, provider/config validation, the model-independent review gate, diff checks and secret/large-file guards.
 6. Repair real failures. Never weaken, delete or skip a test merely to make a run green.
 7. Update `AUTONOMOUS_BACKLOG.md`, `STATUS.md`, `CONTINUATION.md` and a concise `.eclipse/AUTONOMOUS_SESSION_HANDOFF.md` with exact evidence.
 8. Let the controller create a feature branch commit and pull request. The model must not commit, push, merge or alter GitHub permissions itself.
@@ -75,6 +75,7 @@ The `eclipse-autonomous` OpenCode agent may inspect and edit the checked-out wor
 The controller, not the model, creates the commit and push after checks pass. Checkout credentials are not persisted to the working tree and are never inherited by the model subprocess. The OpenCode subprocess receives the selected provider API key as an environment variable because its provider adapter requires it; its shell/tool permissions and minimal environment reduce accidental access, but this is not a hardware security sandbox against a malicious model/provider. Use only non-confidential public-repository content in these hosted free models.
 
 Before publishing, the controller must:
+- run the deterministic, model-independent reviewer in `scripts/eclipse_review.py`: a deleted or newly skipped test, or an unsupported backlog completion claim, blocks publication;
 - run `git diff --check`;
 - reject suspicious secret patterns;
 - reject files larger than 10 MiB (except an explicitly reviewed allowlist);
