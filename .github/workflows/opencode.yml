@@ -169,6 +169,10 @@ jobs:
               provider="nvidia"
               model="nvidia/nemotron-3.5-lightning-30b-a3b"
               ;;
+            *"/oc-nvidia-super"*)
+              provider="nvidia"
+              model="nvidia/nemotron-3-super-120b-a12b"
+              ;;
             *"/oc-nvidia"*)
               provider="nvidia"
               model="nvidia/deepseek-ai/deepseek-v4.1-flash"
