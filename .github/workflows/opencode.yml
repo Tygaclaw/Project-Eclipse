@@ -26,6 +26,15 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Verify Token Harbor key is present
+        env:
+          TOKENHARBOR_API_KEY: ${{ secrets.TOKENHARBOR_API_KEY }}
+        run: |
+          if [ -z "$TOKENHARBOR_API_KEY" ]; then
+            echo "::error::Add the repository Actions secret TOKENHARBOR_API_KEY before starting an agent run."
+            exit 1
+          fi
+
       - name: Run OpenCode with Token Harbor free models
         uses: anomalyco/opencode/github@latest
         env:
