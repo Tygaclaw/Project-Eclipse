@@ -26,23 +26,16 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Select model and verify its free-tier credential
+      - name: Select model and verify its provider credential
         id: route
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
-          TOKENHARBOR_API_KEY: ${{ secrets.TOKENHARBOR_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          DAHL_API_KEY: ${{ secrets.DAHL_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
-          KILO_API_KEY: ${{ secrets.KILO_API_KEY }}
-          ZAI_GLM_API_KEY: ${{ secrets.ZAI_GLM_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          TOKENHARBOR_API_KEY: ${{ secrets.TOKENHARBOR_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -52,109 +45,21 @@ jobs:
 
           # Match the most specific command first.
           case "$COMMENT_BODY" in
-            *"/oc-openrouter-ultra"*)
-              provider="openrouter"
-              model="openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
+            *"/oc-dahl-deepseek"*)
+              provider="dahl"
+              model="dahl/deepseek-ai/DeepSeek-V4-Flash-0731"
               ;;
-            *"/oc-openrouter-crouton"*)
-              provider="openrouter"
-              model="openrouter/stealth/crouton-alpha"
-              ;;
-            *"/oc-openrouter-liquid"*)
-              provider="openrouter"
-              model="openrouter/liquid/lfm-2.5-2.6b:free"
-              ;;
-            *"/oc-openrouter-dots"*)
-              provider="openrouter"
-              model="openrouter/dots-studio/dots-3-note-preview:free"
-              ;;
-            *"/oc-openrouter-supervl"*)
-              provider="openrouter"
-              model="openrouter/nvidia/nemotron-3.5-super-vl:free"
-              ;;
-            *"/oc-openrouter-nano"*)
-              provider="openrouter"
-              model="openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
-              ;;
-            *"/oc-openrouter-xing"*)
-              provider="openrouter"
-              model="openrouter/xingchen-agi/xing4.0-29b-a4b:free"
-              ;;
-            *"/oc-openrouter-gemma31"*)
-              provider="openrouter"
-              model="openrouter/google/gemma-4-31b-it:free"
-              ;;
-            *"/oc-openrouter-flint"*)
-              provider="openrouter"
-              model="openrouter/recursive/flint-v1.0:free"
-              ;;
-            *"/oc-openrouter-nemotron"*)
-              provider="openrouter"
-              model="openrouter/nvidia/nemotron-3.5-lightning:free"
-              ;;
-            *"/oc-openrouter-gemma"*)
-              provider="openrouter"
-              model="openrouter/google/gemma-4-26b-a4b-it:free"
-              ;;
-            *"/oc-openrouter-auto"*)
-              provider="openrouter"
-              model="openrouter/free"
-              ;;
-            *"/oc-openrouter"*)
-              provider="openrouter"
-              model="openrouter/cohere/north-mini-code:free"
-              ;;
-            *"/oc-cloudflare-qwen"*)
-              provider="cloudflare"
-              model="cloudflare-workers-ai/@cf/qwen/qwen3.8-27b"
-              ;;
-            *"/oc-cloudflare-gemma"*)
-              provider="cloudflare"
-              model="cloudflare-workers-ai/@cf/google/gemma-4-26b-a4b-it"
-              ;;
-            *"/oc-cloudflare-glm"*)
-              provider="cloudflare"
-              model="cloudflare-workers-ai/@cf/zai-org/glm-4.7-flash"
-              ;;
-            *"/oc-cloudflare"*)
-              provider="cloudflare"
-              model="cloudflare-workers-ai/@cf/openai/gpt-oss-20b"
-              ;;
-            *"/oc-gemini-lite31"*)
-              provider="google"
-              model="google/gemini-3.1-flash-lite"
+            *"/oc-dahl"*)
+              provider="dahl"
+              model="dahl/MiniMaxAI/MiniMax-M2.7"
               ;;
             *"/oc-gemini37"*)
               provider="google"
               model="google/gemini-3.7-flash"
               ;;
-            *"/oc-gemini36"*)
-              provider="google"
-              model="google/gemini-3.6-flash"
-              ;;
-            *"/oc-gemini35"*)
-              provider="google"
-              model="google/gemini-3.5-flash"
-              ;;
-            *"/oc-gemini-lite"*)
-              provider="google"
-              model="google/gemini-3.5-flash-lite"
-              ;;
-            *"/oc-gemini-gemma31"*)
-              provider="google"
-              model="google/gemma-4-31b-it"
-              ;;
-            *"/oc-gemini-gemma26"*)
-              provider="google"
-              model="google/gemma-4-26b-a4b-it"
-              ;;
             *"/oc-gemini"*)
               provider="google"
               model="google/gemini-3.8-flash"
-              ;;
-            *"/oc-groq-qwen"*)
-              provider="groq"
-              model="groq/qwen/qwen3.8-27b"
               ;;
             *"/oc-groq-small"*)
               provider="groq"
@@ -164,37 +69,13 @@ jobs:
               provider="groq"
               model="groq/openai/gpt-oss-120b"
               ;;
-            *"/oc-nvidia-supervl"*)
-              provider="nvidia"
-              model="nvidia/nemotron-3.5-super-vl-120b-a12b"
+            *"/oc-openrouter-lightning"*)
+              provider="openrouter"
+              model="openrouter/nvidia/nemotron-3.5-lightning:free"
               ;;
-            *"/oc-nvidia-lightning"*)
-              provider="nvidia"
-              model="nvidia/nemotron-3.5-lightning-30b-a3b"
-              ;;
-            *"/oc-nvidia-super"*)
-              provider="nvidia"
-              model="nvidia/nemotron-3-super-120b-a12b"
-              ;;
-            *"/oc-nvidia"*)
-              provider="nvidia"
-              model="nvidia/deepseek-ai/deepseek-v4.1-flash"
-              ;;
-            *"/oc-orca-deepseek"*)
-              provider="orcarouter"
-              model="orcarouter/deepseek/deepseek-v4-flash-free"
-              ;;
-            *"/oc-orca"*)
-              provider="orcarouter"
-              model="orcarouter/orcarouter/free"
-              ;;
-            *"/oc-kilo"*)
-              provider="kilo"
-              model="kilo/kilo-auto/free"
-              ;;
-            *"/oc-zai-vision"*)
-              provider="zai"
-              model="zai/glm-4.6v-flash"
+            *"/oc-openrouter"*)
+              provider="openrouter"
+              model="openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
               ;;
             *"/oc-zai-45"*)
               provider="zai"
@@ -204,14 +85,6 @@ jobs:
               provider="zai"
               model="zai/glm-4.7-flash"
               ;;
-            *"/oc-cohere-eval"*)
-              provider="cohere"
-              model="cohere/command-a-reasoning-08-2025"
-              ;;
-            *"/oc-cohere"*)
-              provider="cohere"
-              model="cohere/command-a-reasoning-08-2025"
-              ;;
             *"/oc-mimo"*)
               provider="tokenharbor"
               model="tokenharbor/mimo-v2.6-flash:free"
@@ -219,49 +92,29 @@ jobs:
           esac
 
           case "$provider" in
-            tokenharbor)
-              credential="$TOKENHARBOR_API_KEY"
-              missing_name="TOKENHARBOR_API_KEY"
-              ;;
-            openrouter)
-              credential="$OPENROUTER_API_KEY"
-              missing_name="OPENROUTER_API_KEY"
+            dahl)
+              credential="$DAHL_API_KEY"
+              missing_name="DAHL_API_KEY"
               ;;
             google)
-              credential="${GEMINI_API_KEY:-${GOOGLE_GENERATIVE_AI_API_KEY:-${GOOGLE_API_KEY:-}}}"
-              missing_name="GEMINI_API_KEY (or GOOGLE_GENERATIVE_AI_API_KEY / GOOGLE_API_KEY)"
+              credential="$GEMINI_API_KEY"
+              missing_name="GEMINI_API_KEY"
               ;;
             groq)
               credential="$GROQ_API_KEY"
               missing_name="GROQ_API_KEY"
               ;;
-            nvidia)
-              credential="$NVIDIA_API_KEY"
-              missing_name="NVIDIA_API_KEY"
+            openrouter)
+              credential="$OPENROUTER_API_KEY"
+              missing_name="OPENROUTER_API_KEY"
               ;;
-            cloudflare)
-              credential="$CLOUDFLARE_API_TOKEN"
-              missing_name="CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID"
-              if [[ -z "$CLOUDFLARE_ACCOUNT_ID" ]]; then
-                echo "::error::Add CLOUDFLARE_ACCOUNT_ID to repository Actions secrets."
-                exit 1
-              fi
-              ;;
-            cohere)
-              credential="$COHERE_API_KEY"
-              missing_name="COHERE_API_KEY"
-              ;;
-            orcarouter)
-              credential="$ORCAROUTER_API_KEY"
-              missing_name="ORCAROUTER_API_KEY"
-              ;;
-            kilo)
-              credential="$KILO_API_KEY"
-              missing_name="KILO_API_KEY"
+            tokenharbor)
+              credential="$TOKENHARBOR_API_KEY"
+              missing_name="TOKENHARBOR_API_KEY"
               ;;
             zai)
-              credential="$ZAI_GLM_API_KEY"
-              missing_name="ZAI_GLM_API_KEY"
+              credential="$ZAI_API_KEY"
+              missing_name="ZAI_API_KEY"
               ;;
             *)
               echo "::error::Internal provider selection error."
@@ -282,21 +135,16 @@ jobs:
           echo "Selected provider: $provider"
           echo "Selected model: $model"
 
-      - name: Run OpenCode with the selected free or evaluation model
+      - name: Run OpenCode with the selected provider credential
         uses: anomalyco/opencode/github@latest
         env:
           # Only the selected provider's credential is passed to the agent process.
-          TOKENHARBOR_API_KEY: ${{ steps.route.outputs.provider == 'tokenharbor' && secrets.TOKENHARBOR_API_KEY || '' }}
-          OPENROUTER_API_KEY: ${{ steps.route.outputs.provider == 'openrouter' && secrets.OPENROUTER_API_KEY || '' }}
-          GOOGLE_GENERATIVE_AI_API_KEY: ${{ steps.route.outputs.provider == 'google' && (secrets.GEMINI_API_KEY || secrets.GOOGLE_GENERATIVE_AI_API_KEY || secrets.GOOGLE_API_KEY) || '' }}
+          DAHL_API_KEY: ${{ steps.route.outputs.provider == 'dahl' && secrets.DAHL_API_KEY || '' }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ steps.route.outputs.provider == 'google' && secrets.GEMINI_API_KEY || '' }}
           GROQ_API_KEY: ${{ steps.route.outputs.provider == 'groq' && secrets.GROQ_API_KEY || '' }}
-          NVIDIA_API_KEY: ${{ steps.route.outputs.provider == 'nvidia' && secrets.NVIDIA_API_KEY || '' }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ steps.route.outputs.provider == 'cloudflare' && secrets.CLOUDFLARE_ACCOUNT_ID || '' }}
-          CLOUDFLARE_API_TOKEN: ${{ steps.route.outputs.provider == 'cloudflare' && secrets.CLOUDFLARE_API_TOKEN || '' }}
-          COHERE_API_KEY: ${{ steps.route.outputs.provider == 'cohere' && secrets.COHERE_API_KEY || '' }}
-          ORCAROUTER_API_KEY: ${{ steps.route.outputs.provider == 'orcarouter' && secrets.ORCAROUTER_API_KEY || '' }}
-          KILO_API_KEY: ${{ steps.route.outputs.provider == 'kilo' && secrets.KILO_API_KEY || '' }}
-          ZAI_GLM_API_KEY: ${{ steps.route.outputs.provider == 'zai' && secrets.ZAI_GLM_API_KEY || '' }}
+          OPENROUTER_API_KEY: ${{ steps.route.outputs.provider == 'openrouter' && secrets.OPENROUTER_API_KEY || '' }}
+          TOKENHARBOR_API_KEY: ${{ steps.route.outputs.provider == 'tokenharbor' && secrets.TOKENHARBOR_API_KEY || '' }}
+          ZAI_API_KEY: ${{ steps.route.outputs.provider == 'zai' && secrets.ZAI_API_KEY || '' }}
         with:
           model: ${{ steps.route.outputs.model }}
           agent: build
