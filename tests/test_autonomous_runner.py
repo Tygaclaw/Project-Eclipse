@@ -13,6 +13,7 @@ from scripts.eclipse_autonomous import (
     safety_scan,
     run_opencode,
     validation_environment,
+    build_repair_prompt,
 )
 
 
@@ -40,6 +41,14 @@ class FailureClassificationTests(unittest.TestCase):
 
     def test_timeout_is_retryable(self) -> None:
         self.assertTrue(classify_failure("", timed_out=True).retryable)
+
+    def test_context_length_error_requests_compaction_before_retry(self) -> None:
+        failure = classify_failure("context_length_exceeded: maximum context length is 65536")
+        self.assertEqual(failure.kind, "context_length")
+        self.assertFalse(failure.retryable)
+        prompt = build_repair_prompt("maximum context length exceeded")
+        self.assertIn("compact the conversation", prompt)
+        self.assertIn("Do not restart the milestone", prompt)
 
     def test_default_retry_policy_is_initial_plus_five(self) -> None:
         self.assertEqual(MAX_CALLS_PER_MODEL, 6)
@@ -203,6 +212,35 @@ class FailoverLoopTests(unittest.TestCase):
         self.assertEqual(calls[6][0], ROUTES[1].open_code_id)
         self.assertTrue(all(call[1] == session for call in calls[1:]))
         self.assertIn("SAME ECLIPSE task", calls[6][2])
+
+    def test_context_compaction_does_not_advance_to_another_model(self) -> None:
+        from scripts.eclipse_autonomous import run_agent_with_failover
+
+        calls = []
+        session = "ses_context12345678"
+
+        def fake_call(route, prompt, session_id, run_title, **kwargs):
+            calls.append((route.open_code_id, prompt, session_id))
+            if len(calls) == 1:
+                return RunResult(1, stderr="context_length_exceeded: maximum context length"), session
+            return RunResult(0, stdout='{"type":"session.updated"}'), session_id
+
+        success, returned_session, selected_model, failure = run_agent_with_failover(
+            "initial task",
+            "context-test",
+            self.all_provider_secrets(),
+            call=fake_call,
+            validate=lambda: (True, "all passed"),
+            sleep=lambda _seconds: None,
+            rng=lambda: 0.0,
+        )
+        self.assertTrue(success, failure)
+        self.assertEqual(returned_session, session)
+        self.assertEqual(selected_model, ROUTES[0].open_code_id)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][0], calls[1][0])
+        self.assertEqual(calls[1][2], session)
+        self.assertIn("compact the conversation", calls[1][1])
 
     def test_quota_failure_skips_remaining_models_from_same_provider(self) -> None:
         from scripts.eclipse_autonomous import run_agent_with_failover
