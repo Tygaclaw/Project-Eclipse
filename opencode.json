@@ -40,6 +40,83 @@
           "limit": {
             "context": 262144
           }
+        },
+        "nvidia/nemotron-3.5-lightning:free": {
+          "name": "NVIDIA Nemotron 3.5 Lightning (Free)",
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          }
+        },
+        "google/gemma-4-26b-a4b-it:free": {
+          "name": "Google Gemma 4 26B A4B (Free)",
+          "limit": {
+            "context": 262144,
+            "output": 32768
+          }
+        },
+        "free": {
+          "name": "OpenRouter Free Model Router",
+          "limit": {
+            "context": 200000
+          }
+        }
+      }
+    },
+    "google": {
+      "models": {
+        "gemini-3.8-flash": {
+          "name": "Gemini 3.8 Flash (Free Tier)",
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          }
+        }
+      }
+    },
+    "groq": {
+      "models": {
+        "openai/gpt-oss-120b": {
+          "name": "GPT-OSS 120B via Groq",
+          "limit": {
+            "context": 131072,
+            "output": 65536
+          }
+        },
+        "qwen/qwen3.8-27b": {
+          "name": "Qwen 3.8 27B via Groq",
+          "limit": {
+            "context": 131072,
+            "output": 16384
+          }
+        }
+      }
+    },
+    "nvidia": {
+      "models": {
+        "nemotron-3-super-120b-a12b": {
+          "name": "NVIDIA Nemotron 3 Super 120B A12B (Developer Free Endpoint)",
+          "limit": {
+            "context": 1000000,
+            "output": 16384
+          }
+        }
+      }
+    },
+    "cloudflare-workers-ai": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Cloudflare Workers AI",
+      "options": {
+        "baseURL": "https://api.cloudflare.com/client/v4/accounts/{env:CLOUDFLARE_ACCOUNT_ID}/ai/v1",
+        "apiKey": "{env:CLOUDFLARE_API_TOKEN}"
+      },
+      "models": {
+        "@cf/openai/gpt-oss-20b": {
+          "name": "GPT-OSS 20B via Cloudflare Workers AI (Free Neurons)",
+          "limit": {
+            "context": 128000,
+            "output": 16384
+          }
         }
       }
     }
