@@ -412,11 +412,14 @@ def run_agent_with_failover(
     validate: Callable[[], tuple[bool, str]] = validate_worktree,
     sleep: Callable[[float], None] = time.sleep,
     rng: Callable[[], float] = random.random,
+    deadline: float | None = None,
 ) -> tuple[bool, str | None, str, str | None]:
     session_id: str | None = None
     skipped_providers: set[str] = set()
     last_failure = ""
     for route in route_models():
+        if deadline is not None and deadline - time.monotonic() < 90:
+            return False, session_id, "", last_failure or "Autonomous run time budget reached; checkpoint required."
         if route.provider in skipped_providers:
             continue
         if not source_env.get(route.secret_name):
@@ -425,14 +428,21 @@ def run_agent_with_failover(
             continue
 
         for attempt in range(max_calls_per_model):
+            if deadline is not None:
+                remaining_for_model = int(deadline - time.monotonic() - 45 * 60)
+                if remaining_for_model < 60:
+                    return False, session_id, "", last_failure or "Autonomous run time budget reached; checkpoint required."
+                current_timeout = min(turn_timeout, remaining_for_model)
+            else:
+                current_timeout = turn_timeout
             current_prompt = (
-                prompt if attempt == 0 and session_id is None
+                prompt if session_id is None
                 else build_repair_prompt(last_failure) if last_failure
                 else prompt
             )
             result, observed_session = call(
                 route, current_prompt, session_id, run_title,
-                timeout=turn_timeout, source_env=source_env,
+                timeout=current_timeout, source_env=source_env,
             )
             session_id = observed_session or session_id
             raw_output = redact(result.stdout + "\n" + result.stderr, source_env)
@@ -494,12 +504,83 @@ This PR is not considered complete because a model says it is complete. The cont
 """
 
 
+def commit_and_push_worktree(
+    branch: str, source_env: dict[str, str]
+) -> tuple[list[str], bool, str]:
+    """Run controller-side guards, commit and push; never called by the model child."""
+    controller_env = controller_environment(source_env)
+    paths = changed_paths()
+    if not paths:
+        return [], False, ""
+    safe, message, protected = safety_scan(paths)
+    if not safe:
+        raise RuntimeError("SAFETY_SCAN_BLOCKED: " + message)
+
+    status = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=ROOT, env=controller_env,
+        text=True, capture_output=True, check=True,
+    ).stdout
+    if status.strip():
+        subprocess.run(["git", "add", "-A"], cwd=ROOT, env=controller_env, check=True)
+        subprocess.run(["git", "diff", "--cached", "--check"], cwd=ROOT, env=controller_env, check=True)
+        subprocess.run(
+            ["git", "-c", "user.name=github-actions[bot]",
+             "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com",
+             "commit", "-m", "feat: complete autonomous ECLIPSE milestone"],
+            cwd=ROOT, env=controller_env, check=True,
+        )
+
+    final_paths = changed_paths()
+    safe, message, protected_after = safety_scan(final_paths)
+    if not safe:
+        raise RuntimeError("SAFETY_SCAN_BLOCKED_AFTER_STAGE: " + message)
+    protected = protected or protected_after
+    git_with_write_token(["push", "--set-upstream", "origin", branch], source_env=source_env)
+    return final_paths, protected, "Controller secret/large-file/diff guards passed."
+
+
+def create_draft_checkpoint(
+    branch: str,
+    source_env: dict[str, str],
+    session_id: str | None,
+    selected_model: str,
+    failure: str,
+) -> str | None:
+    """Preserve safe partial work after exhaustion instead of losing the runner worktree."""
+    handoff = ROOT / ".eclipse" / "AUTONOMOUS_SESSION_HANDOFF.md"
+    handoff.parent.mkdir(parents=True, exist_ok=True)
+    old = handoff.read_text(encoding="utf-8") if handoff.exists() else "# Autonomous Session Handoff\n"
+    handoff.write_text(
+        old.rstrip() + "\n\n## Interrupted run checkpoint\n"
+        + f"- Run: {source_env.get('GITHUB_RUN_ID', 'unknown')}\n"
+        + f"- Session ID: {session_id or 'not created'}\n"
+        + f"- Last selected model: {selected_model or 'none'}\n"
+        + "- State: BLOCKED; partial changes are preserved for review, not marked complete.\n"
+        + f"- Failure (sanitized): {redact(failure, source_env)[-5000:]}\n",
+        encoding="utf-8",
+    )
+    paths, _protected, guard_note = commit_and_push_worktree(branch, source_env)
+    if not paths:
+        return None
+    body = make_pr_body(
+        branch, paths,
+        guard_note + "\n\n**Checkpoint only:** the autonomous task did not complete. Do not merge this draft as a finished milestone.\n\n"
+        + redact(failure, source_env),
+        True,
+    )
+    created = gh(
+        ["pr", "create", "--draft", "--base", "main", "--head", branch,
+         "--title", "Checkpoint: ECLIPSE autonomous run requires recovery", "--body", body],
+        source_env=source_env,
+    )
+    return created.stdout.strip().splitlines()[-1]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--max-agent-minutes", type=int, default=int(os.getenv("ECLIPSE_MAX_AGENT_MINUTES", "240")))
     args = parser.parse_args()
     source_env = dict(os.environ)
-    repository = source_env.get("GITHUB_REPOSITORY", "Tygaclaw/Project-Eclipse")
     run_id = source_env.get("GITHUB_RUN_ID", str(int(time.time())))
     attempt_id = source_env.get("GITHUB_RUN_ATTEMPT", "1")
     base_branch = source_env.get("ECLIPSE_BASE_BRANCH", source_env.get("GITHUB_REF_NAME", "main"))
@@ -516,56 +597,53 @@ def main() -> int:
     branch = f"feature/eclipse-autonomous-{run_id}-{attempt_id}"
     subprocess.run(["git", "switch", "-c", branch], cwd=ROOT, env=controller_env, check=True)
 
-    prompt = build_run_prompt(run_title)
-    source_env.setdefault("ECLIPSE_MAX_AGENT_MINUTES", str(args.max_agent_minutes))
-    # Reserve enough time for checks, pushing, PR creation and CI observation.
-    remaining = max(120, int(deadline - time.monotonic()) - 45 * 60)
-    turn_timeout = min(DEFAULT_TURN_TIMEOUT, remaining)
-
     success, session_id, selected_model, failure = run_agent_with_failover(
-        prompt, run_title, source_env, turn_timeout=turn_timeout,
+        build_run_prompt(run_title),
+        run_title,
+        source_env,
+        turn_timeout=DEFAULT_TURN_TIMEOUT,
+        deadline=deadline,
     )
+
     if not success:
         print("BLOCKED_NO_FREE_MODEL_OR_RECOVERABLE_SESSION")
         print(redact(failure, source_env))
+        try:
+            checkpoint_pr = create_draft_checkpoint(
+                branch, source_env, session_id, selected_model, failure or "No completed milestone."
+            )
+            if checkpoint_pr:
+                print(f"PARTIAL_WORK_PRESERVED_AS_DRAFT: {checkpoint_pr}")
+            else:
+                print("No safe partial code changes existed to checkpoint.")
+        except Exception as exc:
+            print(f"CHECKPOINT_PRESERVATION_FAILED: {type(exc).__name__}: {exc}")
         return 2
 
     paths = changed_paths()
     if not paths:
-        print("No repository changes were produced. Backlog/agent state must be inspected; no empty PR created.")
+        print("No repository changes were produced. No empty PR created.")
         return 0
 
-    safe, scan_message, protected = safety_scan(paths)
-    if not safe:
-        print("SAFETY_SCAN_BLOCKED")
-        print(scan_message)
+    try:
+        final_paths, protected, guard_note = commit_and_push_worktree(branch, source_env)
+    except Exception as exc:
+        print(f"SAFE_COMMIT_BLOCKED: {type(exc).__name__}: {exc}")
         return 3
+    if not final_paths:
+        print("No changes remained after validation.")
+        return 0
 
-    # Controller owns commits. Agent credentials never contain GITHUB_TOKEN or GH_TOKEN.
-    status = subprocess.run(
-        ["git", "status", "--porcelain"], cwd=ROOT, env=controller_env,
-        text=True, capture_output=True, check=True,
-    ).stdout
-    if status.strip():
-        subprocess.run(["git", "add", "-A"], cwd=ROOT, env=controller_env, check=True)
-        subprocess.run(["git", "diff", "--cached", "--check"], cwd=ROOT, env=controller_env, check=True)
-        subprocess.run(
-            ["git", "-c", "user.name=github-actions[bot]", "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com",
-             "commit", "-m", "feat: complete autonomous ECLIPSE milestone"],
-            cwd=ROOT, env=controller_env, check=True,
-        )
-
-    final_paths = changed_paths()
-    safe, scan_message, protected = safety_scan(final_paths)
-    if not safe:
-        print("SAFETY_SCAN_BLOCKED_AFTER_STAGE")
-        print(scan_message)
-        return 3
-
-    git_with_write_token(["push", "--set-upstream", "origin", branch], source_env=source_env)
-    body = make_pr_body(branch, final_paths, "Portable checks passed; Windows CI is the required merge gate.", protected)
-    create_args = ["pr", "create", "--base", "main", "--head", branch,
-                   "--title", "ECLIPSE autonomous milestone", "--body", body]
+    validation_note = (
+        "Portable validation passed: compileall, provider configuration validator, "
+        "full unittest discovery and git diff whitespace check. Windows CI remains the required merge gate.\n"
+        + guard_note
+    )
+    body = make_pr_body(branch, final_paths, validation_note, protected)
+    create_args = [
+        "pr", "create", "--base", "main", "--head", branch,
+        "--title", "ECLIPSE autonomous milestone", "--body", body,
+    ]
     if protected:
         create_args.append("--draft")
     created = gh(create_args, source_env=source_env)
@@ -589,7 +667,7 @@ def main() -> int:
     details = json.loads(gh(["pr", "view", pr_url, "--json", "headRefOid,state,isDraft"], source_env=source_env).stdout)
     current_head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, env=controller_env,
-        text=True, capture_output=True, check=True
+        text=True, capture_output=True, check=True,
     ).stdout.strip()
     if details.get("state") != "OPEN" or details.get("isDraft") or details.get("headRefOid") != current_head:
         print("PR_HEAD_CHANGED_OR_NOT_MERGEABLE: refusing automatic merge.")
@@ -603,8 +681,6 @@ def main() -> int:
 
     print("AUTONOMOUS_MILESTONE_MERGED")
     print(redact(merged.stdout, source_env))
-    # workflow_dispatch is an allowed GITHUB_TOKEN-triggered workflow event.
-    # Concurrency ensures the next run waits until this run releases the group.
     dispatch = gh(
         ["workflow", "run", "eclipse-autonomous.yml", "--ref", "main", "-f", "mode=continue"],
         source_env=source_env, check=False,
@@ -612,7 +688,7 @@ def main() -> int:
     if dispatch.returncode == 0:
         print("NEXT_AUTONOMOUS_RUN_QUEUED")
     else:
-        print("NEXT_RUN_NOT_QUEUED; six-hour schedule will resume the backlog.")
+        print("NEXT_RUN_NOT_QUEUED; main push/six-hour schedule will resume the backlog.")
         print(redact(dispatch.stdout + dispatch.stderr, source_env)[-4_000:])
     return 0
 
