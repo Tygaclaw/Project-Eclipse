@@ -61,21 +61,21 @@ jobs:
               provider="google"
               model="google/gemini-3.8-flash"
               ;;
-            *"/oc-groq-small"*)
+            *"/oc-groq-qwen"*)
               provider="groq"
-              model="groq/openai/gpt-oss-20b"
+              model="groq/qwen/qwen3.8-27b"
               ;;
             *"/oc-groq"*)
               provider="groq"
               model="groq/openai/gpt-oss-120b"
               ;;
-            *"/oc-openrouter-lightning"*)
+            *"/oc-openrouter-ultra"*)
               provider="openrouter"
-              model="openrouter/nvidia/nemotron-3.5-lightning:free"
+              model="openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
               ;;
             *"/oc-openrouter"*)
               provider="openrouter"
-              model="openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
+              model="openrouter/cohere/north-mini-code:free"
               ;;
             *"/oc-zai-45"*)
               provider="zai"
