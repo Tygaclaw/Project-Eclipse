@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests import _bootstrap  # noqa: F401
+
 import json
 from pathlib import Path
 import struct

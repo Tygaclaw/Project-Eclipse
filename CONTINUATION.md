@@ -4,8 +4,8 @@
 
 - Repository: `Tygaclaw/Project-Eclipse`.
 - Default branch: `main`.
-- Audited main head when this record was rewritten: `876034bc42566b79dcf144867664b443317a1a95`.
-- Current autonomous bootstrap branch: `feature/autonomous-engineering-engine-2026-11-06`.
+- Audited main head when this record was rewritten: `acd7c41975fd6846fdfd4d7ac7c6616dd66765bb`.
+- Autonomous bootstrap PRs #12 and #13 are merged to `main`; a live autonomous run created the current `feature/eclipse-autonomous-*` branch.
 - Mainline PRs #5, #6, #7, #10 and #11 are merged. PRs #8 and #9 are obsolete, closed and superseded.
 - The existing product foundation includes static model inspection/Atlas, tokenizer/chat-template intelligence, static hardware feasibility, and the three-workspace Windows desktop shell.
 
@@ -72,4 +72,22 @@ Verified head `44a463732448c6faa544620760eb725ab8944563`:
 - PR #12 remains an owner-review draft due protected workflow/controller/security changes; do not merge or activate without that review. After merge, verify the first live Actions run before describing automation as active.
 
 The autonomous backlog now marks AUTO-01/02/03 in progress rather than complete, because operational acceptance is not yet proven.
+
+## AUTO-04 independent review stage — 6 November 2026
+
+Base main: `acd7c41975fd6846fdfd4d7ac7c6616dd66765bb` (bootstrap PRs #12 and #13 merged).
+
+Implemented:
+- `scripts/eclipse_review.py`: deterministic, read-only reviewer. Rejects deleted tests, newly added test skips, false `VERIFIED*` backlog claims (placeholder evidence, missing referenced test, no changed test/CI record) and new whole-project completion claims while backlog work remains.
+- `scripts/eclipse_autonomous.py`: `REVIEW_COMMAND` and `validation_commands()` add the reviewer to `validate_worktree` after unit tests, so the same-session repair loop must satisfy an independent acceptance gate before the controller commits.
+- `tests/test_review.py`: 20 focused tests including a real temporary-Git working-tree integration.
+- `tests/test_autonomous_runner.py`: 2 wiring tests confirming the reviewer is a separate command in the validation gate, plus 1 regression test asserting the validation environment exposes `src` on `PYTHONPATH`.
+
+Fix from the first live validation run: the controller's allowlisted validation environment omitted `PYTHONPATH`, so the `eclipse.*` test modules failed to import. `validation_environment()` now sets `PYTHONPATH=<repo>/src`; verified by running the controller's environment against `tests.test_hardware` with an empty parent `PYTHONPATH` (14 tests OK).
+
+Second live validation repeated the same import failure because the already-running controller process still held the pre-fix `validation_environment` in memory; editing the script cannot reload that process. Added `tests/_bootstrap.py`, imported by every `eclipse`-importing test module, which inserts `<repo>/src` into `sys.path` when `PYTHONPATH` is absent. A subprocess regression test (`tests/test_test_bootstrap.py`) runs the suite with `PYTHONPATH` removed. Result: full `python -m unittest discover -s tests` passes both with and without `PYTHONPATH`.
+
+Verification actually run locally (Linux, Python 3.12.16, no PySide6): focused `tests.test_review` + `tests.test_autonomous_runner` + `tests.test_test_bootstrap` = 49 tests OK. Full portable suite result is recorded in `TESTING.md`.
+
+The controller change is protected, so the milestone PR must remain draft for owner review and Windows CI. AUTO-04 stays `IN_PROGRESS` until that merge and CI are confirmed. Next READY milestone after AUTO-04 is RUN-01 (runtime adapter/backend capability contract and support matrix).
 

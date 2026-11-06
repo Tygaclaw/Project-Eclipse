@@ -26,7 +26,7 @@ The above does not establish that inference, the Capability System or Agent are 
 | AUTO-01 | Safe autonomous run workflow, branch/PR controller, one-open-PR guard and scheduled/manual resume | Controller tests pass; Python 3.11–3.14 CI passes; Qt/PyInstaller packaging and packaged backend smoke test pass; still requires owner review/merge and one confirmed live Actions run | IN_PROGRESS |
 | AUTO-02 | Ranked free-only failover with initial attempt + five retries, same-session model switching, context compaction, error classification and durable handoff | Mocked retry/quota/context/session tests pass on current PR head; live non-confidential route and tool-call smoke tests remain | IN_PROGRESS |
 | AUTO-03 | PR repair/resume from CI failures without duplicate branches or lost work | CI-log collection, same-session repair and checkpoint-recovery code implemented; deliberate end-to-end failed-PR recovery scenario remains | IN_PROGRESS |
-| AUTO-04 | Model-independent review stage and evidence-based backlog completion checks | Reviewer rejects seeded regression and false completion claim | READY |
+| AUTO-04 | Model-independent review stage and evidence-based backlog completion checks | Deterministic `scripts/eclipse_review.py` gate wired into controller `validate_worktree`; `tests/test_review.py` proves rejection of a deleted/newly skipped test and of false completion claims (placeholder VERIFIED, invented test reference, completion claim while work remains). Protected controller change still needs Windows CI and owner merge | IN_PROGRESS |
 
 ## Priority 1 — Real model runtime and resource management
 

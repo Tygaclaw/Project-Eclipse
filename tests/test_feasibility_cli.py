@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests import _bootstrap  # noqa: F401
+
 import contextlib
 import io
 import json

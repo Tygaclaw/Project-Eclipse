@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests import _bootstrap  # noqa: F401
+
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
