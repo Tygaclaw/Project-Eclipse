@@ -1037,6 +1037,90 @@ def _scan_additional_templates(
 
     return files, sorted(files), warnings
 
+def _extract_config_fields(config: dict[str, Any]) -> dict[str, Any]:
+    class_value = config.get("tokenizer_class")
+    max_length = config.get("model_max_length")
+    if isinstance(max_length, bool) or not isinstance(max_length, int) or max_length < 0:
+        max_length = None
+    padding_side = config.get("padding_side")
+    truncation_side = config.get("truncation_side")
+    return {
+        "class": class_value if isinstance(class_value, str) else None,
+        "class_source": _TOKENIZER_CONFIG if isinstance(class_value, str) else None,
+        "max_length": max_length,
+        "max_length_source": _TOKENIZER_CONFIG if max_length is not None else None,
+        "padding_side": padding_side if isinstance(padding_side, str) else None,
+        "truncation_side": truncation_side if isinstance(truncation_side, str) else None,
+    }
+
+
+def _extract_tokenizer_json_fields(tokenizer_json: Any, limits: TokenizerLimits) -> dict[str, Any]:
+    if not isinstance(tokenizer_json, dict):
+        return {
+            "tokenizer_model_type": None,
+            "pre_tokenizer_type": None,
+            "decoder_type": None,
+            "normalizer_type": None,
+            "version": None,
+            "truncation": None,
+        }
+    model = tokenizer_json.get("model")
+    model_type = None
+    if isinstance(model, dict) and isinstance(model.get("type"), str):
+        model_type = model["type"]
+
+    def component_type(key: str) -> str | None:
+        component = tokenizer_json.get(key)
+        if isinstance(component, dict) and isinstance(component.get("type"), str):
+            return component["type"]
+        return None
+
+    version = tokenizer_json.get("version")
+    truncation = tokenizer_json.get("truncation")
+    truncation_summary = None
+    if isinstance(truncation, dict):
+        truncation_summary = {}
+        for key in ("direction", "strategy", "max_length"):
+            value = truncation.get(key)
+            if isinstance(value, (str, int)) and not isinstance(value, bool):
+                truncation_summary[key] = value
+
+    return {
+        "tokenizer_model_type": model_type,
+        "pre_tokenizer_type": component_type("pre_tokenizer"),
+        "decoder_type": component_type("decoder"),
+        "normalizer_type": component_type("normalizer"),
+        "version": version if isinstance(version, str) else None,
+        "truncation": truncation_summary,
+    }
+
+
+def _empty_tokenizer_summary() -> dict[str, Any]:
+    return {
+        "class": None,
+        "class_source": None,
+        "tokenizer_model_type": None,
+        "vocab_size": None,
+        "vocab_size_evidence": "unknown",
+        "vocab_size_source": None,
+        "vocab_size_candidates": [],
+        "added_token_count": None,
+        "added_token_count_source": None,
+        "added_tokens_preview": [],
+        "added_tokens_preview_truncated": False,
+        "special_tokens": {},
+        "additional_special_tokens": {"count": 0, "preview": [], "source": None},
+        "max_length": None,
+        "max_length_source": None,
+        "padding_side": None,
+        "truncation_side": None,
+        "pre_tokenizer_type": None,
+        "decoder_type": None,
+        "normalizer_type": None,
+        "version": None,
+        "tokenizer_json_truncation": None,
+    }
+
 def inspect_tokenizer(
     path: str | os.PathLike[str],
     limits: TokenizerLimits | None = None,
