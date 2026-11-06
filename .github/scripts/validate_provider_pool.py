@@ -26,13 +26,13 @@ PROVIDERS = {
     },
     "groq": {
         "secret": "GROQ_API_KEY",
-        "models": {"openai/gpt-oss-120b", "openai/gpt-oss-20b"},
+        "models": {"openai/gpt-oss-120b", "qwen/qwen3.8-27b"},
     },
     "openrouter": {
         "secret": "OPENROUTER_API_KEY",
         "models": {
             "nvidia/nemotron-3-ultra-550b-a55b:free",
-            "nvidia/nemotron-3.5-lightning:free",
+            "cohere/north-mini-code:free",
         },
     },
     "tokenharbor": {
