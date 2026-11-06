@@ -25,6 +25,7 @@ PROVIDER_CONFIG_IDS = {
     "nvidia": "nvidia",
     "cloudflare": "cloudflare-workers-ai",
     "cohere": "cohere",
+    "orcarouter": "orcarouter",
 }
 
 PROVIDER_SECRET_NAMES = {
@@ -39,6 +40,7 @@ PROVIDER_SECRET_NAMES = {
     "nvidia": ("NVIDIA_API_KEY",),
     "cloudflare": ("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"),
     "cohere": ("COHERE_API_KEY",),
+    "orcarouter": ("ORCAROUTER_API_KEY",),
 }
 
 
@@ -130,6 +132,13 @@ def main() -> int:
                 or model_id == "stealth/crouton-alpha"
             ):
                 fail(f"{command}: OpenRouter model is not marked free: {model!r}")
+
+        # OrcaRouter must use only its explicit zero-price free routes.
+        if workflow_provider == "orcarouter" and model_id not in {
+            "orcarouter/free",
+            "deepseek/deepseek-v4-flash-free",
+        }:
+            fail(f"{command}: OrcaRouter route is not explicitly free: {model!r}")
 
     # The agent step must conditionally pass provider credentials rather than
     # giving every key to every model.
