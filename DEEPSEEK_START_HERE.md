@@ -38,7 +38,11 @@ Preserve both separate maps: original Master Plan Phase 0, Phases 1–9, Phase 1
 - UX should be colourful, spacious, beginner-friendly and uncluttered. No dense dashboard, fake metrics or fake buttons.
 
 ## Existing implementation baseline and next gates
-The repository contains a working Windows desktop shell, bounded model inspectors, an evidence-labelled Model Atlas, tokenizer/chat-template inspection in PR #5, and static hardware/RAM/VRAM feasibility work in PR #8. Verify each PR's current state and CI before treating unmerged work as shipped. Continue through small reviewable milestones; do not repeat completed Qwen setup or A* evaluation.
+The current `main` line already includes the merged tokenizer/chat-template work (PR #5), complete product/runtime specification (PR #6), OpenCode external-directory safeguard (PR #7), clean mainline hardware-feasibility increment (PR #10), and ranked 12-route free-model pool (PR #11). The old stacked PRs #8 and #9 were superseded; do not revive them. Verify current `main`, PR and CI state instead of relying on historical branch notes.
+
+Main currently has bounded GGUF/Safetensors/Hugging Face inspection, tokenizer/chat-template inventory, an evidence-labelled Model Atlas, a three-workspace PySide6 desktop shell, host discovery and a **static** RAM/VRAM/KV feasibility estimate. It still does not have a real ECLIPSE-managed inference engine, the Capability Amplification system, Obsidian integration, a functional Agent, or end-to-end integration. Do not call those complete because placeholders or specifications exist.
+
+The autonomous bootstrap is being implemented on `feature/autonomous-engineering-engine-2026-11-06`. It adds the controller, ranked free-only retries/failover, session handoff, backlog and scheduled GitHub Actions workflow. It is not operational until its protected bootstrap PR is reviewed/merged and its first Actions run is verified.
 
 ## Provider allowance, privacy and recovery
 
@@ -71,3 +75,14 @@ Never request, print or commit secrets. Read credentials only through Actions en
 ## Autonomous implementation and recovery contract
 
 The owner has explicitly authorised autonomous engineering through the complete, integrated ECLIPSE application. Follow `docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md` and `AUTONOMOUS_BACKLOG.md` as the controlling execution contract. Work in bounded, reviewable milestones; preserve a durable checkpoint; retry a failed model up to five times after its initial attempt when the error is plausibly transient; then continue the same OpenCode session with the next ranked approved free model. Quota exhaustion, invalid credentials and model-not-found errors should trigger immediate recorded failover rather than futile retries. Never use paid routes. Commit only after deterministic checks and secret/large-file guards pass. A model's statement of completion is not proof; the independent test/build/evidence gates decide whether work may land on `main`.
+
+
+### Autonomous controller operating details
+
+- `AUTONOMOUS_BACKLOG.md` is the prioritized execution queue; the protocol at `docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md` is authoritative.
+- The GitHub Actions controller runs one bounded milestone at a time on a feature branch. It commits and opens the PR only after local deterministic validation and secret/large-file checks.
+- A safe product PR may be auto-merged only after Windows Python 3.11–3.14 CI and Windows Qt/PyInstaller packaging pass, with unchanged PR head. Workflow, credential, controller, security and permission changes remain draft for owner review.
+- After a safe merge, the controller queues the next workflow_dispatch run. A six-hour schedule and main-branch push trigger provide recovery. An existing open autonomous PR blocks duplicate work.
+- Transient model/tool transport failures: initial call + up to five retries; then next ranked free route. Provider-wide quota/auth failures skip that provider immediately. The same OpenCode session ID is used for retries and model changes whenever it was successfully created.
+- The model child receives only the selected provider key; it never receives `GITHUB_TOKEN` or other provider keys. Git commits, pushes and PR operations remain controller-owned.
+- If CI or safety checks fail, do not merge. Preserve the branch and evidence. Do not claim uninterrupted operation: real provider/runner/owner blockers must be recorded.
