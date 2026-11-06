@@ -44,47 +44,61 @@ jobs:
           model="tokenharbor/deepseek-v4.1-flash:free"
 
           # Match the most specific command first.
+          # The default /oc route above is rank 1. Numeric ranks are the global
+          # ECLIPSE coding-agent benchmark order; suffix-specific aliases must
+          # stay before their broader aliases to avoid substring misrouting.
           case "$COMMENT_BODY" in
-            *"/oc-dahl-deepseek"*)
-              provider="dahl"
-              model="dahl/deepseek-ai/DeepSeek-V4-Flash-0731"
-              ;;
-            *"/oc-dahl"*)
-              provider="dahl"
-              model="dahl/MiniMaxAI/MiniMax-M2.7"
-              ;;
+            # Rank 04: specific suffix must precede the broader Gemini command.
             *"/oc-gemini37"*)
               provider="google"
               model="google/gemini-3.7-flash"
               ;;
+            # Rank 02
             *"/oc-gemini"*)
               provider="google"
               model="google/gemini-3.8-flash"
               ;;
+            # Rank 06: Qwen is the preferred Groq coding-agent route.
             *"/oc-groq-qwen"*)
               provider="groq"
               model="groq/qwen/qwen3.8-27b"
               ;;
+            # Rank 11
             *"/oc-groq"*)
               provider="groq"
               model="groq/openai/gpt-oss-120b"
               ;;
+            # Rank 10: specific suffix must precede the broader OpenRouter command.
             *"/oc-openrouter-ultra"*)
               provider="openrouter"
               model="openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
               ;;
+            # Rank 07
             *"/oc-openrouter"*)
               provider="openrouter"
               model="openrouter/cohere/north-mini-code:free"
               ;;
+            # Rank 05: specific suffix must precede the broader Dahl command.
+            *"/oc-dahl-deepseek"*)
+              provider="dahl"
+              model="dahl/deepseek-ai/DeepSeek-V4-Flash-0731"
+              ;;
+            # Rank 09
+            *"/oc-dahl"*)
+              provider="dahl"
+              model="dahl/MiniMaxAI/MiniMax-M2.7"
+              ;;
+            # Rank 12: specific suffix must precede the broader Z.AI command.
             *"/oc-zai-45"*)
               provider="zai"
               model="zai/glm-4.5-flash"
               ;;
+            # Rank 08
             *"/oc-zai"*)
               provider="zai"
               model="zai/glm-4.7-flash"
               ;;
+            # Rank 03
             *"/oc-mimo"*)
               provider="tokenharbor"
               model="tokenharbor/mimo-v2.6-flash:free"
