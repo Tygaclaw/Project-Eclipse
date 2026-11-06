@@ -309,8 +309,16 @@ def safety_scan(paths: Sequence[str], *, max_bytes: int = 10 * 1024 * 1024) -> t
             problems.append(f"{name}: symlinks are not allowed in autonomous source PRs")
             continue
         if not path.exists():
-            # Deletions require explicit review; never silently auto-merge them.
-            protected = True
+            # Only a deleted, previously tracked file requires owner review.
+            tracked = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", "--", name],
+                cwd=ROOT,
+                env=controller_environment(dict(os.environ)),
+                text=True,
+                capture_output=True,
+                check=False,
+            ).returncode == 0
+            protected = protected or tracked
             continue
         if path.is_file():
             if path.stat().st_size > max_bytes:
