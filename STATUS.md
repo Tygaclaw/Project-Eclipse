@@ -1,6 +1,6 @@
 # ECLIPSE Project Status
 
-**Status:** `AUTONOMOUS_CONTROLLER_MERGED — AUTO-04_REVIEW_STAGE_OWNER_REVIEW_PENDING`
+**Status:** `AUTONOMOUS_RUN_ACTIVE — RUN-01_RUNTIME_CAPABILITY_CONTRACT_LOCAL_VERIFIED`
 **Last updated:** 2026-11-06
 **Current main head audited:** `acd7c41975fd6846fdfd4d7ac7c6616dd66765bb`
 
@@ -60,9 +60,15 @@ The autonomous controller now runs a deterministic, model-independent review gat
 
 Because this milestone changes the protected controller, its PR remains draft for owner review and Windows CI; it is not auto-merged. Batch status remains `IN_PROGRESS` until CI and merge are confirmed.
 
+## Runtime capability contract and support matrix — RUN-01
+
+`src/eclipse/core/runtime.py` adds the first shared-Core runtime contract. `BackendCapabilities`, `DeviceSupport` and `ControlSupport` let an inference adapter declare its support envelope (formats, architectures, tensor types, CPU/GPU devices, placement modes, controls, telemetry, maximum context). `evaluate_model_support(...)` compares a Model Atlas and host snapshot against that declaration and returns an evidence-labelled `eclipse_runtime_support` matrix. Per-dimension results are `declared_supported`, `unsupported` or `unknown`; a missing host snapshot or an unenumerated API (for example Vulkan) stays `unknown`, and an observed NVIDIA GPU is `hardware_present_backend_unvalidated` rather than supported. `runtime_verified` is always `false`; the contract never claims a model loads or generates. `load_capabilities(path)` reads a JSON manifest, and the `runtime-support` CLI command combines the atlas, host snapshot, requested placement mode and requested controls.
+
+Tests: `tests/test_runtime.py` (24 tests) and `tests/test_runtime_cli.py` (6 tests) cover supported/unsupported/unknown formats, architectures, tensor types, CPU/CUDA/Vulkan device cases, placement modes, control support and restart flags, manifest JSON round-trip and validation errors, and CLI success/error paths. Focused run: 30 tests OK. Full portable suite: `python -m unittest discover -s tests` ran **269 tests, OK, 11 skipped** (optional Qt tests) both with `PYTHONPATH=src` and with `PYTHONPATH` removed. This is a static contract and declaration comparison, not a working inference adapter; RUN-02 (real llama.cpp adapter) remains the runtime integration gate.
+
 ## What is not yet complete as a working product
 
-- Real ECLIPSE-managed model inference lifecycle and backend capability matrix.
+- Real ECLIPSE-managed model inference lifecycle. The backend capability contract and static support matrix exist (RUN-01), but no backend is integrated and no model is loaded, generated, stopped or measured by ECLIPSE yet.
 - Executable CPU/GPU/hybrid placement and context/KV allocation verification.
 - Reversible prepared variants and transformation lineage.
 - Runtime profiles, actual telemetry and benchmarked performance.
