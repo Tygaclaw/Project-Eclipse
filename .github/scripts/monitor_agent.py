@@ -17,7 +17,7 @@ REPO = os.environ["GITHUB_REPOSITORY"]
 TOKEN = os.environ["GH_TOKEN"]
 ISSUE_NUMBER = int(os.environ.get("MONITOR_ISSUE_NUMBER", "2"))
 API_ROOT = "https://api.github.com"
-MARKER_RE = re.compile(r"<!-- eclipse-agent-monitor-v1 (\\{.*?\\}) -->", re.S)
+MARKER_RE = re.compile(r"<!-- eclipse-agent-monitor-v1 (\{.*?\}) -->", re.S)
 
 
 def api_request(method: str, path: str, payload: dict | None = None):
@@ -82,26 +82,26 @@ def main() -> int:
 
     if latest is None:
         body = (
-            f"{marker}\\n"
-            f"## ECLIPSE monitor update — {checked}\\n\\n"
-            "- No OpenCode workflow runs were found.\\n"
+            f"{marker}\n"
+            f"## ECLIPSE monitor update — {checked}\n\n"
+            "- No OpenCode workflow runs were found.\n"
             "- This monitor checks GitHub only and makes no model API requests."
         )
     elif state["active"]:
         body = (
-            f"{marker}\\n"
-            f"## ECLIPSE monitor update — {checked}\\n\\n"
+            f"{marker}\n"
+            f"## ECLIPSE monitor update — {checked}\n\n"
             f"- OpenCode run [#{latest['run_number']}]({latest['html_url']}) is "
-            f"**{latest['status']}**.\\n"
+            f"**{latest['status']}**.\n"
             "- This monitor checks GitHub only; it does not send test prompts or consume model allowance."
         )
     else:
         conclusion = latest.get("conclusion") or latest.get("status")
         body = (
-            f"{marker}\\n"
-            f"## ECLIPSE monitor update — {checked}\\n\\n"
+            f"{marker}\n"
+            f"## ECLIPSE monitor update — {checked}\n\n"
             f"- Latest OpenCode run [#{latest['run_number']}]({latest['html_url']}) is "
-            f"**{conclusion}**.\\n"
+            f"**{conclusion}**.\n"
             "- This monitor checks GitHub only; it does not send test prompts or consume model allowance."
         )
 
