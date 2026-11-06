@@ -6,24 +6,26 @@
 
 **Models:** two choices per provider, 12 configured routes total. These are configured routes, not a claim that every key or upstream model has passed a live inference test.
 
-## Model and command list
+## Ranked model and command list
 
-| Provider | Comment command | OpenCode model ID | Intended role |
-|---|---|---|---|
-| Token Harbor | `/oc` | `tokenharbor/deepseek-v4.1-flash:free` | Default coding and agent route |
-| Token Harbor | `/oc-mimo` | `tokenharbor/mimo-v2.6-flash:free` | Alternate general/multimodal model |
-| Dahl | `/oc-dahl` | `dahl/MiniMaxAI/MiniMax-M2.7` | Primary Dahl agent model |
-| Dahl | `/oc-dahl-deepseek` | `dahl/deepseek-ai/DeepSeek-V4-Flash-0731` | Fast coding/reasoning alternative |
-| Google Gemini | `/oc-gemini` | `google/gemini-3.8-flash` | Primary Gemini coding/agent model |
-| Google Gemini | `/oc-gemini37` | `google/gemini-3.7-flash` | Previous stable Flash alternative |
-| Groq | `/oc-groq` | `groq/openai/gpt-oss-120b` | Largest selected Groq Free coding/reasoning option |
-| Groq | `/oc-groq-qwen` | `groq/qwen/qwen3.8-27b` | Parallel tool use; better fit than the smaller GPT-OSS alternative for multi-tool agent work |
-| OpenRouter | `/oc-openrouter` | `openrouter/cohere/north-mini-code:free` | Coding-agent specialist explicitly trained for OpenCode/SWE-Agent-style harnesses |
-| OpenRouter | `/oc-openrouter-ultra` | `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free` | Long-context reasoning, planning and agent orchestration alternative |
-| Z.AI | `/oc-zai` | `zai/glm-4.7-flash` | Primary GLM coding/agent model |
-| Z.AI | `/oc-zai-45` | `zai/glm-4.5-flash` | Alternate free Flash model |
+The global rank is based on ECLIPSE-relevant published coding-agent benchmarks, with explicit confidence caveats. The complete score-by-score research is in [`docs/ECLIPSE_AGENT_MODEL_RANKING_2026-11-06.md`](ECLIPSE_AGENT_MODEL_RANKING_2026-11-06.md).
 
-The model names above are exact IDs, including capitalization and the `:free` suffix where applicable. The Dahl model catalogue can rotate; refresh `GET https://inference.dahl.global/v1/models` before treating a Dahl route failure as an OpenCode configuration bug.
+| Rank | Provider | Comment command | OpenCode model ID | Intended role |
+|---:|---|---|---|---|
+| **1** | Token Harbor | `/oc` (default) | `tokenharbor/deepseek-v4.1-flash:free` | Primary coding, repository engineering and terminal-agent route |
+| **2** | Google Gemini | `/oc-gemini` | `google/gemini-3.8-flash` | First alternate; long-horizon coding and agent work |
+| **3** | Token Harbor | `/oc-mimo` | `tokenharbor/mimo-v2.6-flash:free` | Strong coding/general agent and multimodal, visual-development alternative |
+| **4** | Google Gemini | `/oc-gemini37` | `google/gemini-3.7-flash` | Previous-generation Flash fallback |
+| **5** | Dahl | `/oc-dahl-deepseek` | `dahl/deepseek-ai/DeepSeek-V4-Flash-0731` | Strong coding and terminal alternative; dated model ID needs live revision confirmation |
+| **6** | Groq | `/oc-groq-qwen` | `groq/qwen/qwen3.8-27b` | Coding agent with parallel tool calls |
+| **7** | OpenRouter | `/oc-openrouter` | `openrouter/cohere/north-mini-code:free` | OpenCode-oriented agentic coding specialist |
+| **8** | Z.AI | `/oc-zai` | `zai/glm-4.7-flash` | Lightweight coding and tool-use fallback |
+| **9** | Dahl | `/oc-dahl` | `dahl/MiniMaxAI/MiniMax-M2.7` | Complex project-engineering and agent-team alternative |
+| **10** | OpenRouter | `/oc-openrouter-ultra` | `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free` | Long-context reasoning, planning and review specialist |
+| **11** | Groq | `/oc-groq` | `groq/openai/gpt-oss-120b` | Secondary reasoning/tool-use route |
+| **12** | Z.AI | `/oc-zai-45` | `zai/glm-4.5-flash` | Experimental fallback; exact-model benchmark evidence is limited |
+
+The order above is the global ranking. The `opencode.json` provider groups and the models inside each provider are also arranged best-first. The workflow's selector keeps suffix-specific commands ahead of broader commands where needed to prevent a command such as `/oc-gemini37` from being mistaken for `/oc-gemini`; that syntax ordering is not the benchmark ranking.
 
 ## GitHub Actions secrets
 
