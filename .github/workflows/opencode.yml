@@ -42,6 +42,7 @@ jobs:
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
           ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
           KILO_API_KEY: ${{ secrets.KILO_API_KEY }}
+          ZAI_GLM_API_KEY: ${{ secrets.ZAI_GLM_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -190,6 +191,18 @@ jobs:
             *"/oc-kilo"*)
               provider="kilo"
               model="kilo/kilo-auto/free"
+              ;;
+            *"/oc-zai-vision"*)
+              provider="zai"
+              model="zai/glm-4.6v-flash"
+              ;;
+            *"/oc-zai-45"*)
+              provider="zai"
+              model="zai/glm-4.5-flash"
+              ;;
+            *"/oc-zai"*)
+              provider="zai"
+              model="zai/glm-4.7-flash"
               ;;
             *"/oc-cohere-eval"*)
               provider="cohere"
