@@ -14,7 +14,8 @@ jobs:
        github.event.comment.author_association == 'COLLABORATOR' ||
        github.event.comment.author_association == 'MEMBER')
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # GitHub-hosted jobs allow up to six hours. Keep a small cleanup margin.
+    timeout-minutes: 350
     permissions:
       id-token: write
       contents: read
@@ -25,10 +26,11 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Run OpenCode with Dahl DeepSeek V4 Flash
+      - name: Run OpenCode with Token Harbor free models
         uses: anomalyco/opencode/github@latest
         env:
-          DAHL_API_KEY: ${{ secrets.DAHL_API_KEY }}
+          TOKENHARBOR_API_KEY: ${{ secrets.TOKENHARBOR_API_KEY }}
         with:
-          model: dahl/deepseek-ai/DeepSeek-V4-Flash-0731
+          # /oc-mimo is a manual fallback if DeepSeek's free route is unavailable.
+          model: ${{ contains(github.event.comment.body, '/oc-mimo') && 'tokenharbor/mimo-v2.6-flash:free' || 'tokenharbor/deepseek-v4.1-flash:free' }}
           agent: build
