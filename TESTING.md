@@ -2,7 +2,7 @@
 
 ## Current automated suite
 
-The static-inspection suite uses only Python's standard library and synthetic binary fixtures. It currently contains 82 tests and covers:
+The static-inspection suite uses only Python's standard library and synthetic binary fixtures. It currently contains 86 tests and covers:
 
 - GGUF v2/v3 and big-endian v3 header handling.
 - Metadata and tensor descriptor parsing.
@@ -13,8 +13,8 @@ The static-inspection suite uses only Python's standard library and synthetic bi
 - Read-only behavior, path privacy and JSON CLI output.
 - GGML type registry block/type sizes, derived exact GGUF storage bytes, non-block-multiple rows and truncated-file warnings.
 - Safetensors header parsing, metadata, unknown dtypes, shape/range mismatch warnings, overlapping/out-of-range/negative offsets, invalid JSON, header limits and read-only behavior.
-- Hugging Face folder discovery: `config.json` summaries, shard-index weight-map parsing, missing/unreferenced shard warnings, declared-total mismatch warnings, path-separator rejection, entry limits, symlink skipping and read-only behavior.
-- Model Atlas core: GGUF/Safetensors/folder dispatch, parameter and storage aggregation, evidence labels, corrupt-shard incompleteness, unsupported input and shard limits.
+- Hugging Face folder discovery: `config.json` summaries, shard-index weight-map parsing, referenced/missing/unreferenced shard handling, bounded lazy directory enumeration, capped control-file reads, path-separator rejection, symlink skipping and read-only behavior.
+- Model Atlas core: GGUF/Safetensors/folder dispatch, tensor-element and storage aggregation, evidence labels, missing/corrupt shard incompleteness, unreferenced-shard exclusion, tensor-data total reconciliation, unsupported input and shard limits.
 
 Run:
 
@@ -34,4 +34,4 @@ Synthetic tests prove parser behavior for the cases represented by their fixture
 3. Real multi-shard Safetensors folders and shard-index fixtures.
 4. Compare metadata/tensor descriptor output and derived sizes with a trusted upstream loader.
 5. Tokenizer/chat-template file inspection and remote model-card metadata (not yet in scope).
-5. Later: static memory estimator, preparation integrity, runtime correctness and capability evaluation.
+6. Later: static memory estimator, preparation integrity, runtime correctness and capability evaluation.
