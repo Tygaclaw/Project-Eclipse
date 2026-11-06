@@ -14,13 +14,14 @@ It is not merely a model-file viewer, tensor inspector, downloader, quantizer, t
 
 The central objective is the greatest **verified useful capability at the best practical sustained speed**, within explicit resource limits and while keeping Windows responsive. Successful loading alone is not success. A model that loads but generates too slowly, pages the PC heavily or loses important capabilities must be reported honestly.
 
-Performance goals are targets to measure, not promises:
-- Preferred where model and hardware allow: approximately 15–20+ sustained tokens/second.
-- Primary everyday acceptance target: 10+ sustained tokens/second.
-- Below 5 tokens/second may be useful for research or batch work, but must not be presented as the everyday fast path.
-- Always measure time to first token, sustained generation rate, variability, resource use, storage traffic and output quality.
+Performance goals are model-class-specific targets to measure, not promises. The 10+ and 15–20+ sustained tokens/second targets apply **only to large models that cannot run natively on the target computer** and that ECLIPSE is trying to make practically usable through its advanced placement, memory-management and inference work:
 
-A model/hardware combination is allowed to fail a performance gate. ECLIPSE must explain the limiting factor and show the fastest verified alternative rather than inventing a speed claim.
+- **Models that already run natively on the computer:** There is no fixed 10+ or 15–20+ tokens/second requirement. ECLIPSE should preserve quality and pursue the best verified performance the available hardware and supported backend can deliver. Measure improvements against a reproducible native baseline; do not slow down or degrade a well-running smaller model merely to satisfy a target intended for oversized models.
+- **Large models that cannot run natively on the computer:** The primary everyday acceptance target is approximately **10+ sustained tokens/second**. Approximately **15–20+ sustained tokens/second** is the preferred stretch target where the model, architecture, workload and hardware allow it. These are research and acceptance goals, not guaranteed outcomes. Below 5 tokens/second may remain useful for research or batch work, but should not be presented as the intended everyday fast path for this oversized-model category.
+- **Classification must come from the hardware-feasibility assessment**, not parameter count or marketing labels alone. It must account for model weights, requested context/KV cache, runtime overhead, supported backend behaviour, available VRAM/RAM, storage and the user's resource reserves. The report must explain why a model is or is not considered natively runnable on the target configuration.
+- For every category, measure time to first token, sustained generation rate, variability, resource use, storage traffic and output quality under a recorded, reproducible configuration.
+
+A model/hardware combination is allowed to miss its applicable performance goal. ECLIPSE must explain the limiting factor and show the fastest verified alternative rather than inventing a speed claim.
 
 ## 2. One application, three primary workspaces
 
