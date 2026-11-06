@@ -16,6 +16,6 @@ Everyday chat and model selection → history/files/project context → shared C
 
 ## Current gate
 
-Static GGUF, Safetensors and Hugging Face folder inspection are present as source code with synthetic tests. GGUF tensor storage bytes are derived from a versioned GGML type registry, Safetensors storage bytes are observed from declared header offsets, and the folder inspector cross-checks a `model.safetensors.index.json` shard map against files on disk. The evidence-labelled Model Atlas core composes these into one JSON document. The next evidence gate is a verified GitHub Actions run plus a read-only real-file run on Windows. Work can then continue into tokenizer/chat-template inspection, the Model Atlas desktop UI and the memory/VRAM feasibility estimator while the desktop framework is evaluated separately.
+Static GGUF, Safetensors and Hugging Face folder inspection are present as source code with synthetic tests. The evidence-labelled Model Atlas core composes them into one JSON document. The pull-request CI run passed on Windows with Python 3.11–3.14. The remaining real-file acceptance gate is a read-only Windows run against actual checkpoints; it does not block independent engineering. Next, add tokenizer/chat-template inspection and begin the Windows desktop framework spike and navigable three-workspace shell, bringing the Model Atlas into the first real workspace screen.
 
 See [`ORIGINAL_PHASE_MAP.md`](ORIGINAL_PHASE_MAP.md) for both canonical phase sequences and the five internal subsystems.
