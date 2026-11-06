@@ -289,6 +289,30 @@
           }
         }
       }
+    },
+    "orcarouter": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "OrcaRouter — free-only route",
+      "options": {
+        "baseURL": "https://api.orcarouter.ai/v1",
+        "apiKey": "{env:ORCAROUTER_API_KEY}"
+      },
+      "models": {
+        "orcarouter/free": {
+          "name": "OrcaRouter Free Router (DeepSeek V4 Flash / V4 Pro; $0)",
+          "limit": {
+            "context": 1048576,
+            "output": 384000
+          }
+        },
+        "deepseek/deepseek-v4-flash-free": {
+          "name": "DeepSeek V4 Flash Free via OrcaRouter ($0; HTTP 429 on limit)",
+          "limit": {
+            "context": 1048576,
+            "output": 384000
+          }
+        }
+      }
     }
   },
   "permission": {
