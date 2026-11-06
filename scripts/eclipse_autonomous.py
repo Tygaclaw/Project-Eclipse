@@ -617,6 +617,152 @@ def create_draft_checkpoint(
     return created.stdout.strip().splitlines()[-1]
 
 
+def find_open_autonomous_pr(source_env: dict[str, str]) -> dict[str, object] | None:
+    result = gh(
+        ["pr", "list", "--state", "open", "--base", "main",
+         "--json", "number,headRefName,isDraft,url,headRefOid"],
+        source_env=source_env,
+    )
+    entries = json.loads(result.stdout or "[]")
+    return next(
+        (
+            item for item in entries
+            if str(item.get("headRefName", "")).startswith("feature/eclipse-autonomous-")
+        ),
+        None,
+    )
+
+
+def resume_existing_pr(
+    pr: dict[str, object], source_env: dict[str, str], run_title: str, deadline: float
+) -> int:
+    """Resume a failed safe autonomous PR from its branch and durable repository checkpoint."""
+    branch = str(pr["headRefName"])
+    pr_url = str(pr["url"])
+    if bool(pr.get("isDraft")):
+        print(f"OWNER_REVIEW_REQUIRED: draft autonomous PR is open: {pr_url}")
+        return 0
+
+    controller_env = controller_environment(source_env)
+    subprocess.run(["git", "fetch", "origin", "main", branch], cwd=ROOT, env=controller_env, check=True)
+    subprocess.run(
+        ["git", "switch", "--force-create", branch, f"origin/{branch}"],
+        cwd=ROOT, env=controller_env, check=True,
+    )
+    subprocess.run(["git", "merge-base", "HEAD", "origin/main"], cwd=ROOT, env=controller_env, check=True)
+
+    prior_logs = remote_ci_failure_context(pr_url, branch, source_env)
+    check_result = gh(["pr", "checks", pr_url, "--watch", "--fail-fast"], source_env=source_env, check=False)
+    if check_result.returncode == 0:
+        paths = changed_paths()
+        safe, reason, protected = safety_scan(paths)
+        if safe and not protected:
+            details = json.loads(gh(
+                ["pr", "view", pr_url, "--json", "headRefOid,state,isDraft"],
+                source_env=source_env,
+            ).stdout)
+            local_head = subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=ROOT, env=controller_env,
+                text=True, capture_output=True, check=True,
+            ).stdout.strip()
+            if details.get("state") == "OPEN" and not details.get("isDraft") and details.get("headRefOid") == local_head:
+                merged = gh(["pr", "merge", pr_url, "--squash", "--delete-branch"], source_env=source_env, check=False)
+                if merged.returncode == 0:
+                    gh(["workflow", "run", "eclipse-autonomous.yml", "--ref", "main", "-f", "mode=continue"],
+                       source_env=source_env, check=False)
+                    print(f"Previously open autonomous PR passed checks and was merged: {pr_url}")
+                    return 0
+        print(f"Open PR checks pass but auto-merge is protected or blocked: {reason or pr_url}")
+        return 0
+
+    logs = prior_logs or redact(check_result.stdout + check_result.stderr, source_env)[-12_000:]
+    recovery_prompt = f"""RECOVER THE EXISTING ECLIPSE AUTONOMOUS PR — DO NOT START A NEW BACKLOG ITEM.
+
+You are continuing work on existing PR {pr_url}, branch {branch}, against main. The previous runner ended with an open PR. Read the current diff, AUTONOMOUS_BACKLOG.md, .eclipse/AUTONOMOUS_SESSION_HANDOFF.md and the relevant tests. Preserve all correct work already in this branch. Fix the actual failing remote check(s), add regression coverage and update status/handoff with evidence. Do not create another branch or another PR, do not commit/push/merge, and do not weaken tests. The parent controller will commit/push this same branch and re-run Windows CI.
+
+This is a recovered OpenCode session: the former in-memory session may not exist on this runner. Treat the branch, commits, handoff and logs as the authoritative checkpoint.
+
+Remote CI failure evidence:
+{logs[-20_000:]}
+"""
+    success, session_id, selected_model, failure = run_agent_with_failover(
+        recovery_prompt,
+        run_title + " recover existing PR",
+        source_env,
+        turn_timeout=DEFAULT_TURN_TIMEOUT,
+        deadline=deadline,
+    )
+    if not success:
+        print("EXISTING_PR_RECOVERY_BLOCKED")
+        print(redact(failure or "", source_env)[-8_000:])
+        return 4
+
+    try:
+        paths, protected, guard_note = commit_and_push_worktree(branch, source_env)
+    except Exception as exc:
+        print(f"EXISTING_PR_RECOVERY_SAFETY_BLOCKED: {type(exc).__name__}: {exc}")
+        return 4
+    if not paths:
+        print("Existing PR recovery produced no safe changes; PR remains open.")
+        return 4
+
+    for repair_round in range(5):
+        checks = gh(["pr", "checks", pr_url, "--watch", "--fail-fast"], source_env=source_env, check=False)
+        if checks.returncode == 0:
+            break
+        logs = remote_ci_failure_context(pr_url, branch, source_env)
+        if not logs:
+            print("Existing PR still fails CI; no fresh failure logs available. Leaving open.")
+            return 4
+        repaired, session_id, selected_model, failure = run_agent_with_failover(
+            build_repair_prompt("Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n" + logs),
+            run_title + f" recover PR CI {repair_round + 1}",
+            source_env,
+            turn_timeout=DEFAULT_TURN_TIMEOUT,
+            deadline=deadline,
+            initial_session_id=session_id,
+            start_model_id=selected_model,
+        )
+        if not repaired:
+            print("Existing PR CI repair exhausted the approved free-model routes.")
+            print(redact(failure or "", source_env)[-8_000:])
+            return 4
+        new_paths, new_protected, guard_note = commit_and_push_worktree(branch, source_env)
+        protected = protected or new_protected
+        if not new_paths:
+            print("Existing PR CI repair produced no new changes; leaving PR open.")
+            return 4
+
+    checks = gh(["pr", "checks", pr_url, "--watch", "--fail-fast"], source_env=source_env, check=False)
+    if checks.returncode != 0:
+        print("Existing PR remains failing after the repair limit; no merge performed.")
+        return 4
+
+    paths = changed_paths()
+    safe, reason, protected = safety_scan(paths)
+    if not safe or protected or bool(pr.get("isDraft")):
+        print(f"Existing PR passed checks but remains owner-review-only: {reason or pr_url}")
+        return 0
+
+    details = json.loads(gh(["pr", "view", pr_url, "--json", "headRefOid,state,isDraft"], source_env=source_env).stdout)
+    local_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, env=controller_env,
+        text=True, capture_output=True, check=True,
+    ).stdout.strip()
+    if details.get("state") != "OPEN" or details.get("isDraft") or details.get("headRefOid") != local_head:
+        print("Existing PR head changed or is not mergeable; no merge performed.")
+        return 5
+    merged = gh(["pr", "merge", pr_url, "--squash", "--delete-branch"], source_env=source_env, check=False)
+    if merged.returncode != 0:
+        print("Existing PR auto-merge remains blocked.")
+        print(redact(merged.stdout + merged.stderr, source_env)[-6_000:])
+        return 6
+    gh(["workflow", "run", "eclipse-autonomous.yml", "--ref", "main", "-f", "mode=continue"],
+       source_env=source_env, check=False)
+    print(f"Recovered, verified and merged existing autonomous PR: {pr_url}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--max-agent-minutes", type=int, default=int(os.getenv("ECLIPSE_MAX_AGENT_MINUTES", "240")))
@@ -628,9 +774,9 @@ def main() -> int:
     run_title = f"ECLIPSE autonomous milestone {run_id}-{attempt_id}"
     deadline = time.monotonic() + args.max_agent_minutes * 60
 
-    if check_open_autonomous_pr(source_env):
-        print("An autonomous milestone PR is already open. No duplicate work will be started.")
-        return 0
+    existing_pr = find_open_autonomous_pr(source_env)
+    if existing_pr:
+        return resume_existing_pr(existing_pr, source_env, run_title, deadline)
 
     controller_env = controller_environment(source_env)
     subprocess.run(["git", "fetch", "origin", base_branch], cwd=ROOT, env=controller_env, check=True)
