@@ -213,7 +213,7 @@ class FeasibilityPlannerTests(unittest.TestCase):
             "exceeds_resident_capacity_even_before_kv_cache",
         )
         self.assertTrue(assessment["weights_only"]["is_lower_bound_only"])
-        self.assertEqual(assessment["native_memory_candidate"], "oversized_candidate")
+        self.assertEqual(assessment["native_memory_candidate"], "oversized_for_requested_profile")
 
     def test_within_weight_capacity_has_no_oversized_model_speed_floor(self) -> None:
         result = plan_model_feasibility(
@@ -232,6 +232,34 @@ class FeasibilityPlannerTests(unittest.TestCase):
         self.assertEqual(
             result["capacity_assessment"]["native_memory_candidate"],
             "within_resident_capacity_candidate",
+        )
+
+    def test_kv_cache_can_make_requested_profile_oversized_when_weights_fit(self) -> None:
+        result = plan_model_feasibility(
+            atlas(weight_bytes=4 * GiB),
+            host(ram_available=8 * GiB, gpu_free=2 * GiB),
+            FeasibilityRequest(
+                context_tokens=262144,
+                system_ram_reserve_bytes=0,
+                gpu_vram_reserve_bytes=0,
+            ),
+        )
+        assessment = result["capacity_assessment"]
+        self.assertEqual(
+            assessment["weights_only"]["combined_ram_and_single_gpu"],
+            "fits_within_known_budget",
+        )
+        self.assertEqual(
+            assessment["weights_plus_kv_cache"]["combined_ram_and_single_gpu"],
+            "exceeds_known_budget",
+        )
+        self.assertEqual(
+            assessment["native_memory_candidate"],
+            "oversized_for_requested_profile",
+        )
+        self.assertIs(
+            result["execution_feasibility"]["performance_goal_policy"]["applies_to_this_profile"],
+            True,
         )
 
     def test_incomplete_weight_storage_below_capacity_leaves_target_scope_unknown(self) -> None:

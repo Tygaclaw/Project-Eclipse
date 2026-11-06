@@ -316,16 +316,25 @@ def plan_model_feasibility(
     else:
         memory_class = "unknown_available_memory"
 
-    # The 10+ and 15–20+ goals are exclusively for oversized models. Use
-    # weight residency as the conservative first discriminator: an excessive
-    # requested KV context alone must not turn a natively runnable model into
-    # an oversized-model performance target.
-    if weights_exceed_envelope:
-        native_memory_candidate = "oversized_candidate"
+    # Evaluate the requested profile, not weight storage in isolation. A
+    # complete weight estimate plus a known KV estimate may exceed the
+    # resident envelope even when the weights alone fit. Conversely, an
+    # incomplete estimate below budget cannot prove that the model fits.
+    full_estimate_exceeds_envelope = (
+        weights["usable_for_full_model_estimate"]
+        and kv_bytes is not None
+        and full_resident["combined_ram_and_single_gpu"] == "exceeds_known_budget"
+    )
+    oversized_for_requested_profile = (
+        weights_exceed_envelope or full_estimate_exceeds_envelope
+    )
+    if oversized_for_requested_profile:
+        native_memory_candidate = "oversized_for_requested_profile"
         target_applies: bool | None = True
     elif (
         weights["usable_for_full_model_estimate"]
-        and weights_only["combined_ram_and_single_gpu"] == "fits_within_known_budget"
+        and kv_bytes is not None
+        and full_resident["combined_ram_and_single_gpu"] == "fits_within_known_budget"
     ):
         native_memory_candidate = "within_resident_capacity_candidate"
         target_applies = False
@@ -449,7 +458,7 @@ def plan_model_feasibility(
             "model_load_tested": False,
             "inference_tested": False,
             "performance_target_category": (
-                "oversized_model_candidate_only"
+                "oversized_model_requested_profile_candidate_only"
                 if target_applies is True
                 else "no_fixed_floor_for_within_capacity_candidate"
                 if target_applies is False
