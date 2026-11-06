@@ -55,13 +55,15 @@
         "deepseek-ai/DeepSeek-V4-Flash-0731": {
           "name": "DeepSeek V4 Flash via Dahl",
           "limit": {
-            "context": 400000
+            "context": 400000,
+            "output": 32768
           }
         },
         "MiniMaxAI/MiniMax-M2.7": {
           "name": "MiniMax M2.7 via Dahl",
           "limit": {
-            "context": 180000
+            "context": 180000,
+            "output": 32768
           }
         }
       }
@@ -113,7 +115,8 @@
         "glm-4.7-flash": {
           "name": "GLM-4.7 Flash (Free)",
           "limit": {
-            "context": 200000
+            "context": 200000,
+            "output": 32768
           }
         },
         "glm-4.5-flash": {

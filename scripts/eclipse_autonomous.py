@@ -95,6 +95,13 @@ class RunResult:
 def classify_failure(output: str, timed_out: bool = False) -> Failure:
     """Classify a failed route without retrying exhausted or invalid providers."""
     text = output.lower()
+    # A malformed command line or invalid config is deterministic and not the model's
+    # fault: retrying or switching models can never fix it, so stop the whole run.
+    if any(token in text for token in (
+        "configuration is invalid", "unknown argument", "unknown arguments",
+        "run opencode with a message", "invalid config",
+    )):
+        return Failure("configuration", False, False, "OpenCode command-line or configuration error")
     if any(token in text for token in (
         "429", "rate limit", "rate_limit", "quota exceeded", "resource_exhausted",
         "insufficient_quota", "free tier limit", "credits exhausted", "payment required",
@@ -118,7 +125,7 @@ def classify_failure(output: str, timed_out: bool = False) -> Failure:
     if timed_out or any(token in text for token in (
         "502", "503", "504", "gateway timeout", "connection reset", "connection refused",
         "temporarily unavailable", "econnreset", "etimedout", "network error",
-        "socket hang up", "internal server error",
+        "socket hang up", "internal server error", "enotfound", "getaddrinfo",
     )):
         return Failure("transient", False, True, "transient provider/network failure")
     return Failure("agent_or_unknown", False, True, "model call failed; retry same session")
@@ -282,7 +289,7 @@ def run_opencode(
         raise
 
     command = [
-        "opencode", "run", "--standalone", "--format", "json", "--agent", "eclipse-autonomous",
+        "opencode", "run", "--format", "json", "--agent", "eclipse-autonomous",
         "--model", route.open_code_id, "--title", run_title, "--auto",
     ]
     if session_id:
@@ -516,6 +523,8 @@ def run_agent_with_failover(
             if result.returncode != 0:
                 failure = classify_failure(raw_output, result.timed_out)
                 last_failure = f"{route.open_code_id}: {failure.reason}\n{raw_output[-6_000:]}"
+                if failure.kind == "configuration":
+                    return False, session_id, "", "CONFIGURATION_ERROR (not a model failure; fix the controller/config): " + last_failure
                 if failure.skip_provider:
                     skipped_providers.add(route.provider)
                     break

@@ -104,7 +104,7 @@ class SafetyScanTests(unittest.TestCase):
 
 
 
-    def test_opencode_invocation_is_standalone_and_carries_session_and_selected_model(self) -> None:
+    def test_opencode_invocation_uses_only_valid_flags_and_carries_session_and_selected_model(self) -> None:
         captured = {}
         route = ROUTES[1]
 
@@ -136,7 +136,11 @@ class SafetyScanTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0)
         self.assertEqual(session, "ses_abcdefgh12345678")
-        self.assertIn("--standalone", captured["command"])
+        self.assertNotIn("--standalone", captured["command"])
+        # Only flags that exist in OpenCode 1.19.5 `opencode run --help`.
+        valid = {"--format", "--agent", "--model", "--title", "--auto", "--session"}
+        used = {part for part in captured["command"] if part.startswith("--")}
+        self.assertLessEqual(used, valid)
         self.assertIn("--session", captured["command"])
         self.assertIn("ses_previous12345678", captured["command"])
         self.assertIn("--model", captured["command"])
@@ -296,6 +300,39 @@ class FailoverLoopTests(unittest.TestCase):
         self.assertEqual(calls[:7], [ROUTES[0].open_code_id] * 7)
         self.assertEqual(calls[7], ROUTES[1].open_code_id)
         self.assertEqual(selected_model, ROUTES[1].open_code_id)
+
+
+class ConfigurationErrorTests(unittest.TestCase):
+    def test_cli_usage_error_is_fatal_configuration_failure(self) -> None:
+        failure = classify_failure("opencode run [message..]\n\nrun opencode with a message\nOptions:")
+        self.assertEqual(failure.kind, "configuration")
+        self.assertFalse(failure.retryable)
+
+    def test_invalid_config_is_fatal_configuration_failure(self) -> None:
+        self.assertEqual(
+            classify_failure("Error: Configuration is invalid at opencode.json").kind, "configuration"
+        )
+
+    def test_configuration_error_aborts_without_retries_or_failover(self) -> None:
+        from scripts.eclipse_autonomous import run_agent_with_failover
+
+        calls = []
+
+        def fake_call(route, prompt, session_id, run_title, **kwargs):
+            calls.append(route.open_code_id)
+            return RunResult(1, stderr="Error: Configuration is invalid at opencode.json"), None
+
+        success, _s, _m, failure = run_agent_with_failover(
+            "task", "cfg", {
+                "TOKENHARBOR_API_KEY": "tokenharbor-fake-key-1", "GEMINI_API_KEY": "gemini-fake-key-2",
+                "DAHL_API_KEY": "dahl-fake-key-3", "GROQ_API_KEY": "groq-fake-key-4",
+                "OPENROUTER_API_KEY": "openrouter-fake-key-5", "ZAI_API_KEY": "zai-fake-key-6",
+            },
+            call=fake_call, validate=lambda: (True, ""), sleep=lambda _s: None, rng=lambda: 0.0,
+        )
+        self.assertFalse(success)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("CONFIGURATION_ERROR", failure)
 
 
 class RankedPoolConsistencyTests(unittest.TestCase):

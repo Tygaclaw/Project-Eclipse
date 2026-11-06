@@ -53,7 +53,7 @@ Fail over immediately, without wasting five retries, for:
 
 For context-length errors, first compact the task using repository files, the durable handoff and the existing session; do not burn the retry budget. A test failure is an engineering failure, not a provider outage: ask the same session to diagnose and repair it, with the same six-call per-model bound. Fail over after the bound is exhausted.
 
-The same OpenCode session is continued using `opencode run --standalone --session <id> --model <provider/model>`. The official CLI supports session continuation, model selection, non-interactive JSON events and standalone execution for CI. A runner restart may not preserve the native in-memory session; in that case it must restore the sanitized durable handoff, Git history and working-tree checkpoint and state clearly that it is a recovered session, not the same process.
+The same OpenCode session is continued using `opencode run --session <id> --model <provider/model>`. OpenCode 1.19.5 supports session continuation, model selection and non-interactive JSON events; it has no `--standalone` flag (the first live run failed on it). A runner restart may not preserve the native in-memory session; in that case it must restore the sanitized durable handoff, Git history and working-tree checkpoint and state clearly that it is a recovered session, not the same process.
 
 If every approved free route is unavailable, write `BLOCKED_NO_FREE_MODEL`, preserve the worktree/handoff, publish the reason in the job summary and stop safely. Never use a paid model, paid fallback, account rotation, top-up or unapproved provider.
 
