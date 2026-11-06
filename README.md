@@ -86,3 +86,12 @@ This produces `dist\ECLIPSE\ECLIPSE.exe`.
 ## Project status
 
 See [`STATUS.md`](STATUS.md) and [`CONTINUATION.md`](CONTINUATION.md). This is an early engineering milestone, not a complete desktop app or a claim that the full ECLIPSE roadmap has shipped.
+
+## Autonomous engineering
+
+The repository's autonomous development controller is defined by [`docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md`](docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md) and [`AUTONOMOUS_BACKLOG.md`](AUTONOMOUS_BACKLOG.md). It is designed to select one bounded milestone per run, use the ranked free model pool, retry transient failures up to five times after the initial attempt, switch models while preserving the same OpenCode session when possible, run tests, and create a verified branch/PR.
+
+The workflow entry points are manual dispatch, main-branch updates and a six-hour schedule. Safe product PRs are only eligible for automatic merge after the Windows Python matrix and Windows Qt/PyInstaller package checks pass. Workflow, credential, permission and controller changes require owner review. No paid fallback or automatic top-up is allowed.
+
+**Bootstrap status:** the autonomous controller is being introduced on `feature/autonomous-engineering-engine-2026-11-06`. It is not active on `main` until its protected bootstrap PR is reviewed/merged and the first GitHub Actions run succeeds. The project is not yet the finished application; see `AUTONOMOUS_BACKLOG.md` and `STATUS.md`.
+
