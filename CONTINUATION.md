@@ -91,3 +91,45 @@ Verification actually run locally (Linux, Python 3.12.16, no PySide6): focused `
 
 The controller change is protected, so the milestone PR must remain draft for owner review and Windows CI. AUTO-04 stays `IN_PROGRESS` until that merge and CI are confirmed. Next READY milestone after AUTO-04 is RUN-01 (runtime adapter/backend capability contract and support matrix).
 
+## RUN-01 runtime capability contract — 6 November 2026
+
+Base main: `acd7c41975fd6846fdfd4d7ac7c6616dd66765bb`.
+
+Implemented:
+- `src/eclipse/core/runtime.py`: `BackendCapabilities`, `DeviceSupport`, `ControlSupport` contract with strict validation; `from_dict`/`to_dict` JSON manifest round-trip; `load_capabilities(path)`; `evaluate_model_support(...)` producing an evidence-labelled `eclipse_runtime_support` matrix; `evaluate_controls(...)`.
+- Per-dimension status vocabulary is `declared_supported` / `unsupported` / `unknown`. Missing atlas facts, an undeclared adapter capability, an unenumerated GPU API (Vulkan/SYCL/Metal) or a missing host snapshot stay `unknown`. An observed NVIDIA GPU for a CUDA device is `hardware_present_backend_unvalidated`, never supported. `runtime_verified` is always `false`; the matrix is a declaration comparison and does not prove loading, generation or speed.
+- `src/eclipse/core/__init__.py` exports the contract and evaluator; `src/eclipse/__main__.py` adds the `runtime-support` command (model path plus `--capabilities manifest.json`, optional `--placement` and repeatable `--control`).
+- `tests/test_runtime.py` (24 tests) and `tests/test_runtime_cli.py` (6 tests) cover supported/unsupported/unknown formats, architectures, tensor types, CPU/CUDA/Vulkan devices, placement, controls/restart flags, manifest validation and JSON round-trip, plus CLI success and error paths.
+
+Verification actually run locally (Linux, Python 3.12.16, PySide6 not installed): focused `tests.test_runtime` + `tests.test_runtime_cli` = 30 tests OK; full `python -m unittest discover -s tests` = 283 tests OK, 11 skipped (after the PR #16 recovery below), both with `PYTHONPATH=src` and with `PYTHONPATH` removed; `python -m compileall -q src tests scripts .github/scripts` passed; `git diff --check` clean.
+
+This is a static contract milestone, not a working inference adapter. No backend is integrated and the CLI reports `not_integrated` unless a manifest declares otherwise. RUN-02 (Windows-compatible llama.cpp adapter that connects to the existing Vulkan setup) remains the runtime integration gate and has owner-only Windows validation. Next READY backend-independent milestone after RUN-01 is PREP-01 (source identity, checksums and prepared-variant registry).
+
+## PR #16 stale-branch recovery — 6 November 2026
+
+Recovered process, not a new backlog milestone. The existing PR #16 branch
+(`feature/eclipse-autonomous-42307488690-1`) was based on `main` at PR #14
+(`37419e9`) and was missing PR #15 (`84ce050`). The controller's independent
+review gate (`scripts/eclipse_review.py --base origin/main`, part of
+`validate_worktree`) compares the working tree against `origin/main`, so it
+reported two **deleted test files** — `tests/test_autonomous_orphans.py` and
+`tests/test_autonomous_parking.py` — and rejected the change set. The RUN-01
+product code was correct; the branch was stale.
+
+Fix: restored the three files PR #15 changed from `origin/main`
+(`scripts/eclipse_autonomous.py`, `tests/test_autonomous_orphans.py`,
+`tests/test_autonomous_parking.py`). No product code or test was weakened.
+Added `tests/test_recovery.py` (2 tests) which reproduces the stale-base shape
+in a temporary Git repository and asserts the rejected-then-accepted behaviour.
+
+Local gates (Linux, Python 3.12.16, PySide6 not installed): `python -m unittest
+discover -s tests` = 283 tests OK, 11 skipped, with and without `PYTHONPATH`;
+`compileall` OK; provider-pool validation OK; `eclipse_review.py --base
+origin/main` accepted; `git diff --check` clean.
+
+Because the fix restores controller and `tests/test_autonomous_*` paths, the
+controller classifies the recovered PR as protected and it is expected to remain
+owner-review only. The recovery did not start PREP-01 or change any milestone
+status. The reported CI runs were in `action_required` state with no logs
+(awaiting approval), which the agent cannot change from the runner.
+

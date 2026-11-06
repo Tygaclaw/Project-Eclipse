@@ -1,6 +1,6 @@
 # ECLIPSE Project Status
 
-**Status:** `AUTONOMOUS_CONTROLLER_MERGED — AUTO-04_REVIEW_STAGE_OWNER_REVIEW_PENDING`
+**Status:** `AUTONOMOUS_RUN_ACTIVE — RUN-01_RUNTIME_CAPABILITY_CONTRACT_LOCAL_VERIFIED`
 **Last updated:** 2026-11-06
 **Current main head audited:** `acd7c41975fd6846fdfd4d7ac7c6616dd66765bb`
 
@@ -60,9 +60,19 @@ The autonomous controller now runs a deterministic, model-independent review gat
 
 Because this milestone changes the protected controller, its PR remains draft for owner review and Windows CI; it is not auto-merged. Batch status remains `IN_PROGRESS` until CI and merge are confirmed.
 
+## Runtime capability contract and support matrix — RUN-01
+
+`src/eclipse/core/runtime.py` adds the first shared-Core runtime contract. `BackendCapabilities`, `DeviceSupport` and `ControlSupport` let an inference adapter declare its support envelope (formats, architectures, tensor types, CPU/GPU devices, placement modes, controls, telemetry, maximum context). `evaluate_model_support(...)` compares a Model Atlas and host snapshot against that declaration and returns an evidence-labelled `eclipse_runtime_support` matrix. Per-dimension results are `declared_supported`, `unsupported` or `unknown`; a missing host snapshot or an unenumerated API (for example Vulkan) stays `unknown`, and an observed NVIDIA GPU is `hardware_present_backend_unvalidated` rather than supported. `runtime_verified` is always `false`; the contract never claims a model loads or generates. `load_capabilities(path)` reads a JSON manifest, and the `runtime-support` CLI command combines the atlas, host snapshot, requested placement mode and requested controls.
+
+Tests: `tests/test_runtime.py` (24 tests) and `tests/test_runtime_cli.py` (6 tests) cover supported/unsupported/unknown formats, architectures, tensor types, CPU/CUDA/Vulkan device cases, placement modes, control support and restart flags, manifest JSON round-trip and validation errors, and CLI success/error paths. Focused run: 30 tests OK. Full portable suite after the PR #16 stale-branch recovery: `python -m unittest discover -s tests` ran **283 tests, OK, 11 skipped** (optional Qt tests) both with `PYTHONPATH=src` and with `PYTHONPATH` removed. This is a static contract and declaration comparison, not a working inference adapter; RUN-02 (real llama.cpp adapter) remains the runtime integration gate.
+
+## PR #16 recovery — stale branch resynchronised with main
+
+The recovered PR #16 branch was cut from `main` at PR #14 and did not contain PR #15. Because the controller's independent review gate compares the worktree against `origin/main`, it reported `tests/test_autonomous_orphans.py` and `tests/test_autonomous_parking.py` as deleted and rejected the change set even though the RUN-01 product code was correct. The recovery restored the three files PR #15 changed (`scripts/eclipse_autonomous.py` plus the two controller test modules) from `origin/main`; no test or product behaviour was weakened. `tests/test_recovery.py` (2 tests) reproduces the stale-base failure and the resynchronisation fix in a temporary Git repository. Local gates: 283 tests OK (11 skipped), compile OK, provider pool OK, independent review accepted, whitespace clean. This recovery did not start a new backlog item and did not change any milestone status. It changes controller/test paths, so the PR remains owner-review only.
+
 ## What is not yet complete as a working product
 
-- Real ECLIPSE-managed model inference lifecycle and backend capability matrix.
+- Real ECLIPSE-managed model inference lifecycle. The backend capability contract and static support matrix exist (RUN-01), but no backend is integrated and no model is loaded, generated, stopped or measured by ECLIPSE yet.
 - Executable CPU/GPU/hybrid placement and context/KV allocation verification.
 - Reversible prepared variants and transformation lineage.
 - Runtime profiles, actual telemetry and benchmarked performance.

@@ -4,8 +4,9 @@
 
 ## Current state
 
-- Status: BOOTSTRAP
-- Active backlog item: AUTO-01 — autonomous run controller and workflow.
+- Status: ACTIVE
+- Active backlog item: RUN-01 (runtime capability contract) implemented locally this run; next READY backend-independent item is PREP-01 (source identity, checksums and prepared-variant registry).
+- Note: the PR #16 recovery of 2026-11-06 did not start PREP-01; it re-synchronised the stale branch with `main` (PR #15) so the independent review gate passes. See "Recovery — stale branch" below.
 - Base branch: main
 - Session ID: created by the autonomous controller at runtime and recorded in the runner log only; never place provider credentials here.
 - Last verified checkpoint: main includes merged PRs #5, #6, #7, #10 and #11.
@@ -54,3 +55,23 @@ Update this section after each milestone with changed files, commit/PR, selected
 - First live-run fix: the controller's `validation_environment()` omitted `PYTHONPATH`, so the `eclipse.*` test modules could not import and the unit-test gate failed with 10 errors. It now sets `PYTHONPATH=<repo>/src`; verified against `tests.test_hardware` with an empty parent `PYTHONPATH` (14 tests OK).
 - Second live-run fix: the already-running controller still held the old `validation_environment` in memory, so the same import failure recurred. Added `tests/_bootstrap.py`, imported by every `eclipse`-importing test module, which inserts `<repo>/src` into `sys.path` when `PYTHONPATH` is absent. `tests/test_test_bootstrap.py` reproduces the controller's no-`PYTHONPATH` environment in a subprocess. Full suite now passes with and without `PYTHONPATH`.
 - This changes protected controller/test paths, so the PR is draft for owner review + Windows CI. AUTO-04 remains `IN_PROGRESS` until merged. Next READY milestone: RUN-01.
+
+### RUN-01 runtime capability contract — 2026-11-06
+
+- Base: branch created from main at `acd7c41975fd6846fdfd4d7ac7c6616dd66765bb` (bootstrap PRs #12/#13 merged). Working tree was clean and matched `origin/main` before this run.
+- Added `src/eclipse/core/runtime.py`: `BackendCapabilities`, `DeviceSupport`, `ControlSupport` contract with strict validation and JSON manifest round-trip (`load_capabilities`); `evaluate_model_support(...)` and `evaluate_controls(...)` produce an evidence-labelled `eclipse_runtime_support` matrix. Status vocabulary: `declared_supported` / `unsupported` / `unknown`; observed NVIDIA GPU for CUDA is `hardware_present_backend_unvalidated`; `runtime_verified` is always `false`.
+- Wired `src/eclipse/core/__init__.py` exports and the `runtime-support` CLI command in `src/eclipse/__main__.py` (model path plus `--capabilities manifest.json`, optional `--placement` and repeatable `--control`).
+- Tests: new `tests/test_runtime.py` (24) and `tests/test_runtime_cli.py` (6) cover supported/unsupported/unknown formats, architectures, tensor types, CPU/CUDA/Vulkan devices, placement modes, controls and restart flags, manifest validation and CLI paths.
+- Checks actually run (Linux, Python 3.12.16, no PySide6): focused 30 tests OK; full `python -m unittest discover -s tests` = 269 tests OK, 11 skipped, with and without `PYTHONPATH`; `compileall` OK; `git diff --check` clean.
+- Limitation: static contract only. No backend is integrated; no model load/generate/stop, telemetry or performance evidence exists. RUN-02 (real Windows llama.cpp/Vulkan adapter) remains the integration gate with owner-only Windows validation, so only that gate is `WAITING_FOR_OWNER_VALIDATION`.
+- Next READY backend-independent milestone: PREP-01.
+
+### Recovery — stale branch versus main (PR #16) — 2026-11-06
+
+- Trigger: the recovered run received CI evidence showing the "Python checks" and "Windows desktop build" workflow runs in `action_required` state with no retrievable logs (the runs had not been approved/executed). The agent is not able to change GitHub-side run approval; the reproducible local failure was used instead.
+- Real reproducible failure: the branch was cut from `main` at PR #14 (`37419e9`) and therefore does not contain PR #15 (`84ce050`). The controller's independent review gate (`scripts/eclipse_review.py --base origin/main`, run inside `validate_worktree`) compares the working tree against `origin/main` and therefore reported two **deleted test files**, `tests/test_autonomous_orphans.py` and `tests/test_autonomous_parking.py`, and rejected the change set. Nothing was wrong with the RUN-01 product code; the branch was simply stale.
+- Fix: re-synchronised the branch with `main` by restoring the three files PR #15 changed — `scripts/eclipse_autonomous.py`, `tests/test_autonomous_orphans.py` and `tests/test_autonomous_parking.py` — from `origin/main`. No product code or test was weakened; the branch now contains the current controller test suite instead of appearing to delete it.
+- Regression coverage: `tests/test_recovery.py` reproduces the stale-base shape deterministically in a temporary Git repository and asserts (a) a branch behind an advanced base is rejected as a deleted test and (b) incorporating the base advance accepts the identical product change.
+- Local gates actually run (Linux, Python 3.12.16, PySide6 not installed): `python -m unittest discover -s tests` = **283 tests OK, 11 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed; `python -m compileall -q src tests .github/scripts scripts` OK; `python .github/scripts/validate_provider_pool.py` OK; `scripts/eclipse_review.py --base origin/main` accepted; `git diff --check` clean.
+- Consequence recorded honestly: restoring `scripts/eclipse_autonomous.py` and the `tests/test_autonomous_*` files touches controller/test paths that the controller classifies as protected, so this recovered PR is expected to remain owner-review only rather than auto-merge.
+- Not changed by this recovery: no new backlog item, no change to any milestone status, no commit/push/merge by the agent.

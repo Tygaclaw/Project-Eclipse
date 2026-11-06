@@ -6,7 +6,12 @@ import argparse
 import json
 import sys
 
-from eclipse.core import detect_host_hardware
+from eclipse.core import PLACEMENT_MODES, detect_host_hardware
+from eclipse.core.runtime import (
+    RuntimeContractError,
+    evaluate_model_support,
+    load_capabilities,
+)
 from eclipse.model_intelligence import (
     FeasibilityError,
     FeasibilityRequest,
@@ -111,6 +116,29 @@ def build_parser() -> argparse.ArgumentParser:
     feasibility.add_argument("--ram-reserve-mib", type=int, default=8192)
     feasibility.add_argument("--vram-reserve-mib", type=int, default=768)
     feasibility.add_argument("--compact", action="store_true", help="emit compact JSON")
+
+    runtime = commands.add_parser(
+        "runtime-support",
+        help="compare a model against a declared inference-backend capability manifest",
+    )
+    runtime.add_argument("path", help="path to a supported GGUF, Safetensors file or model folder")
+    runtime.add_argument(
+        "--capabilities",
+        required=True,
+        help="path to a JSON backend capability manifest",
+    )
+    runtime.add_argument(
+        "--placement",
+        choices=sorted(PLACEMENT_MODES),
+        help="optional requested placement mode to check",
+    )
+    runtime.add_argument(
+        "--control",
+        action="append",
+        default=[],
+        help="requested control name to check (repeatable)",
+    )
+    runtime.add_argument("--compact", action="store_true", help="emit compact JSON")
 
     return parser
 
@@ -251,6 +279,29 @@ def _run_plan_feasibility(args: argparse.Namespace, parser: argparse.ArgumentPar
     return 0
 
 
+def _run_runtime_support(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    try:
+        capabilities = load_capabilities(args.capabilities)
+        atlas = build_model_atlas(args.path)
+        host = detect_host_hardware(args.path)
+        requested_controls = {name: None for name in args.control}
+        report = evaluate_model_support(
+            capabilities,
+            atlas,
+            host,
+            placement_mode=args.placement,
+            requested_controls=requested_controls,
+        )
+    except (RuntimeContractError, ModelAtlasError, OSError, ValueError) as exc:
+        print(
+            f"ECLIPSE: runtime support check failed: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return 2
+    print(json.dumps(report, ensure_ascii=False, indent=None if args.compact else 2, allow_nan=False))
+    return 0
+
+
 def _run_build_atlas(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if args.max_shards < 0:
         parser.error("--max-shards cannot be negative")
@@ -281,6 +332,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_inspect_host(args, parser)
     if args.command == "plan-feasibility":
         return _run_plan_feasibility(args, parser)
+    if args.command == "runtime-support":
+        return _run_runtime_support(args, parser)
     parser.error(f"Unknown command: {args.command}")
     return 2
 
