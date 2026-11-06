@@ -26,8 +26,15 @@ def meta_string(key: str, value: str) -> bytes:
     return gguf_string(key) + struct.pack("<I", 8) + gguf_string(value)
 
 
-def build_gguf(tensors: list[tuple[str, tuple[int, ...], int, int]]) -> bytes:
-    metadata = [meta_string("general.architecture", "llama")]
+def meta_uint32(key: str, value: int) -> bytes:
+    return gguf_string(key) + struct.pack("<II", 4, value)
+
+
+def build_gguf(
+    tensors: list[tuple[str, tuple[int, ...], int, int]],
+    extra_metadata: list[bytes] | None = None,
+) -> bytes:
+    metadata = [meta_string("general.architecture", "llama"), *(extra_metadata or [])]
     body = bytearray(b"GGUF")
     body += struct.pack("<IQQ", 3, len(tensors), len(metadata))
     body += b"".join(metadata)
@@ -78,6 +85,62 @@ class ModelAtlasTests(unittest.TestCase):
         self.assertEqual(atlas["evidence"]["parameters"], "observed")
         self.assertEqual(atlas["architecture"]["architecture"], "llama")
         self.assertFalse(atlas["inspection"]["tensor_payloads_loaded"])
+
+    def test_gguf_architecture_facts_are_extracted_with_sources(self) -> None:
+        details = [
+            ("llama.block_count", 32),
+            ("llama.embedding_length", 4096),
+            ("llama.attention.head_count", 32),
+            ("llama.attention.head_count_kv", 8),
+            ("llama.attention.key_length", 128),
+            ("llama.attention.value_length", 128),
+            ("llama.context_length", 32768),
+            ("llama.feed_forward_length", 14336),
+        ]
+        metadata = [meta_uint32(key, value) for key, value in details]
+        path = self.write("model.gguf", build_gguf([("blk.0.weight", (4, 8), 0, 0)], metadata))
+        atlas = build_model_atlas(path)
+        architecture = atlas["architecture"]["details"]
+        self.assertEqual(architecture["layer_count"]["value"], 32)
+        self.assertEqual(architecture["hidden_size"]["value"], 4096)
+        self.assertEqual(architecture["attention_heads"]["value"], 32)
+        self.assertEqual(architecture["kv_heads"]["value"], 8)
+        self.assertEqual(architecture["key_head_dimension"]["value"], 128)
+        self.assertEqual(architecture["value_head_dimension"]["value"], 128)
+        self.assertEqual(architecture["context_length"]["value"], 32768)
+        self.assertEqual(architecture["layer_count"]["evidence"], "observed")
+        self.assertEqual(architecture["layer_count"]["source"], "llama.block_count")
+
+    def test_hf_architecture_details_use_bounded_text_config_scalars(self) -> None:
+        config = {
+            "model_type": "multimodal-wrapper",
+            "architectures": ["ExampleForConditionalGeneration"],
+            "text_config": {
+                "model_type": "llama",
+                "num_hidden_layers": 32,
+                "hidden_size": 4096,
+                "num_attention_heads": 32,
+                "num_key_value_heads": 8,
+                "head_dim": 128,
+                "max_position_embeddings": 65536,
+                "num_local_experts": 8,
+                "num_experts_per_tok": 2,
+                "unrelated_large_value": "do not copy this field",
+            },
+        }
+        self.write("config.json", json.dumps(config).encode("utf-8"))
+        self.write("model.safetensors", build_safetensors(SINGLE, bytes(16)))
+        atlas = build_model_atlas(self.root)
+        details = atlas["architecture"]["details"]
+        self.assertEqual(atlas["architecture"]["architecture"], "multimodal-wrapper")
+        self.assertEqual(details["layer_count"]["value"], 32)
+        self.assertEqual(details["hidden_size"]["value"], 4096)
+        self.assertEqual(details["kv_heads"]["value"], 8)
+        self.assertEqual(details["key_head_dimension"]["value"], 128)
+        self.assertEqual(details["context_length"]["value"], 65536)
+        self.assertEqual(details["expert_count"]["value"], 8)
+        self.assertEqual(details["experts_per_token"]["value"], 2)
+        self.assertEqual(details["layer_count"]["source"], "config.json:text_config:num_hidden_layers")
 
     def test_builds_atlas_from_safetensors(self) -> None:
         path = self.write("model.safetensors", build_safetensors(SINGLE, bytes(16)))

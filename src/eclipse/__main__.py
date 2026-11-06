@@ -8,6 +8,7 @@ import sys
 
 from eclipse.core import detect_host_hardware
 from eclipse.model_intelligence import (
+    FeasibilityError,
     FeasibilityRequest,
     plan_model_feasibility,
     GGUFError,
@@ -91,7 +92,6 @@ def build_parser() -> argparse.ArgumentParser:
     atlas.add_argument("path", help="path to a .gguf file, a .safetensors file or a model folder")
     atlas.add_argument("--max-shards", type=int, default=4096)
     atlas.add_argument("--compact", action="store_true", help="emit compact JSON")
-
 
     host = commands.add_parser(
         "inspect-host",
@@ -244,7 +244,7 @@ def _run_plan_feasibility(args: argparse.Namespace, parser: argparse.ArgumentPar
         atlas = build_model_atlas(args.path)
         host = detect_host_hardware(args.path)
         report = plan_model_feasibility(atlas, host, request)
-    except (ModelAtlasError, OSError, ValueError) as exc:
+    except (FeasibilityError, ModelAtlasError, OSError, ValueError) as exc:
         print(f"ECLIPSE: feasibility planning failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(report, ensure_ascii=False, indent=None if args.compact else 2, allow_nan=False))
