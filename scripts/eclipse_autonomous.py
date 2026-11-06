@@ -269,7 +269,7 @@ def validate_worktree() -> tuple[bool, str]:
     outputs: list[str] = []
     for title, command in commands:
         completed = subprocess.run(
-            command, cwd=ROOT, env=controller_environment(dict(os.environ)),
+            command, cwd=ROOT, env=validation_environment(dict(os.environ)),
             text=True, capture_output=True, check=False,
         )
         combined = (completed.stdout or "") + (completed.stderr or "")
@@ -282,17 +282,17 @@ def validate_worktree() -> tuple[bool, str]:
 def changed_paths() -> list[str]:
     names = subprocess.run(
         ["git", "diff", "--name-only", "origin/main...HEAD"],
-        cwd=ROOT, env=controller_environment(dict(os.environ)),
+        cwd=ROOT, env=validation_environment(dict(os.environ)),
         text=True, capture_output=True, check=True,
     ).stdout.splitlines()
     untracked = subprocess.run(
         ["git", "ls-files", "--others", "--exclude-standard"],
-        cwd=ROOT, env=controller_environment(dict(os.environ)),
+        cwd=ROOT, env=validation_environment(dict(os.environ)),
         text=True, capture_output=True, check=True,
     ).stdout.splitlines()
     staged = subprocess.run(
         ["git", "diff", "--cached", "--name-only"],
-        cwd=ROOT, env=controller_environment(dict(os.environ)),
+        cwd=ROOT, env=validation_environment(dict(os.environ)),
         text=True, capture_output=True, check=True,
     ).stdout.splitlines()
     return sorted(set(names + untracked + staged))
@@ -313,7 +313,7 @@ def safety_scan(paths: Sequence[str], *, max_bytes: int = 10 * 1024 * 1024) -> t
             tracked = subprocess.run(
                 ["git", "ls-files", "--error-unmatch", "--", name],
                 cwd=ROOT,
-                env=controller_environment(dict(os.environ)),
+                env=validation_environment(dict(os.environ)),
                 text=True,
                 capture_output=True,
                 check=False,
@@ -348,16 +348,14 @@ def redact(text: str, source: dict[str, str]) -> str:
     return result
 
 
-def controller_environment(source_env: dict[str, str]) -> dict[str, str]:
-    """Allowlist the parent controller's environment; provider keys stay out of Git/gh/tests."""
+def validation_environment(source_env: dict[str, str]) -> dict[str, str]:
+    """Environment for tests and local Git inspection; contains no provider or GitHub credentials."""
     allowed = (
         "PATH", "HOME", "USER", "LANG", "LC_ALL", "TMPDIR", "TEMP", "TMP",
         "APPDATA", "LOCALAPPDATA", "SYSTEMROOT", "WINDIR", "CI",
     )
     env = {key: source_env[key] for key in allowed if key in source_env}
-    for key in ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_REPOSITORY", "GITHUB_RUN_ID"):
-        if source_env.get(key):
-            env[key] = source_env[key]
+    env["CI"] = "true"
     return env
 
 
@@ -367,8 +365,8 @@ def gh(
     source_env: dict[str, str],
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
-    env = controller_environment(source_env)
-    token = env.get("GITHUB_TOKEN") or env.get("GH_TOKEN")
+    env = validation_environment(source_env)
+    token = source_env.get("GITHUB_TOKEN") or source_env.get("GH_TOKEN")
     if not token:
         raise RuntimeError("GITHUB_TOKEN is unavailable to the parent controller.")
     env["GH_TOKEN"] = token
@@ -383,7 +381,7 @@ def git_with_write_token(
     token = source_env.get("GITHUB_TOKEN") or source_env.get("GH_TOKEN")
     if not token:
         raise RuntimeError("GITHUB_TOKEN is unavailable to the parent controller.")
-    env = controller_environment(source_env)
+    env = validation_environment(source_env)
     env["GIT_CONFIG_COUNT"] = "1"
     env["GIT_CONFIG_KEY_0"] = "http.https://github.com/.extraheader"
     encoded = base64.b64encode(f"x-access-token:{token}".encode()).decode()
@@ -557,7 +555,7 @@ def commit_and_push_worktree(
     branch: str, source_env: dict[str, str]
 ) -> tuple[list[str], bool, str]:
     """Run controller-side guards, commit and push; never called by the model child."""
-    controller_env = controller_environment(source_env)
+    controller_env = validation_environment(source_env)
     paths = changed_paths()
     if not paths:
         return [], False, ""
@@ -653,7 +651,7 @@ def resume_existing_pr(
         print(f"OWNER_REVIEW_REQUIRED: protected autonomous PR is open: {pr_url}")
         return 0
 
-    controller_env = controller_environment(source_env)
+    controller_env = validation_environment(source_env)
     subprocess.run(["git", "fetch", "origin", "main", branch], cwd=ROOT, env=controller_env, check=True)
     subprocess.run(
         ["git", "switch", "--force-create", branch, f"origin/{branch}"],
@@ -812,7 +810,7 @@ def main() -> int:
     if existing_pr:
         return resume_existing_pr(existing_pr, source_env, run_title, deadline)
 
-    controller_env = controller_environment(source_env)
+    controller_env = validation_environment(source_env)
     subprocess.run(["git", "fetch", "origin", base_branch], cwd=ROOT, env=controller_env, check=True)
     subprocess.run(["git", "switch", "--detach", f"origin/{base_branch}"], cwd=ROOT, env=controller_env, check=True)
     branch = f"feature/eclipse-autonomous-{run_id}-{attempt_id}"
