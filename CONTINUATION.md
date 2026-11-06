@@ -9,9 +9,10 @@
 
 ## What was actually verified in this increment
 
-- Python 3.14.4 with PySide6 `6.12.0` + PyInstaller `6.22.3`: 109 local unit tests passed (including 8 desktop tests) with standard-library `unittest` under `QT_QPA_PLATFORM=offscreen`; `compileall` over `src tests packaging` passed. The desktop tests skip cleanly when PySide6 is absent.
+- Windows desktop workflow [run #42169639645](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639645), Python 3.12 + PySide6 `6.12.0`: 110 tests passed, including all 8 offscreen desktop UI tests with no skips. PyInstaller built the Windows x64 package; the packaged backend smoke test, ZIP creation and artifact upload all passed.
+- Core CI matrix [run #42169639803](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639803) passed Python 3.11–3.14. Its eight UI tests were skipped because PySide6 is intentionally optional in that dependency-free matrix. The desktop tests skip cleanly when PySide6 is absent.
 - The desktop Atlas path runs the unchanged `build-atlas` command via `subprocess.Popen` with an argument list, a timeout, cancellation and bounded output, and validates the `eclipse_model_atlas`/`atlas_version == 1` contract and read-only invariants before rendering.
-- `packaging/eclipse-desktop.spec` and `packaging/launcher.py` build a windowed onedir `ECLIPSE.exe` that reuses `--atlas-backend` → `build-atlas`. The spec has not been run on Windows in this environment.
+- `packaging/eclipse-desktop.spec` and `packaging/launcher.py` built a windowed onedir `ECLIPSE.exe` on a GitHub-hosted Windows runner; `ECLIPSE.exe --atlas-backend --help` passed.
 - `docs/desktop-build-workflow.yml` is a proposed workflow only; it is deliberately outside `.github/workflows/`, which the OpenCode GitHub App cannot write. No Windows desktop artifact exists yet.
 - The desktop framework comparison and decision are recorded in `docs/ADR-001-desktop-framework.md` and `DECISIONS.md` D-011.
 - All inspectors and the atlas open inputs read-only and read zero tensor payload bytes.
@@ -22,18 +23,16 @@
 - Hugging Face folder scans are lazy and stop at the configured entry limit; control-file reads are capped even if a file changes during inspection. Index `metadata.total_size` is compared with observed tensor-data bytes, not whole Safetensors file sizes.
 - Baseline CI on `main` (parent commit `122fc56`) is green: "Python checks" run #17 on `windows-latest` passed all four Python 3.11–3.14 jobs.
 - The current core PR matrix [#42169639803](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639803) is green on Windows Python 3.11–3.14. The eight desktop tests skip in that matrix because it intentionally omits PySide6; all eight ran and passed in the dedicated desktop job [#42169639645](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639645).
-- No real user model file, Windows desktop build or GPU runtime was tested in this environment.
+- No real user model file or GPU runtime was tested. The packaged Windows build and smoke test ran on GitHub-hosted Windows; a manual interactive launch on the user's own Windows 11 PC remains pending.
 
 ## Next engineering actions
 
-1. Have the user run the portable package on Windows 11 and inspect a real GGUF/Safetensors/model folder without modifying it.
-2. Review and include the Qt/PySide6 LGPL notices, relinking instructions and corresponding-source offer in the public release package.
-3. Reconcile derived GGUF sizes against a trusted upstream loader on a full real checkpoint.
-2. Run the inspectors and the desktop app on real GGUF, Safetensors and multi-shard folders on Windows without moving or modifying the model; keep this as a user-validation gate rather than a prerequisite for unrelated work.
+1. Have the user launch the portable Windows x64 package on Windows 11 and inspect a real GGUF/Safetensors/model folder without moving or modifying it.
+2. Review and include PySide6/Qt LGPL notices, relinking instructions and a corresponding-source offer in the public release package before broader redistribution.
 3. Reconcile derived GGUF sizes against a trusted upstream loader on a full real checkpoint.
 4. Add tokenizer/chat-template file inspection and optional remote model-card metadata.
-5. Add the memory/VRAM feasibility estimator, preserving measured/derived/estimated/unknown distinctions.
-6. Continue the Capability Amplification and Agent workstreams without duplicating completed Qwen/API setup or the already completed A* evaluation; the current Capability and Agent screens are honest placeholders.
+5. Add the evidence-labelled memory/VRAM feasibility planner, preserving measured/derived/estimated/unknown distinctions.
+6. Continue the Capability Amplification and Agent workstreams behind the shared Core without duplicating completed Qwen/API setup or the already completed A* evaluation; current Capability and Agent screens are honest placeholders.
 
 ## Do not repeat
 
