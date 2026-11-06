@@ -305,12 +305,12 @@ def safety_scan(paths: Sequence[str], *, max_bytes: int = 10 * 1024 * 1024) -> t
         path = ROOT / name
         if any(name.startswith(prefix) for prefix in PROTECTED_PREFIXES):
             protected = True
+        if path.is_symlink():
+            problems.append(f"{name}: symlinks are not allowed in autonomous source PRs")
+            continue
         if not path.exists():
             # Deletions require explicit review; never silently auto-merge them.
             protected = True
-            continue
-        if path.is_symlink():
-            problems.append(f"{name}: symlinks are not allowed in autonomous source PRs")
             continue
         if path.is_file():
             if path.stat().st_size > max_bytes:
@@ -651,7 +651,6 @@ def resume_existing_pr(
     )
     subprocess.run(["git", "merge-base", "HEAD", "origin/main"], cwd=ROOT, env=controller_env, check=True)
 
-    prior_logs = remote_ci_failure_context(pr_url, branch, source_env)
     check_result = gh(["pr", "checks", pr_url, "--watch", "--fail-fast"], source_env=source_env, check=False)
     if check_result.returncode == 0:
         paths = changed_paths()
@@ -675,7 +674,9 @@ def resume_existing_pr(
         print(f"Open PR checks pass but auto-merge is protected or blocked: {reason or pr_url}")
         return 0
 
-    logs = prior_logs or redact(check_result.stdout + check_result.stderr, source_env)[-12_000:]
+    logs = remote_ci_failure_context(pr_url, branch, source_env) or redact(
+        check_result.stdout + check_result.stderr, source_env
+    )[-12_000:]
     recovery_prompt = f"""RECOVER THE EXISTING ECLIPSE AUTONOMOUS PR — DO NOT START A NEW BACKLOG ITEM.
 
 You are continuing work on existing PR {pr_url}, branch {branch}, against main. The previous runner ended with an open PR. Read the current diff, AUTONOMOUS_BACKLOG.md, .eclipse/AUTONOMOUS_SESSION_HANDOFF.md and the relevant tests. Preserve all correct work already in this branch. Fix the actual failing remote check(s), add regression coverage and update status/handoff with evidence. Do not create another branch or another PR, do not commit/push/merge, and do not weaken tests. The parent controller will commit/push this same branch and re-run Windows CI.
