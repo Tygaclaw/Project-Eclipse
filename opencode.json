@@ -313,6 +313,23 @@
           }
         }
       }
+    },
+    "kilo": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Kilo Gateway — free-only Auto Free route",
+      "options": {
+        "baseURL": "https://ai-gateway.kilo.ai/api/v1",
+        "apiKey": "{env:KILO_API_KEY}"
+      },
+      "models": {
+        "kilo-auto/free": {
+          "name": "Kilo Auto Free (dynamic curated free coding-model pool)",
+          "limit": {
+            "context": 262144,
+            "output": 32768
+          }
+        }
+      }
     }
   },
   "permission": {
