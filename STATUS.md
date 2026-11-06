@@ -145,3 +145,21 @@ See `CONTINUATION.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `TESTING.md`, `SECURIT
 **Not implemented:** Automatic cross-provider failover, cooldown persistence and progress-safe retry/resume. Provider choice remains a manual comment command.
 
 **Safety:** This work is on PR #9's feature branch only. PR #9 remains stacked on PR #7 and has not been merged into `main`.
+
+## ECLIPSE coding-agent model ranking — 6 November 2026
+
+**Research:** `docs/ECLIPSE_AGENT_MODEL_RANKING_2026-11-06.md`  
+**Canonical route table:** `docs/FREE_MODEL_PROVIDER_POOL.md`
+
+- [x] Researched all 12 configured model IDs using published agentic-coding, software-engineering and tool-use benchmarks.
+- [x] Published the global best-to-worst ranking with benchmark versions, pass@k caveats, model-specific evidence and confidence limitations.
+- [x] Kept Token Harbor DeepSeek V4.1 Flash Free as the rank-1 default `/oc` route.
+- [x] Reordered OpenCode provider groups and each provider's model entries best-first.
+- [x] Annotated the workflow's 11 explicit alternate routes with their global ranks.
+- [x] Extended the provider validator to enforce the rank-1 default and best-first provider/model declaration order.
+- [ ] Run the validator and full CI on the updated PR #9 head.
+- [ ] Run a non-confidential completion and an actual tool-call smoke test for each provider/model route.
+- [ ] Run the four controlled ECLIPSE task categories against all 12 routes before treating this ranking as empirically final.
+
+**Evidence boundary:** The ranking is an evidence-weighted provisional order from published benchmark reports. Provider-hosted endpoints have not yet all been live-tested; vendor checkpoint scores do not prove identical API serving precision, revision, prompt format or OpenCode performance. GLM-4.5-Flash remains last because reliable benchmark evidence for that exact Flash ID was not located, not because its performance has been conclusively measured as worst. No paid route or automatic failover was added.
+
