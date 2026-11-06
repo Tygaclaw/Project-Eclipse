@@ -61,7 +61,8 @@
 - [ ] Tokenizer/chat-template inspection and remote model-card metadata.
 - [ ] Derived GGUF sizes reconciled against a trusted full checkpoint.
 - [ ] Memory/VRAM feasibility planner.
-- [ ] Interactive desktop launch and model inspection on the user's own Windows 11 machine.
+- [x] User-reported Windows 11 manual launch and navigation smoke test: app opened successfully and all three workspaces were clickable and displayed without an observed problem.
+- [ ] Manual inspection of an actual GGUF/Safetensors model file on the user's Windows 11 machine.
 - [ ] Model preparation/transformation, runtime adapters or inference.
 - [ ] Capability Amplification system, Obsidian integration, or a working ECLIPSE Agent (placeholder screens only).
 
@@ -100,7 +101,7 @@ The result is `dist\ECLIPSE\ECLIPSE.exe`. No administrator privileges, model run
 - Tensor payloads are not decoded. GGUF sizes are derived from a pinned GGML registry; Safetensors and folder shard sizes are observed.
 - Derived GGUF sizes are not yet reconciled against a trusted full checkpoint.
 - Architecture-specific interpretation is still limited to metadata directly present in the checkpoint.
-- The packaged Windows x64 build and backend smoke test passed on a GitHub-hosted Windows runner; the GUI shell passed offscreen Qt tests there. A manual interactive launch on the user's own Windows 11 desktop remains pending.
+- The packaged Windows x64 build and backend smoke test passed on a GitHub-hosted Windows runner; the GUI shell passed 8 offscreen Qt tests there. The user has now confirmed that the packaged app launches interactively on Windows 11 and all three workspace pages are navigable. Actual local model-file inspection remains untested on the user's machine.
 - The agent workspace is a placeholder with no model adapter and no chat input, by design.
 
 ## Free & Safe Checklist
