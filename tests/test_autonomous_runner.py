@@ -12,6 +12,7 @@ from scripts.eclipse_autonomous import (
     safe_child_environment,
     safety_scan,
     run_opencode,
+    validation_environment,
 )
 
 
@@ -137,6 +138,22 @@ class SafetyScanTests(unittest.TestCase):
         self.assertEqual(failure.kind, "quota")
         self.assertTrue(failure.skip_provider)
         self.assertFalse(failure.retryable)
+
+
+    def test_validation_environment_contains_no_github_or_provider_credentials(self) -> None:
+        env = validation_environment({
+            "PATH": "/usr/bin",
+            "HOME": "/tmp",
+            "GITHUB_TOKEN": "github-secret",
+            "GH_TOKEN": "gh-secret",
+            "GEMINI_API_KEY": "gemini-secret",
+            "TOKENHARBOR_API_KEY": "token-secret",
+        })
+        self.assertEqual(env["PATH"], "/usr/bin")
+        self.assertNotIn("GITHUB_TOKEN", env)
+        self.assertNotIn("GH_TOKEN", env)
+        self.assertNotIn("GEMINI_API_KEY", env)
+        self.assertNotIn("TOKENHARBOR_API_KEY", env)
 
 
 class FailoverLoopTests(unittest.TestCase):
