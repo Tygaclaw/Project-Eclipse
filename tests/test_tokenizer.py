@@ -301,6 +301,29 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(report["chat_templates"]["parsed_count"], 1)
         self.assertTrue(any("only 0 were considered" in warning for warning in report["warnings"]))
 
+    def test_additional_template_inventory_and_summary_share_count_cap(self) -> None:
+        directory = self.root / "additional_chat_templates"
+        directory.mkdir()
+        for name in ("alpha", "beta", "gamma", "delta"):
+            (directory / f"{name}.jinja").write_text(f"{name} template", encoding="utf-8")
+        (self.root / "chat_template.jinja").write_text("root default", encoding="utf-8")
+        report = inspect_tokenizer(
+            self.root,
+            TokenizerLimits(max_template_count=2),
+        )
+        self.assertEqual(report["chat_templates"]["count"], 2)
+        self.assertLessEqual(len(report["additional_chat_template_files"]), 2)
+        self.assertEqual(
+            len(report["chat_templates"]["sources"]),
+            2,
+        )
+        self.assertTrue(
+            any("aggregate template-count limit" in warning for warning in report["warnings"])
+        )
+        self.assertTrue(
+            any("additional_chat_templates" in warning and "more than" in warning for warning in report["warnings"])
+        )
+
     def test_rejects_symlinked_input_root(self) -> None:
         target = self.root / "target-folder"
         target.mkdir()
