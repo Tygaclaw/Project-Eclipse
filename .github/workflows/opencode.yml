@@ -41,6 +41,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
           ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+          KILO_API_KEY: ${{ secrets.KILO_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -186,6 +187,10 @@ jobs:
               provider="orcarouter"
               model="orcarouter/orcarouter/free"
               ;;
+            *"/oc-kilo"*)
+              provider="kilo"
+              model="kilo/kilo-auto/free"
+              ;;
             *"/oc-cohere-eval"*)
               provider="cohere"
               model="cohere/command-a-reasoning-08-2025"
@@ -237,6 +242,10 @@ jobs:
               credential="$ORCAROUTER_API_KEY"
               missing_name="ORCAROUTER_API_KEY"
               ;;
+            kilo)
+              credential="$KILO_API_KEY"
+              missing_name="KILO_API_KEY"
+              ;;
             *)
               echo "::error::Internal provider selection error."
               exit 1
@@ -269,6 +278,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ steps.route.outputs.provider == 'cloudflare' && secrets.CLOUDFLARE_API_TOKEN || '' }}
           COHERE_API_KEY: ${{ steps.route.outputs.provider == 'cohere' && secrets.COHERE_API_KEY || '' }}
           ORCAROUTER_API_KEY: ${{ steps.route.outputs.provider == 'orcarouter' && secrets.ORCAROUTER_API_KEY || '' }}
+          KILO_API_KEY: ${{ steps.route.outputs.provider == 'kilo' && secrets.KILO_API_KEY || '' }}
         with:
           model: ${{ steps.route.outputs.model }}
           agent: build
