@@ -1,9 +1,8 @@
 # Proposed Windows desktop build workflow.
 #
-# The OpenCode GitHub App cannot create or update files under .github/workflows/.
-# A repository maintainer should copy this file to .github/workflows/desktop.yml,
-# review the pinned actions, then run the workflow and verify the Windows x64
-# artifact. Until that happens, no downloadable desktop artifact exists.
+# Reference copy of the active workflow installed at .github/workflows/desktop.yml.
+# It runs for pull requests to main and can be started manually. Verify a
+# successful Windows x64 build and uploaded artifact before calling it delivered.
 #
 # Artifact name: ECLIPSE-windows-x64
 # Artifact contents: ECLIPSE-windows-x64.zip (the PyInstaller onedir ECLIPSE folder)
