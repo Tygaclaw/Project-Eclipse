@@ -70,3 +70,34 @@ No live smoke tests were sent as part of this configuration change. Automatic cr
 5. Complete the ECLIPSE-specific model leaderboard using independent public benchmark evidence plus identical controlled ECLIPSE repository tasks. Do not invent a final ranking from provider marketing or usage popularity.
 
 Do not repeat Qwen installation, the general Windows hardware audit, Gemini/OpenRouter setup or the completed A* evaluation. Never request or print secret values.
+
+
+## Free-provider pool continuation — current checkpoint
+
+**Branch:** `feature/openrouter-free-models-20261106`; **PR #9**, stacked on PR #7. Not merged to `main`.
+
+Current configuration: 9 recurring free-provider families with 40 free model/router entries (Token Harbor 2; OpenRouter 13; Google 8; Groq 3; NVIDIA 4; Cloudflare 4; OrcaRouter 2; Kilo 1; Z.AI 3), plus one Cohere evaluation-only entry. The authoritative command/model/secret/limit inventory is `docs/FREE_MODEL_PROVIDER_POOL.md`.
+
+New routes:
+- OrcaRouter: `/oc-orca` uses the free-only router; `/oc-orca-deepseek` uses its explicit $0 DeepSeek V4 Flash model. Do not use paid OrcaRouter models or `orcarouter/auto`.
+- Kilo Gateway: `/oc-kilo` uses only `kilo-auto/free`. This routes dynamically across the curated free model pool. Kilo warns some upstreams may log/use prompts to improve their services. No confidential source or credentials.
+- Z.AI: `/oc-zai`, `/oc-zai-45`, `/oc-zai-vision` use its three official $0 GLM Flash models. Z.AI has not published numeric free-tier rate caps on its pricing page; check the account console and treat rate limits as unknown until tested.
+
+Secret names newly required:
+- `ORCAROUTER_API_KEY`
+- `KILO_API_KEY`
+- `ZAI_GLM_API_KEY`
+
+Other not-yet-reported secrets remain `GROQ_API_KEY`, `NVIDIA_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, and optional `COHERE_API_KEY`. The owner reports a Gemini key and an OpenRouter key are saved. Never request or reveal secret values.
+
+The workflow preserves the 350-minute Actions timeout and `external_directory: deny`, checks the selected provider's secret, and passes only the selected provider's key into the OpenCode process. A CI script checks every command against its model entry, the provider secret name, free-route whitelist, provider-scoped key handoff and timeout/permission safeguards.
+
+No live inference smoke test has been made for the newly added routes. The manual selector is not automatic cross-provider failover. Next:
+1. Inspect CI after the current branch head settles; require all Python 3.11–3.14 jobs and the provider route validator to pass.
+2. Merge PR #7 first, then retarget/retest PR #9; do not merge without owner direction.
+3. Owner saves `ORCAROUTER_API_KEY`, `KILO_API_KEY`, `ZAI_GLM_API_KEY`, and whichever of Groq/NVIDIA/Cloudflare credentials they want to use. Keep Cloudflare on Workers Free.
+4. Run small, non-confidential live smoke tests, one provider at a time.
+5. Implement and failure-test the separate free-only failover coordinator with error classification, capped backoff, cross-provider switching, cooldown state, and safe commit/continuation recovery.
+6. Complete the ranked ECLIPSE model report from public benchmarks and controlled ECLIPSE repo tasks. Rank the strongest first and weakest last; do not fabricate missing results.
+
+Do not repeat Qwen setup, the general hardware audit, or the completed A* evaluation.
