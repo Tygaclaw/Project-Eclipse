@@ -47,8 +47,9 @@ jobs:
       - name: Run OpenCode with the selected free model
         uses: anomalyco/opencode/github@latest
         env:
-          TOKENHARBOR_API_KEY: ${{ secrets.TOKENHARBOR_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # Expose only the credential for the selected provider to the agent process.
+          TOKENHARBOR_API_KEY: ${{ contains(github.event.comment.body, '/oc-openrouter') && '' || secrets.TOKENHARBOR_API_KEY }}
+          OPENROUTER_API_KEY: ${{ contains(github.event.comment.body, '/oc-openrouter') && secrets.OPENROUTER_API_KEY || '' }}
         with:
           # Commands: /oc (DeepSeek), /oc-mimo (MiMo),
           # /oc-openrouter (Cohere North Mini Code), /oc-openrouter-flint (Recursive Flint).
