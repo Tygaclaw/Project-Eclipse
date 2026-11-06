@@ -92,5 +92,74 @@ class SafetyScanTests(unittest.TestCase):
         self.assertTrue(protected)
 
 
+
+class FailoverLoopTests(unittest.TestCase):
+    @staticmethod
+    def all_provider_secrets() -> dict[str, str]:
+        return {
+            "TOKENHARBOR_API_KEY": "token-harbor-test",
+            "GEMINI_API_KEY": "gemini-test",
+            "DAHL_API_KEY": "dahl-test",
+            "GROQ_API_KEY": "groq-test",
+            "OPENROUTER_API_KEY": "openrouter-test",
+            "ZAI_API_KEY": "zai-test",
+        }
+
+    def test_transient_model_failure_switches_after_initial_plus_five_and_keeps_session(self) -> None:
+        from scripts.eclipse_autonomous import run_agent_with_failover
+
+        calls = []
+        session = "ses_recovery12345678"
+
+        def fake_call(route, prompt, session_id, run_title, **kwargs):
+            calls.append((route.open_code_id, session_id, prompt))
+            if route == ROUTES[0]:
+                return RunResult(1, stderr="HTTP 503 gateway temporarily unavailable"), session
+            return RunResult(0, stdout='{"type":"session.updated"}'), session_id or session
+
+        success, returned_session, selected_model, failure = run_agent_with_failover(
+            "initial task", "test-run", self.all_provider_secrets(),
+            max_calls_per_model=6,
+            call=fake_call,
+            validate=lambda: (True, "all passed"),
+            sleep=lambda _seconds: None,
+            rng=lambda: 0.0,
+        )
+
+        self.assertTrue(success, failure)
+        self.assertEqual(returned_session, session)
+        self.assertEqual(selected_model, ROUTES[1].open_code_id)
+        self.assertEqual(len(calls), 7)
+        self.assertEqual([call[0] for call in calls[:6]], [ROUTES[0].open_code_id] * 6)
+        self.assertEqual(calls[6][0], ROUTES[1].open_code_id)
+        self.assertTrue(all(call[1] == session for call in calls[1:]))
+        self.assertIn("SAME ECLIPSE task", calls[6][2])
+
+    def test_quota_failure_skips_remaining_models_from_same_provider(self) -> None:
+        from scripts.eclipse_autonomous import run_agent_with_failover
+
+        calls = []
+        session = "ses_quota1234567890"
+
+        def fake_call(route, prompt, session_id, run_title, **kwargs):
+            calls.append(route.open_code_id)
+            if len(calls) == 1:
+                return RunResult(1, stderr="HTTP 429 rate limit exceeded"), None
+            return RunResult(0, stdout='{"type":"session.updated"}'), session
+
+        success, returned_session, selected_model, failure = run_agent_with_failover(
+            "initial task", "quota-test", self.all_provider_secrets(),
+            max_calls_per_model=6,
+            call=fake_call,
+            validate=lambda: (True, "all passed"),
+            sleep=lambda _seconds: None,
+            rng=lambda: 0.0,
+        )
+
+        self.assertTrue(success, failure)
+        self.assertEqual(calls, [ROUTES[0].open_code_id, ROUTES[1].open_code_id])
+        self.assertEqual(selected_model, ROUTES[1].open_code_id)
+
+
 if __name__ == "__main__":
     unittest.main()
