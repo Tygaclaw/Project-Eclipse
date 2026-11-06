@@ -249,8 +249,8 @@ def run_opencode(
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as scrub_file:
             for name in scrub_names:
-                scrub_file.write(f"unset {name}\\n")
-            scrub_file.write("unset BASH_ENV\\n")
+                scrub_file.write(f"unset {name}\n")
+            scrub_file.write("unset BASH_ENV\n")
         os.chmod(scrub_path, 0o600)
         child_env["BASH_ENV"] = scrub_path
     except Exception:
@@ -272,14 +272,14 @@ def run_opencode(
             command, cwd=ROOT, env=child_env, text=True, capture_output=True,
             timeout=timeout, check=False,
         )
-        output = (completed.stdout or "") + "\\n" + (completed.stderr or "")
+        output = (completed.stdout or "") + "\n" + (completed.stderr or "")
         return RunResult(completed.returncode, completed.stdout or "", completed.stderr or ""), (
             extract_session_id(output) or session_id
         )
     except subprocess.TimeoutExpired as exc:
         stdout = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
         stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
-        return RunResult(124, stdout, stderr, True), extract_session_id(stdout + "\\n" + stderr) or session_id
+        return RunResult(124, stdout, stderr, True), extract_session_id(stdout + "\n" + stderr) or session_id
     finally:
         try:
             os.unlink(scrub_path)
