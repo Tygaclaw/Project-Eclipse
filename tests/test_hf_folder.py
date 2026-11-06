@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from eclipse.model_intelligence import (
     HFFolderFormatError,
@@ -70,6 +71,10 @@ class HFFolderInspectionTests(unittest.TestCase):
         index = report["safetensors"]["index"]
         self.assertEqual(index["tensor_count"], 2)
         self.assertEqual(index["referenced_shard_count"], 2)
+        self.assertEqual(
+            index["referenced_shards"],
+            ["model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"],
+        )
         self.assertEqual(index["declared_total_size_bytes"], 150)
         self.assertEqual(index["missing_shards"], [])
         self.assertEqual(index["unreferenced_shards"], [])
@@ -108,7 +113,7 @@ class HFFolderInspectionTests(unittest.TestCase):
         )
         self.assertTrue(any("not referenced" in warning for warning in report["warnings"]))
 
-    def test_warns_on_declared_total_mismatch(self) -> None:
+    def test_does_not_compare_tensor_total_to_complete_shard_file_size(self) -> None:
         self.write("config.json", b"{}")
         self.write("model.safetensors", bytes(10))
         self.write(
@@ -116,7 +121,11 @@ class HFFolderInspectionTests(unittest.TestCase):
             index_document({"a": "model.safetensors"}, total_size=99),
         )
         report = inspect_hf_folder(self.root)
-        self.assertTrue(any("differ from the index declared" in warning for warning in report["warnings"]))
+        self.assertEqual(report["safetensors"]["index"]["declared_total_size_bytes"], 99)
+        self.assertEqual(report["safetensors"]["total_bytes"], 10)
+        self.assertFalse(
+            any("differ from the index declared total_size" in warning for warning in report["warnings"])
+        )
 
     def test_rejects_shard_name_with_separator(self) -> None:
         self.write("config.json", b"{}")
@@ -163,6 +172,45 @@ class HFFolderInspectionTests(unittest.TestCase):
         self.write("b", b"")
         with self.assertRaises(HFFolderResourceLimitError):
             inspect_hf_folder(self.root, HFFolderLimits(max_entries=1))
+
+    def test_entry_limit_stops_scanning_lazily(self) -> None:
+        class FakeEntry:
+            def __init__(self, name: str) -> None:
+                self.name = name
+
+            def is_symlink(self) -> bool:
+                return False
+
+            def is_dir(self, *, follow_symlinks: bool) -> bool:
+                return False
+
+            def is_file(self, *, follow_symlinks: bool) -> bool:
+                return False
+
+        class FakeScandir:
+            def __init__(self) -> None:
+                self.consumed = 0
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback) -> bool:
+                return False
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                self.consumed += 1
+                if self.consumed > 2:
+                    raise AssertionError("scanner consumed entries past the configured limit")
+                return FakeEntry(f"entry-{self.consumed}")
+
+        scanner = FakeScandir()
+        with patch("eclipse.model_intelligence.hf_folder.os.scandir", return_value=scanner):
+            with self.assertRaises(HFFolderResourceLimitError):
+                inspect_hf_folder(self.root, HFFolderLimits(max_entries=1))
+        self.assertEqual(scanner.consumed, 2)
 
     def test_skips_symlinks(self) -> None:
         self.write("config.json", b"{}")
