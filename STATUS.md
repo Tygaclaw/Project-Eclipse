@@ -15,7 +15,9 @@
 - [x] Derived exact GGUF tensor storage bytes, leaving unregistered types and non-block-multiple rows explicitly unknown.
 - [x] Added a bounded, read-only Safetensors header and tensor-index parser.
 - [x] Added bounded Hugging Face folder discovery (`config.json` summary and `model.safetensors.index.json` shard-index cross-check) without following symlinks or reading shard payloads.
+- [x] Kept folder enumeration and bounded control-file reads within configured memory limits.
 - [x] Added an evidence-labelled Model Atlas core that composes the three inspectors into one summary (parameters, storage bytes, type/dtype distribution).
+- [x] Made Atlas completeness depend on the referenced shard set; unrelated shards are excluded and index `total_size` is reconciled against tensor-data bytes, not whole-file sizes.
 - [x] Added JSON CLI output and standard-library synthetic tests.
 
 ## What works now
@@ -37,7 +39,7 @@
 ## CI verification evidence
 
 - Baseline CI on `main` (parent commit `122fc56`) is **success**: workflow "Python checks" run [#17](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42157195462) on `windows-latest`, Python 3.11, 3.12, 3.13 and 3.14, all four jobs passed "Run unit tests".
-- This increment's own pull-request CI run is **success**: PR #3 run [#42162821780](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42162821780), all four Windows jobs passed on Python 3.11, 3.12, 3.13 and 3.14.
+- This increment's latest pull-request CI run is **success**: PR #3 run [#42164928747](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42164928747), all four Windows jobs passed on Python 3.11, 3.12, 3.13 and 3.14; the latest suite contains **86 tests**.
 - Real Windows/model-file validation has not run.
 
 ## Not completed / not claimed
