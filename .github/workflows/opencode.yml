@@ -259,6 +259,10 @@ jobs:
               credential="$KILO_API_KEY"
               missing_name="KILO_API_KEY"
               ;;
+            zai)
+              credential="$ZAI_GLM_API_KEY"
+              missing_name="ZAI_GLM_API_KEY"
+              ;;
             *)
               echo "::error::Internal provider selection error."
               exit 1
@@ -292,6 +296,7 @@ jobs:
           COHERE_API_KEY: ${{ steps.route.outputs.provider == 'cohere' && secrets.COHERE_API_KEY || '' }}
           ORCAROUTER_API_KEY: ${{ steps.route.outputs.provider == 'orcarouter' && secrets.ORCAROUTER_API_KEY || '' }}
           KILO_API_KEY: ${{ steps.route.outputs.provider == 'kilo' && secrets.KILO_API_KEY || '' }}
+          ZAI_GLM_API_KEY: ${{ steps.route.outputs.provider == 'zai' && secrets.ZAI_GLM_API_KEY || '' }}
         with:
           model: ${{ steps.route.outputs.model }}
           agent: build
