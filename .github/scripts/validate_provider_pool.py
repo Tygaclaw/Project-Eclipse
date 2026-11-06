@@ -13,16 +13,20 @@ CONFIG_PATH = ROOT / "opencode.json"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "opencode.yml"
 
 PROVIDERS = {
+    "tokenharbor": {
+        "secret": "TOKENHARBOR_API_KEY",
+        "models": {"deepseek-v4.1-flash:free", "mimo-v2.6-flash:free"},
+    },
+    "google": {
+        "secret": "GEMINI_API_KEY",
+        "models": {"gemini-3.8-flash", "gemini-3.7-flash"},
+    },
     "dahl": {
         "secret": "DAHL_API_KEY",
         "models": {
             "MiniMaxAI/MiniMax-M2.7",
             "deepseek-ai/DeepSeek-V4-Flash-0731",
         },
-    },
-    "google": {
-        "secret": "GEMINI_API_KEY",
-        "models": {"gemini-3.8-flash", "gemini-3.7-flash"},
     },
     "groq": {
         "secret": "GROQ_API_KEY",
@@ -35,15 +39,23 @@ PROVIDERS = {
             "cohere/north-mini-code:free",
         },
     },
-    "tokenharbor": {
-        "secret": "TOKENHARBOR_API_KEY",
-        "models": {"deepseek-v4.1-flash:free", "mimo-v2.6-flash:free"},
-    },
     "zai": {
         "secret": "ZAI_API_KEY",
         "models": {"glm-4.7-flash", "glm-4.5-flash"},
     },
 }
+
+# Keep the JSON declaration order aligned with the published global ranking.
+EXPECTED_PROVIDER_ORDER = ["tokenharbor", "google", "dahl", "groq", "openrouter", "zai"]
+EXPECTED_MODEL_ORDER = {
+    "tokenharbor": ["deepseek-v4.1-flash:free", "mimo-v2.6-flash:free"],
+    "google": ["gemini-3.8-flash", "gemini-3.7-flash"],
+    "dahl": ["deepseek-ai/DeepSeek-V4-Flash-0731", "MiniMaxAI/MiniMax-M2.7"],
+    "groq": ["qwen/qwen3.8-27b", "openai/gpt-oss-120b"],
+    "openrouter": ["cohere/north-mini-code:free", "nvidia/nemotron-3-ultra-550b-a55b:free"],
+    "zai": ["glm-4.7-flash", "glm-4.5-flash"],
+}
+DEFAULT_MODEL = "tokenharbor/deepseek-v4.1-flash:free"
 
 DISALLOWED_SECRET_NAMES = {
     "NVIDIA_API_KEY",
@@ -79,6 +91,22 @@ def main() -> int:
         fail("opencode.json must retain permission.external_directory = deny.")
 
     configured_providers = config.get("provider", {})
+    if list(configured_providers) != EXPECTED_PROVIDER_ORDER:
+        fail(
+            "Provider groups must be declared best-first according to the published ECLIPSE ranking: "
+            + ", ".join(EXPECTED_PROVIDER_ORDER)
+        )
+
+    if config.get("model") != DEFAULT_MODEL:
+        fail(f"The default /oc route must remain the rank-1 model: {DEFAULT_MODEL}")
+
+    for provider, expected_order in EXPECTED_MODEL_ORDER.items():
+        actual_order = list(configured_providers.get(provider, {}).get("models", {}))
+        if actual_order != expected_order:
+            fail(
+                f"{provider}: models must be declared best-first; "
+                f"expected {expected_order}, got {actual_order}."
+            )
     if set(configured_providers) != set(PROVIDERS):
         fail(
             "The OpenCode provider set must be exactly: "
