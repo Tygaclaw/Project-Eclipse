@@ -620,7 +620,7 @@ def create_draft_checkpoint(
 def find_open_autonomous_pr(source_env: dict[str, str]) -> dict[str, object] | None:
     result = gh(
         ["pr", "list", "--state", "open", "--base", "main",
-         "--json", "number,headRefName,isDraft,url,headRefOid"],
+         "--json", "number,title,body,headRefName,isDraft,url,headRefOid"],
         source_env=source_env,
     )
     entries = json.loads(result.stdout or "[]")
@@ -636,11 +636,13 @@ def find_open_autonomous_pr(source_env: dict[str, str]) -> dict[str, object] | N
 def resume_existing_pr(
     pr: dict[str, object], source_env: dict[str, str], run_title: str, deadline: float
 ) -> int:
-    """Resume a failed safe autonomous PR from its branch and durable repository checkpoint."""
+    """Resume a safe checkpoint PR or repair a failed non-draft autonomous PR."""
     branch = str(pr["headRefName"])
     pr_url = str(pr["url"])
-    if bool(pr.get("isDraft")):
-        print(f"OWNER_REVIEW_REQUIRED: draft autonomous PR is open: {pr_url}")
+    is_checkpoint = str(pr.get("title", "")).startswith("Checkpoint: ECLIPSE autonomous run")
+    is_draft = bool(pr.get("isDraft"))
+    if is_draft and not is_checkpoint:
+        print(f"OWNER_REVIEW_REQUIRED: protected autonomous PR is open: {pr_url}")
         return 0
 
     controller_env = controller_environment(source_env)
@@ -652,7 +654,7 @@ def resume_existing_pr(
     subprocess.run(["git", "merge-base", "HEAD", "origin/main"], cwd=ROOT, env=controller_env, check=True)
 
     check_result = gh(["pr", "checks", pr_url, "--watch", "--fail-fast"], source_env=source_env, check=False)
-    if check_result.returncode == 0:
+    if check_result.returncode == 0 and not is_checkpoint:
         paths = changed_paths()
         safe, reason, protected = safety_scan(paths)
         if safe and not protected:
@@ -674,16 +676,28 @@ def resume_existing_pr(
         print(f"Open PR checks pass but auto-merge is protected or blocked: {reason or pr_url}")
         return 0
 
-    logs = remote_ci_failure_context(pr_url, branch, source_env) or redact(
-        check_result.stdout + check_result.stderr, source_env
-    )[-12_000:]
+    logs = remote_ci_failure_context(pr_url, branch, source_env)
+    if not logs:
+        logs = redact(str(pr.get("body", "")), source_env)[-12_000:]
+    if not logs:
+        logs = redact(check_result.stdout + check_result.stderr, source_env)[-12_000:]
     recovery_prompt = f"""RECOVER THE EXISTING ECLIPSE AUTONOMOUS PR — DO NOT START A NEW BACKLOG ITEM.
 
-You are continuing work on existing PR {pr_url}, branch {branch}, against main. The previous runner ended with an open PR. Read the current diff, AUTONOMOUS_BACKLOG.md, .eclipse/AUTONOMOUS_SESSION_HANDOFF.md and the relevant tests. Preserve all correct work already in this branch. Fix the actual failing remote check(s), add regression coverage and update status/handoff with evidence. Do not create another branch or another PR, do not commit/push/merge, and do not weaken tests. The parent controller will commit/push this same branch and re-run Windows CI.
+You are continuing work on existing PR {pr_url}, branch {branch}, against main.
+This PR is a partial-work checkpoint: {is_checkpoint}. Read the current diff, AUTONOMOUS_BACKLOG.md,
+.eclipsE/AUTONOMOUS_SESSION_HANDOFF.md, STATUS.md, CONTINUATION.md and relevant tests.
+Preserve all correct work already in this branch. If it is a partial checkpoint, continue the
+same highest-priority unfinished milestone to completion. If it is a failed non-draft PR,
+fix the actual failing checks. Add regression coverage and record evidence. Do not create another
+branch or another PR, do not commit/push/merge, and do not weaken tests. The parent controller
+commits/pushes this same branch and runs checks.
 
-This is a recovered OpenCode session: the former in-memory session may not exist on this runner. Treat the branch, commits, handoff and logs as the authoritative checkpoint.
+This is a recovered process. The old in-memory session may not exist on this runner. Treat the
+branch, commits, sanitized handoff and logs as the authoritative checkpoint. Reuse an old native
+session only if it is available and valid; otherwise create a new session and preserve task continuity
+from the repository checkpoint.
 
-Remote CI failure evidence:
+Prior PR/checkpoint evidence:
 {logs[-20_000:]}
 """
     success, session_id, selected_model, failure = run_agent_with_failover(
@@ -740,10 +754,21 @@ Remote CI failure evidence:
         return 4
 
     paths = changed_paths()
-    safe, reason, protected = safety_scan(paths)
-    if not safe or protected or bool(pr.get("isDraft")):
-        print(f"Existing PR passed checks but remains owner-review-only: {reason or pr_url}")
+    safe, reason, path_protected = safety_scan(paths)
+    protected = protected or path_protected
+    if not safe:
+        print(f"Existing PR safety scan failed: {reason}; leaving open.")
+        return 4
+    if protected:
+        print(f"OWNER_REVIEW_REQUIRED: recovered PR changes protected paths: {pr_url}")
         return 0
+
+    if is_checkpoint:
+        ready = gh(["pr", "ready", pr_url], source_env=source_env, check=False)
+        if ready.returncode != 0:
+            print("CHECKPOINT_PR_COULD_NOT_BE_MARKED_READY; leaving draft.")
+            print(redact(ready.stdout + ready.stderr, source_env)[-4_000:])
+            return 5
 
     details = json.loads(gh(["pr", "view", pr_url, "--json", "headRefOid,state,isDraft"], source_env=source_env).stdout)
     local_head = subprocess.run(
