@@ -70,3 +70,15 @@ User-reported manual Windows 11 real-file validation (packaged application):
 - The already completed A* challenge.
 
 Never ask for, print or commit API-key values. The existing model and working 256K context baseline are historical known-good state; do not alter them without a narrowly justified test and rollback plan.
+
+## Ranked free provider pool — continuation checkpoint (6 November 2026)
+
+- Current candidate pool: six providers and 12 exact configured free model IDs.
+- Rank-1 default: `tokenharbor/deepseek-v4.1-flash:free` (`/oc`).
+- Global ranking and individual benchmark evidence: `docs/ECLIPSE_AGENT_MODEL_RANKING_2026-11-06.md`.
+- Command/provider catalog and billing caveats: `docs/FREE_MODEL_PROVIDER_POOL.md`.
+- Provider config validator enforces best-first JSON order and rank-1 default.
+- The model ranking remains provisional until each API route passes live completion and tool-call tests, followed by identical ECLIPSE tasks.
+- No provider failover exists yet; the upcoming autonomous runner must preserve the same OpenCode session when switching models, checkpoint its task context, and enforce free-only behavior.
+- No paid fallback, automatic account rotation or automatic top-up is permitted.
+

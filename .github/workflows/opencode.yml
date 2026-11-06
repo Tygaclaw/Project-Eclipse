@@ -26,20 +26,139 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Verify Token Harbor key is present
+      - name: Select model and verify its provider credential
+        id: route
         env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          DAHL_API_KEY: ${{ secrets.DAHL_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           TOKENHARBOR_API_KEY: ${{ secrets.TOKENHARBOR_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+        shell: bash
         run: |
-          if [ -z "$TOKENHARBOR_API_KEY" ]; then
-            echo "::error::Add the repository Actions secret TOKENHARBOR_API_KEY before starting an agent run."
+          set -euo pipefail
+
+          provider="tokenharbor"
+          model="tokenharbor/deepseek-v4.1-flash:free"
+
+          # Match the most specific command first.
+          # The default /oc route above is rank 1. Numeric ranks are the global
+          # ECLIPSE coding-agent benchmark order; suffix-specific aliases must
+          # stay before their broader aliases to avoid substring misrouting.
+          case "$COMMENT_BODY" in
+            # Rank 04: specific suffix must precede the broader Gemini command.
+            *"/oc-gemini37"*)
+              provider="google"
+              model="google/gemini-3.7-flash"
+              ;;
+            # Rank 02
+            *"/oc-gemini"*)
+              provider="google"
+              model="google/gemini-3.8-flash"
+              ;;
+            # Rank 06: Qwen is the preferred Groq coding-agent route.
+            *"/oc-groq-qwen"*)
+              provider="groq"
+              model="groq/qwen/qwen3.8-27b"
+              ;;
+            # Rank 11
+            *"/oc-groq"*)
+              provider="groq"
+              model="groq/openai/gpt-oss-120b"
+              ;;
+            # Rank 10: specific suffix must precede the broader OpenRouter command.
+            *"/oc-openrouter-ultra"*)
+              provider="openrouter"
+              model="openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
+              ;;
+            # Rank 07
+            *"/oc-openrouter"*)
+              provider="openrouter"
+              model="openrouter/cohere/north-mini-code:free"
+              ;;
+            # Rank 05: specific suffix must precede the broader Dahl command.
+            *"/oc-dahl-deepseek"*)
+              provider="dahl"
+              model="dahl/deepseek-ai/DeepSeek-V4-Flash-0731"
+              ;;
+            # Rank 09
+            *"/oc-dahl"*)
+              provider="dahl"
+              model="dahl/MiniMaxAI/MiniMax-M2.7"
+              ;;
+            # Rank 12: specific suffix must precede the broader Z.AI command.
+            *"/oc-zai-45"*)
+              provider="zai"
+              model="zai/glm-4.5-flash"
+              ;;
+            # Rank 08
+            *"/oc-zai"*)
+              provider="zai"
+              model="zai/glm-4.7-flash"
+              ;;
+            # Rank 03
+            *"/oc-mimo"*)
+              provider="tokenharbor"
+              model="tokenharbor/mimo-v2.6-flash:free"
+              ;;
+          esac
+
+          case "$provider" in
+            dahl)
+              credential="$DAHL_API_KEY"
+              missing_name="DAHL_API_KEY"
+              ;;
+            google)
+              credential="$GEMINI_API_KEY"
+              missing_name="GEMINI_API_KEY"
+              ;;
+            groq)
+              credential="$GROQ_API_KEY"
+              missing_name="GROQ_API_KEY"
+              ;;
+            openrouter)
+              credential="$OPENROUTER_API_KEY"
+              missing_name="OPENROUTER_API_KEY"
+              ;;
+            tokenharbor)
+              credential="$TOKENHARBOR_API_KEY"
+              missing_name="TOKENHARBOR_API_KEY"
+              ;;
+            zai)
+              credential="$ZAI_API_KEY"
+              missing_name="ZAI_API_KEY"
+              ;;
+            *)
+              echo "::error::Internal provider selection error."
+              exit 1
+              ;;
+          esac
+
+          if [[ -z "$credential" ]]; then
+            echo "::error::Add the selected provider secret: $missing_name"
             exit 1
           fi
 
-      - name: Run OpenCode with Token Harbor free models
+          {
+            echo "provider=$provider"
+            echo "model=$model"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Selected provider: $provider"
+          echo "Selected model: $model"
+
+      - name: Run OpenCode with the selected provider credential
         uses: anomalyco/opencode/github@latest
         env:
-          TOKENHARBOR_API_KEY: ${{ secrets.TOKENHARBOR_API_KEY }}
+          # Only the selected provider's credential is passed to the agent process.
+          DAHL_API_KEY: ${{ steps.route.outputs.provider == 'dahl' && secrets.DAHL_API_KEY || '' }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ steps.route.outputs.provider == 'google' && secrets.GEMINI_API_KEY || '' }}
+          GROQ_API_KEY: ${{ steps.route.outputs.provider == 'groq' && secrets.GROQ_API_KEY || '' }}
+          OPENROUTER_API_KEY: ${{ steps.route.outputs.provider == 'openrouter' && secrets.OPENROUTER_API_KEY || '' }}
+          TOKENHARBOR_API_KEY: ${{ steps.route.outputs.provider == 'tokenharbor' && secrets.TOKENHARBOR_API_KEY || '' }}
+          ZAI_API_KEY: ${{ steps.route.outputs.provider == 'zai' && secrets.ZAI_API_KEY || '' }}
         with:
-          # /oc-mimo is a manual fallback if DeepSeek's free route is unavailable.
-          model: ${{ contains(github.event.comment.body, '/oc-mimo') && 'tokenharbor/mimo-v2.6-flash:free' || 'tokenharbor/deepseek-v4.1-flash:free' }}
+          model: ${{ steps.route.outputs.model }}
           agent: build

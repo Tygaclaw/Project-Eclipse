@@ -167,3 +167,25 @@ The result is `dist\ECLIPSE\ECLIPSE.exe`. No administrator privileges, model run
 - [ ] PySide6/Qt LGPL license notices, relinking instructions and corresponding-source offer need review and inclusion in the public release package before broader redistribution.
 
 See `CONTINUATION.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `TESTING.md`, `SECURITY.md` and `MODEL_COMPATIBILITY.md` for details.
+
+## Six-provider OpenCode model pool and ECLIPSE coding-agent ranking — 6 November 2026
+
+**Status:** Configured in the provider-ranking feature branch; not yet merged into main.
+
+- Exactly six approved API providers: Dahl, Gemini, Groq, OpenRouter, Token Harbor and Z.AI.
+- Exactly two approved model routes per provider; no direct NVIDIA, Cohere, Cloudflare, OrcaRouter or Kilo provider was added.
+- Canonical configuration: `opencode.json`; exact free-tier rules and commands: `docs/FREE_MODEL_PROVIDER_POOL.md`.
+- Benchmark report: `docs/ECLIPSE_AGENT_MODEL_RANKING_2026-11-06.md`.
+- Rank-1 default: Token Harbor DeepSeek V4.1 Flash Free.
+- Global order: DeepSeek V4.1 Flash; Gemini 3.8 Flash; MiMo V2.6 Flash; Gemini 3.7 Flash; Dahl DeepSeek V4 Flash; Groq Qwen 3.8 27B; OpenRouter Cohere North Mini Code; Z.AI GLM-4.7 Flash; Dahl MiniMax M2.7; OpenRouter Nemotron 3 Ultra; Groq GPT-OSS 120B; Z.AI GLM-4.5 Flash.
+- The configuration validator enforces six providers, two models each, the rank-1 default, and best-first declaration order.
+- The OpenCode comment workflow preserves specific command aliases before broad aliases to avoid substring collisions.
+- CI on the earlier ranking commit passed; the clean-mainline provider branch still requires its own CI after integration.
+- No live inference/tool-call smoke tests have passed for all 12 routes. Published benchmark ranking is provisional and does not prove endpoint equivalence.
+- Automatic model retry/failover and progress-safe handoff are **not yet implemented**. This is the next automation milestone.
+
+Free/billing safety:
+- Dahl's signup grant is finite; no top-ups.
+- Gemini stays on AI Studio Free; Groq stays on Free; OpenRouter/Token Harbor use explicit `:free` IDs; Z.AI only uses its approved $0 Flash routes.
+- Quota exhaustion must never trigger a paid route, wallet spend, provider upgrade or account rotation.
+
