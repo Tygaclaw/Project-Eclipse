@@ -65,6 +65,142 @@ class ModelAtlasLimits:
             raise ValueError("tokenizer must be a TokenizerLimits instance")
 
 
+
+
+_ARCHITECTURE_DETAIL_KEYS = (
+    "layer_count",
+    "hidden_size",
+    "attention_heads",
+    "kv_heads",
+    "key_head_dimension",
+    "value_head_dimension",
+    "context_length",
+    "intermediate_size",
+    "expert_count",
+    "experts_per_token",
+    "shared_expert_count",
+)
+
+
+def _architecture_fact(
+    value: Any,
+    source: str | None,
+    *,
+    evidence: str = "observed",
+) -> dict[str, Any]:
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return {"value": value, "evidence": evidence, "source": source}
+    return {"value": None, "evidence": "unknown", "source": None}
+
+
+def _hf_declared_fact(
+    config: dict[str, Any],
+    aliases: tuple[str, ...],
+    source_prefix: str,
+) -> dict[str, Any]:
+    """Resolve bounded, explicitly declared architecture integers.
+
+    Multiple aliases with conflicting values remain unknown; no key silently
+    wins just because it appears earlier in a preference list.
+    """
+    present = [
+        (key, config[key])
+        for key in aliases
+        if key in config
+        and isinstance(config[key], int)
+        and not isinstance(config[key], bool)
+        and config[key] > 0
+    ]
+    if not present:
+        return _architecture_fact(None, None)
+
+    if len({value for _, value in present}) > 1:
+        declarations = ", ".join(
+            f"{source_prefix}:{key}={value}" for key, value in present
+        )
+        return {
+            "value": None,
+            "evidence": "unknown",
+            "source": None,
+            "reason": "Conflicting architecture declarations: " + declarations,
+        }
+
+    key, value = present[0]
+    return _architecture_fact(
+        value,
+        f"{source_prefix}:{key}",
+        evidence="declared",
+    )
+
+
+def _empty_architecture_details() -> dict[str, dict[str, Any]]:
+    return {
+        name: _architecture_fact(None, None)
+        for name in _ARCHITECTURE_DETAIL_KEYS
+    }
+
+
+def _gguf_architecture_details(
+    metadata: dict[str, Any],
+    architecture: Any,
+) -> dict[str, dict[str, Any]]:
+    if not isinstance(architecture, str) or not architecture:
+        return _empty_architecture_details()
+    suffixes = {
+        "layer_count": "block_count",
+        "hidden_size": "embedding_length",
+        "attention_heads": "attention.head_count",
+        "kv_heads": "attention.head_count_kv",
+        "key_head_dimension": "attention.key_length",
+        "value_head_dimension": "attention.value_length",
+        "context_length": "context_length",
+        "intermediate_size": "feed_forward_length",
+        "expert_count": "expert_count",
+        "experts_per_token": "expert_used_count",
+        "shared_expert_count": "shared_expert_count",
+    }
+    result: dict[str, dict[str, Any]] = {}
+    for label, suffix in suffixes.items():
+        key = f"{architecture}.{suffix}"
+        result[label] = _architecture_fact(metadata.get(key), key)
+    return result
+
+
+def _hf_architecture_details(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    source_config = config
+    source_prefix = "config.json"
+    nested = config.get("text_config")
+    if isinstance(nested, dict):
+        # Text-only architecture details are preferred for multimodal model
+        # folders when the top-level config is only a wrapper.
+        source_config = nested
+        source_prefix = "config.json:text_config"
+
+    aliases = {
+        "layer_count": ("num_hidden_layers", "n_layer", "n_layers"),
+        "hidden_size": ("hidden_size", "n_embd", "d_model"),
+        "attention_heads": ("num_attention_heads", "n_head", "num_heads"),
+        "kv_heads": ("num_key_value_heads", "num_kv_heads", "n_head_kv"),
+        "key_head_dimension": ("head_dim", "key_head_dim"),
+        "value_head_dimension": ("head_dim", "value_head_dim"),
+        "context_length": (
+            "max_position_embeddings",
+            "max_sequence_length",
+            "max_seq_len",
+            "n_positions",
+            "seq_length",
+        ),
+        "intermediate_size": ("intermediate_size", "n_inner", "d_ff"),
+        "expert_count": ("num_local_experts", "num_experts", "n_expert"),
+        "experts_per_token": ("num_experts_per_tok", "num_experts_per_token"),
+        "shared_expert_count": ("num_shared_experts",),
+    }
+    return {
+        label: _hf_declared_fact(source_config, keys, source_prefix)
+        for label, keys in aliases.items()
+    }
+
+
 def _detect_kind(path: Path) -> str:
     if path.is_dir():
         return "huggingface_folder"
@@ -149,6 +285,9 @@ def _atlas_from_gguf(path: Path, limits: ModelAtlasLimits) -> dict[str, Any]:
             "architecture": report["model"]["architecture"],
             "name": report["model"]["name"],
             "evidence": report["model"]["evidence"],
+            "details": _gguf_architecture_details(
+                report["metadata"], report["model"]["architecture"]
+            ),
         },
         "summary": {
             "tensor_count": summary["tensor_count"],
@@ -179,7 +318,12 @@ def _atlas_from_safetensors(path: Path, limits: ModelAtlasLimits) -> dict[str, A
     return {
         "source_kind": "safetensors",
         "source_name": report["source_file_name"],
-        "architecture": {"architecture": None, "name": None, "evidence": "unknown"},
+        "architecture": {
+            "architecture": None,
+            "name": None,
+            "evidence": "unknown",
+            "details": _empty_architecture_details(),
+        },
         "summary": {
             "tensor_count": summary["tensor_count"],
             "total_parameters": summary["total_parameters"],
@@ -294,6 +438,7 @@ def _atlas_from_folder(path: Path, limits: ModelAtlasLimits) -> dict[str, Any]:
             "architecture": architecture,
             "name": architecture,
             "evidence": "observed" if architecture is not None else "unknown",
+            "details": _hf_architecture_details(config),
         },
         "summary": {
             "tensor_count": summary["tensor_count"],
