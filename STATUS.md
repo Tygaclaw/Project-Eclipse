@@ -37,12 +37,11 @@
 ## CI verification evidence
 
 - Baseline CI on `main` (parent commit `122fc56`) is **success**: workflow "Python checks" run [#17](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42157195462) on `windows-latest`, Python 3.11, 3.12, 3.13 and 3.14, all four jobs passed "Run unit tests".
-- The increment's own CI run is created by the pull request and is pending; it has not been inspected in this environment.
+- This increment's own pull-request CI run is **success**: PR #3 run [#42162821780](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42162821780), all four Windows jobs passed on Python 3.11, 3.12, 3.13 and 3.14.
 - Real Windows/model-file validation has not run.
 
 ## Not completed / not claimed
 
-- [ ] This increment's GitHub Actions run verified (baseline `main` CI is green).
 - [ ] Real user GGUF/Safetensors/folder validated on Windows.
 - [ ] Tokenizer/chat-template inspection and remote model-card metadata.
 - [ ] Derived GGUF sizes reconciled against a trusted full checkpoint.
