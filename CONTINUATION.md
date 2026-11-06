@@ -25,6 +25,8 @@
 - The current core PR matrix [#42170364898](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364898) is green on Windows Python 3.11–3.14. The eight desktop tests skip in that matrix because it intentionally omits PySide6; all eight ran and passed in the dedicated desktop job [#42170364882](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364882).
 - No real user model file or GPU runtime was tested. The packaged Windows build and smoke test ran on GitHub-hosted Windows; a manual interactive launch on the user's own Windows 11 PC remains pending.
 
+- User manual validation (Windows 11): confirmed the packaged application launches and all three workspace pages are clickable and display successfully. This validates startup and navigation only; a real local model-file inspection has not yet been confirmed.
+
 ## Next engineering actions
 
 1. Have the user launch the portable Windows x64 package on Windows 11 and inspect a real GGUF/Safetensors/model folder without moving or modifying it.
