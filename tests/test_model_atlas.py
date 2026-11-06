@@ -115,6 +115,66 @@ class ModelAtlasTests(unittest.TestCase):
         self.assertEqual(atlas["summary"]["total_storage_bytes"], 24)
         self.assertTrue(atlas["summary"]["total_storage_is_complete"])
         self.assertEqual(atlas["components"]["folder"]["inspected_shard_count"], 2)
+        self.assertFalse(
+            any("differ from the index metadata.total_size" in warning for warning in atlas["warnings"])
+        )
+
+    def test_folder_with_missing_index_shard_is_incomplete(self) -> None:
+        self.write("config.json", b'{"model_type": "llama"}')
+        self.write("present.safetensors", build_safetensors(SINGLE, bytes(16)))
+        self.write(
+            "model.safetensors.index.json",
+            json.dumps(
+                {
+                    "metadata": {"total_size": 20},
+                    "weight_map": {
+                        "weight": "present.safetensors",
+                        "other": "missing.safetensors",
+                    },
+                }
+            ).encode("utf-8"),
+        )
+        atlas = build_model_atlas(self.root)
+        self.assertEqual(atlas["summary"]["total_storage_bytes"], 16)
+        self.assertFalse(atlas["summary"]["total_storage_is_complete"])
+        self.assertEqual(atlas["components"]["folder"]["missing_shard_count"], 1)
+
+    def test_unreferenced_shard_is_not_counted_as_model_weights(self) -> None:
+        self.write("config.json", b'{"model_type": "llama"}')
+        self.write("referenced.safetensors", build_safetensors(SINGLE, bytes(16)))
+        self.write("extra.safetensors", build_safetensors(SHARD_B, bytes(8)))
+        self.write(
+            "model.safetensors.index.json",
+            json.dumps(
+                {
+                    "metadata": {"total_size": 16},
+                    "weight_map": {"weight": "referenced.safetensors"},
+                }
+            ).encode("utf-8"),
+        )
+        atlas = build_model_atlas(self.root)
+        self.assertEqual(atlas["summary"]["tensor_count"], 1)
+        self.assertEqual(atlas["summary"]["total_storage_bytes"], 16)
+        self.assertTrue(atlas["summary"]["total_storage_is_complete"])
+        self.assertEqual(atlas["components"]["folder"]["inspected_shard_count"], 1)
+
+    def test_folder_with_mismatched_declared_tensor_bytes_is_incomplete(self) -> None:
+        self.write("config.json", b'{"model_type": "llama"}')
+        self.write("model.safetensors", build_safetensors(SINGLE, bytes(16)))
+        self.write(
+            "model.safetensors.index.json",
+            json.dumps(
+                {
+                    "metadata": {"total_size": 99},
+                    "weight_map": {"weight": "model.safetensors"},
+                }
+            ).encode("utf-8"),
+        )
+        atlas = build_model_atlas(self.root)
+        self.assertFalse(atlas["summary"]["total_storage_is_complete"])
+        self.assertTrue(
+            any("differ from the index metadata.total_size" in warning for warning in atlas["warnings"])
+        )
 
     def test_folder_with_corrupt_shard_is_incomplete_and_warns(self) -> None:
         self.write("config.json", b'{"model_type": "llama"}')
