@@ -124,6 +124,155 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(conflicts[0]["name"], "default")
         self.assertTrue(any("Conflicting chat-template" in warning for warning in report["warnings"]))
 
+    def test_embedded_template_byte_limit_applies_to_tokenizer_config(self) -> None:
+        self.write_json("tokenizer_config.json", {"chat_template": "x" * 40})
+        report = inspect_tokenizer(
+            self.root,
+            TokenizerLimits(max_template_bytes=8),
+        )
+        template = report["chat_templates"]["sources"][0]
+        self.assertEqual(template["status"], "skipped")
+        self.assertIn("per-template limit", template["reason"])
+        self.assertIsNone(report["chat_templates"]["default"])
+        self.assertTrue(any("Skipped chat template" in warning for warning in report["warnings"]))
+
+    def test_embedded_named_template_list_obeys_aggregate_count_limit(self) -> None:
+        self.write_json(
+            "tokenizer_config.json",
+            {
+                "chat_template": [
+                    {"name": "default", "template": "default text"},
+                    {"name": "tool_use", "template": "tool text"},
+                    {"name": "analysis", "template": "analysis text"},
+                ]
+            },
+        )
+        report = inspect_tokenizer(
+            self.root,
+            TokenizerLimits(max_template_count=2),
+        )
+        templates = report["chat_templates"]
+        self.assertEqual(templates["count"], 2)
+        self.assertEqual(
+            {item["name"] for item in templates["sources"]},
+            {"default", "tool_use"},
+        )
+        self.assertTrue(any("only 2 were considered" in warning for warning in report["warnings"]))
+
+    def test_template_byte_budget_is_shared_across_embedded_and_file_sources(self) -> None:
+        self.write_json("tokenizer_config.json", {"chat_template": "123456"})
+        self.write_text("chat_template.jinja", "abcdef")
+        report = inspect_tokenizer(
+            self.root,
+            TokenizerLimits(max_template_bytes=20, max_total_template_bytes=10),
+        )
+        by_kind = {item["kind"]: item for item in report["chat_templates"]["sources"]}
+        self.assertEqual(by_kind["embedded_tokenizer_config"]["status"], "parsed")
+        self.assertEqual(by_kind["standalone_jinja"]["status"], "skipped")
+        self.assertIn("aggregate template byte limit", by_kind["standalone_jinja"]["reason"])
+
+    def test_nested_additional_template_symlink_is_reported_and_not_followed(self) -> None:
+        directory = self.root / "additional_chat_templates"
+        directory.mkdir()
+        target = self.write_text("outside.jinja", "secret template")
+        link = directory / "tool_use.jinja"
+        try:
+            link.symlink_to(target)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks are not supported on this platform")
+        report = inspect_tokenizer(self.root)
+        self.assertEqual(report["chat_templates"]["count"], 0)
+        self.assertTrue(
+            any(
+                "additional_chat_templates/tool_use.jinja" in warning and "symbolic link" in warning
+                for warning in report["warnings"]
+            )
+        )
+
+    def test_invalid_utf8_template_is_reported_without_decoding_replacement(self) -> None:
+        (self.root / "chat_template.jinja").write_bytes(b"valid-prefix-\\xff")
+        report = inspect_tokenizer(self.root)
+        template = report["chat_templates"]["sources"][0]
+        self.assertEqual(template["status"], "skipped")
+        self.assertIn("not valid UTF-8", template["reason"])
+        self.assertEqual(template["preview"], "")
+        self.assertTrue(any("not valid UTF-8" in warning for warning in report["warnings"]))
+
+    def test_legacy_processor_template_mixed_with_modern_jinja_has_no_default(self) -> None:
+        self.write_json("chat_template.json", {"chat_template": "legacy"})
+        self.write_text("chat_template.jinja", "modern")
+        report = inspect_tokenizer(self.root)
+        templates = report["chat_templates"]
+        self.assertEqual(templates["compatibility"]["status"], "incompatible_for_processor_repositories")
+        self.assertEqual(templates["compatibility"]["model_kind"], "unknown_not_inferred")
+        self.assertIsNone(templates["default"])
+        self.assertTrue(
+            any("processor repositories" in warning and "no effective" in warning for warning in report["warnings"])
+        )
+
+    def test_json_assets_share_an_aggregate_read_budget(self) -> None:
+        config = self.write_json("tokenizer_config.json", {"tokenizer_class": "Tiny"})
+        tokenizer = self.write_json("tokenizer.json", {"model": {"type": "BPE", "vocab": {"a": 0}}})
+        budget = config.stat().st_size
+        self.assertGreater(tokenizer.stat().st_size, 0)
+        report = inspect_tokenizer(
+            self.root,
+            TokenizerLimits(max_json_bytes=1024, max_total_json_bytes=budget),
+        )
+        statuses = {asset["name"]: asset["status"] for asset in report["assets"]}
+        self.assertEqual(statuses["tokenizer_config.json"], "parsed")
+        self.assertEqual(statuses["tokenizer.json"], "skipped")
+        self.assertTrue(any("aggregate JSON metadata budget" in warning for warning in report["warnings"]))
+
+    def test_token_previews_are_clipped_and_entry_work_is_bounded(self) -> None:
+        self.write_json(
+            "tokenizer_config.json",
+            {
+                "bos_token": "<bos>",
+                "added_tokens_decoder": {
+                    "0": {"content": "<bos>", "special": True},
+                    "1": {"content": "SECOND_TOKEN", "special": False},
+                },
+                "additional_special_tokens": ["LONG_SPECIAL_TOKEN", "OTHER_SPECIAL_TOKEN"],
+            },
+        )
+        self.write_json(
+            "tokenizer.json",
+            {
+                "added_tokens": [
+                    {"id": 0, "content": "<bos>", "special": True},
+                    {"id": 1, "content": "SECOND_TOKEN", "special": False},
+                ],
+                "model": {"type": "BPE", "vocab": {"PRIVATE_VOCAB_ENTRY_ONE": 0, "PRIVATE_VOCAB_ENTRY_TWO": 1}},
+            },
+        )
+        before = {
+            name: (self.root / name).read_bytes()
+            for name in ("tokenizer_config.json", "tokenizer.json")
+        }
+        report = inspect_tokenizer(
+            self.root,
+            TokenizerLimits(
+                max_token_entries=1,
+                max_token_preview_items=8,
+                max_string_preview_chars=5,
+            ),
+        )
+        summary = report["tokenizer"]
+        self.assertEqual(len(summary["added_tokens_preview"]), 1)
+        self.assertEqual(summary["added_tokens_preview"][0]["content"], "<bos>")
+        self.assertTrue(summary["token_metadata_scan"]["truncated"])
+        self.assertTrue(summary["additional_special_tokens"]["preview_truncated"])
+        self.assertTrue(all(len(item) <= 5 for item in summary["additional_special_tokens"]["preview"]))
+        encoded = json.dumps(report, ensure_ascii=False)
+        self.assertNotIn("PRIVATE_VOCAB_ENTRY_ONE", encoded)
+        self.assertNotIn("PRIVATE_VOCAB_ENTRY_TWO", encoded)
+        self.assertNotIn(str(self.root), encoded)
+        self.assertEqual(
+            {name: (self.root / name).read_bytes() for name in before},
+            before,
+        )
+
     def test_empty_folder_is_an_honest_empty_state(self) -> None:
         report = inspect_tokenizer(self.root)
         self.assertEqual(report["assets"], [])
