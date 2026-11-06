@@ -190,7 +190,7 @@ class TokenizerTests(unittest.TestCase):
         )
 
     def test_invalid_utf8_template_is_reported_without_decoding_replacement(self) -> None:
-        (self.root / "chat_template.jinja").write_bytes(b"valid-prefix-\\xff")
+        (self.root / "chat_template.jinja").write_bytes(b"valid-prefix-" + bytes([0xFF]))
         report = inspect_tokenizer(self.root)
         template = report["chat_templates"]["sources"][0]
         self.assertEqual(template["status"], "skipped")
