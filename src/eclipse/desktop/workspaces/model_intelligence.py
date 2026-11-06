@@ -7,7 +7,7 @@ import threading
 from typing import Any
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtWidgets (
+from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
@@ -528,6 +528,246 @@ class ModelIntelligenceWorkspace(QWidget):
             "Inspection cancelled",
             "No Atlas was produced. You can choose the same model again and restart inspection.",
         )
+
+    def _request_from_controls(self) -> FeasibilityRequest:
+        context_tokens = self._context_combo.currentData()
+        return FeasibilityRequest(
+            context_tokens=context_tokens if isinstance(context_tokens, int) else None,
+            kv_cache_dtype=str(self._kv_dtype_combo.currentData() or "f16"),
+            system_ram_reserve_bytes=int(round(self._ram_reserve_spin.value() * 1024**3)),
+            gpu_vram_reserve_bytes=int(round(self._vram_reserve_spin.value() * 1024**3)),
+        )
+
+    def _start_hardware_detection(self) -> None:
+        self._start_hardware_task(include_model=False)
+
+    def _start_feasibility_check(self) -> None:
+        self._start_hardware_task(include_model=True)
+
+    def _start_hardware_task(self, *, include_model: bool) -> None:
+        if self._feasibility_worker is not None or self._worker is not None:
+            return
+        if include_model and (self._last_atlas is None or self._source is None):
+            self._hardware_status.setText("Inspect a model before checking its memory fit.")
+            return
+
+        atlas = self._last_atlas if include_model else None
+        request = self._request_from_controls() if include_model else None
+        worker = _FeasibilityWorker(atlas, self._source, request, self)
+        self._feasibility_worker = worker
+        worker.succeeded.connect(self._on_feasibility_success)
+        worker.failed.connect(self._on_feasibility_failure)
+        worker.cancelled.connect(self._on_feasibility_cancelled)
+        worker.finished.connect(lambda: self._feasibility_worker_finished(worker))
+        self._set_feasibility_running(True)
+        self._hardware_status.setObjectName("StatusLine")
+        self._hardware_status.setText(
+            "Checking the current computer. This does not start or load the model…"
+        )
+        worker.start()
+
+    def _cancel_feasibility_check(self) -> None:
+        worker = self._feasibility_worker
+        if worker is not None:
+            self._hardware_status.setText("Cancelling hardware query…")
+            self._cancel_feasibility_button.setEnabled(False)
+            worker.cancel()
+
+    def _feasibility_worker_finished(self, worker: _FeasibilityWorker) -> None:
+        if self._feasibility_worker is worker:
+            self._feasibility_worker = None
+        self._set_feasibility_running(False)
+        worker.deleteLater()
+
+    def _set_feasibility_running(self, running: bool) -> None:
+        static_running = self._worker is not None
+        self._choose_file_button.setEnabled(not running and not static_running)
+        self._choose_folder_button.setEnabled(not running and not static_running)
+        self._inspect_button.setEnabled(
+            not running and not static_running and self._source is not None
+        )
+        self._detect_hardware_button.setEnabled(not running and not static_running)
+        self._check_fit_button.setEnabled(
+            not running and not static_running and self._last_atlas is not None
+        )
+        self._cancel_feasibility_button.setVisible(running)
+        self._cancel_feasibility_button.setEnabled(running)
+        self._hardware_progress.setVisible(running)
+
+    def _on_feasibility_success(self, result: dict[str, Any]) -> None:
+        self._set_feasibility_running(False)
+        self._last_feasibility = result
+        self._hardware_status.setObjectName("SuccessText")
+        self._hardware_status.setText(
+            "Hardware snapshot ready."
+            if result.get("plan") is None
+            else "Memory estimate ready. No model load or inference was performed."
+        )
+        self._render_feasibility(result)
+
+    def _on_feasibility_failure(self, message: str) -> None:
+        self._set_feasibility_running(False)
+        self._hardware_status.setObjectName("WarningText")
+        self._hardware_status.setText(message)
+
+    def _on_feasibility_cancelled(self) -> None:
+        self._set_feasibility_running(False)
+        self._hardware_status.setObjectName("StatusLine")
+        self._hardware_status.setText("Hardware discovery cancelled.")
+
+    def _render_feasibility(self, result: dict[str, Any]) -> None:
+        host = result.get("host") if isinstance(result.get("host"), dict) else {}
+        plan = result.get("plan") if isinstance(result.get("plan"), dict) else None
+        memory = host.get("system_memory") if isinstance(host.get("system_memory"), dict) else {}
+        gpus = host.get("gpus") if isinstance(host.get("gpus"), list) else []
+        gpu = next((item for item in gpus if isinstance(item, dict)), None)
+        storage = host.get("storage") if isinstance(host.get("storage"), dict) else {}
+
+        hardware_card, hardware_layout = make_card(
+            "Current hardware snapshot",
+            "Observed when this check ran. Available memory changes as other applications use the computer.",
+        )
+        operating_system = host.get("operating_system")
+        if isinstance(operating_system, dict):
+            os_name = " ".join(
+                str(operating_system.get(key))
+                for key in ("name", "release")
+                if operating_system.get(key)
+            )
+            add_fact(hardware_layout, "Operating system", os_name or "Unknown", "observed")
+        processor = host.get("processor")
+        if isinstance(processor, dict):
+            add_fact(
+                hardware_layout,
+                "Processor",
+                str(processor.get("reported_identifier") or processor.get("architecture") or "Unknown"),
+                processor.get("evidence") or "unknown",
+            )
+            add_fact(
+                hardware_layout,
+                "Logical processors",
+                human_count(processor.get("logical_processors")),
+                processor.get("evidence") or "unknown",
+            )
+        add_fact(
+            hardware_layout,
+            "Physical RAM",
+            human_bytes(memory.get("physical_total_bytes")),
+            memory.get("evidence") or "unknown",
+        )
+        add_fact(
+            hardware_layout,
+            "Currently available RAM",
+            human_bytes(memory.get("available_bytes")),
+            memory.get("evidence") or "unknown",
+        )
+        if gpu is not None:
+            add_fact(hardware_layout, "GPU", str(gpu.get("name") or "Unknown GPU"), "observed")
+            add_fact(
+                hardware_layout,
+                "GPU VRAM total",
+                human_bytes(gpu.get("memory_total_bytes")),
+                gpu.get("evidence") or "unknown",
+            )
+            add_fact(
+                hardware_layout,
+                "GPU VRAM currently free",
+                human_bytes(gpu.get("memory_free_bytes")),
+                gpu.get("evidence") or "unknown",
+            )
+        else:
+            discovery = host.get("gpu_discovery")
+            status = discovery.get("status") if isinstance(discovery, dict) else "unknown"
+            add_fact(hardware_layout, "GPU discovery", str(status), "unknown")
+        add_fact(
+            hardware_layout,
+            "Storage free on selected volume",
+            human_bytes(storage.get("free_bytes")),
+            storage.get("evidence") or "unknown",
+        )
+        warnings = host.get("warnings")
+        if isinstance(warnings, list):
+            for warning in warnings:
+                if isinstance(warning, str):
+                    add_text(hardware_layout, warning, "WarningText")
+        self._results_layout.addWidget(hardware_card)
+
+        if plan is None:
+            return
+
+        requirements = plan.get("requirements") if isinstance(plan.get("requirements"), dict) else {}
+        budgets = plan.get("budgets") if isinstance(plan.get("budgets"), dict) else {}
+        capacity = plan.get("capacity_assessment") if isinstance(plan.get("capacity_assessment"), dict) else {}
+        weights = requirements.get("weight_storage") if isinstance(requirements.get("weight_storage"), dict) else {}
+        kv = requirements.get("kv_cache") if isinstance(requirements.get("kv_cache"), dict) else {}
+        classification = capacity.get("memory_classification")
+        class_text = {
+            "estimated_resident_memory_fit": "Estimated to fit in the known RAM + one GPU's VRAM",
+            "exceeds_resident_capacity_even_before_kv_cache": "Weights alone exceed the known resident-memory budget",
+            "exceeds_available_resident_ram_and_vram": "Estimated to exceed the known resident-memory budget",
+            "unknown_incomplete_weight_storage": "Unknown: model storage coverage is incomplete",
+            "unknown_kv_cache_cost": "Unknown: KV-cache size could not be calculated",
+            "unknown_available_memory": "Unknown: available host memory is incomplete",
+        }.get(classification, "Unknown")
+
+        fit_card, fit_layout = make_card(
+            "Memory fit estimate",
+            "Capacity estimate only. Backend placement and runtime behaviour have not been validated.",
+        )
+        add_fact(fit_layout, "Assessment", class_text, capacity.get("evidence") or "unknown")
+        add_fact(
+            fit_layout,
+            "Model tensor storage",
+            human_bytes(weights.get("bytes")),
+            weights.get("evidence") or "unknown",
+        )
+        add_fact(
+            fit_layout,
+            "Estimated KV cache",
+            human_bytes(kv.get("bytes")),
+            kv.get("evidence") or "unknown",
+        )
+        context_source = kv.get("context_source") or "unknown"
+        add_fact(
+            fit_layout,
+            "Context used",
+            human_count(kv.get("context_tokens")),
+            context_source,
+        )
+        add_fact(
+            fit_layout,
+            "RAM available to planner",
+            human_bytes(budgets.get("system_ram_usable_bytes")),
+            "observed" if budgets.get("system_ram_usable_bytes") is not None else "unknown",
+        )
+        add_fact(
+            fit_layout,
+            "Single GPU VRAM available to planner",
+            human_bytes(budgets.get("single_gpu_vram_usable_bytes")),
+            "observed" if budgets.get("single_gpu_vram_usable_bytes") is not None else "unknown",
+        )
+        add_fact(
+            fit_layout,
+            "Combined resident capacity",
+            human_bytes(budgets.get("combined_system_ram_and_single_gpu_bytes")),
+            "derived" if budgets.get("combined_system_ram_and_single_gpu_bytes") is not None else "unknown",
+        )
+        add_fact(fit_layout, "Backend compatibility", "Not validated", "unknown")
+        add_text(
+            fit_layout,
+            "No exact layer split, model load, inference speed or quality result is implied. "
+            "The planner subtracts your selected RAM/VRAM reserves and never adds separate GPU memory pools together.",
+            "Faint",
+        )
+        self._results_layout.addWidget(fit_card)
+
+        plan_warnings = plan.get("warnings")
+        if isinstance(plan_warnings, list) and plan_warnings:
+            warning_card, warning_layout = make_card("Feasibility notes")
+            for warning in plan_warnings:
+                if isinstance(warning, str):
+                    add_text(warning_layout, warning, "WarningText")
+            self._results_layout.addWidget(warning_card)
 
     def _clear_results(self) -> None:
         clear_layout(self._results_layout)
