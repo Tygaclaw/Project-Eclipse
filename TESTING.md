@@ -34,6 +34,11 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m unittest discover -s tests -v
 - Latest dedicated Windows desktop run [#42170364882](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364882): all **110 tests passed** with PySide6 installed, including all 8 offscreen UI tests; PyInstaller created the Windows x64 app; the packaged `ECLIPSE.exe --atlas-backend --help` smoke test passed; the ZIP was uploaded as `ECLIPSE-windows-x64` (50,929,677 bytes).
 - Latest core CI matrix [#42170364898](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364898): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in this matrix because PySide6 is optional there; they ran without skips in the dedicated desktop job.
 
+## Manual Windows 11 smoke test
+
+- User-confirmed: the packaged application launched on Windows 11 and all three workspace pages were clickable and displayed successfully.
+- Not yet confirmed: selecting and inspecting a real local model file from the desktop UI.
+
 ## Test evidence boundaries
 
 Synthetic tests prove parser behavior for the cases represented by their fixtures. They do not establish compatibility with every real-world GGUF variant or multi-shard folder layout. A real-file Windows test is a separate acceptance gate. GitHub Actions results must be inspected before claiming CI has passed.
