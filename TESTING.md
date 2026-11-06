@@ -36,8 +36,8 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m unittest discover -s tests -v
 
 ## Verified GitHub Actions evidence
 
-- Latest dedicated Windows desktop run [#42178385983](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699): all **110 tests passed** with PySide6 installed, including all 8 offscreen UI tests; PyInstaller created the Windows x64 app; the packaged `ECLIPSE.exe --atlas-backend --help` smoke test passed; the ZIP was uploaded as `ECLIPSE-windows-x64` (50,929,741 bytes).
-- Latest core CI matrix [#42178385942](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214668): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in this matrix because PySide6 is optional there; they ran without skips in the dedicated desktop job.
+- Latest dedicated Windows desktop run [#42178385983](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42178385983): all **110 tests passed** with PySide6 installed, including all 8 offscreen UI tests; PyInstaller created the Windows x64 app; the packaged `ECLIPSE.exe --atlas-backend --help` smoke test passed; the ZIP was uploaded as `ECLIPSE-windows-x64` (50,931,411 bytes).
+- Latest core CI matrix [#42178385942](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42178385942): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in this matrix because PySide6 is optional there; they ran without skips in the dedicated desktop job.
 
 ## Manual Windows 11 smoke test
 
