@@ -97,6 +97,14 @@ def main() -> int:
             + ", ".join(EXPECTED_PROVIDER_ORDER)
         )
 
+    # OpenCode refuses to load the whole config if a model declares `limit` without
+    # both `context` and `output`; a JSON parse check alone cannot catch that.
+    for provider_name, provider in configured_providers.items():
+        for model_name, model in provider.get("models", {}).items():
+            limit = model.get("limit")
+            if limit is not None and not {"context", "output"} <= set(limit):
+                fail(f"{provider_name}/{model_name}: limit must define both context and output (OpenCode rejects the config otherwise).")
+
     if config.get("model") != DEFAULT_MODEL:
         fail(f"The default /oc route must remain the rank-1 model: {DEFAULT_MODEL}")
 
