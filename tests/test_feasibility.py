@@ -90,6 +90,27 @@ class FeasibilityPlannerTests(unittest.TestCase):
         self.assertEqual(kv["evidence"], "estimated")
         self.assertEqual(kv["context_source"], "user_requested")
 
+    def test_kv_estimate_states_its_every_layer_assumption(self) -> None:
+        result = plan_model_feasibility(
+            atlas(), host(), FeasibilityRequest(context_tokens=4096)
+        )
+        kv = result["requirements"]["kv_cache"]
+        self.assertIs(kv["assumes_full_attention_kv_on_every_layer"], True)
+        self.assertIn("Every layer is assumed", kv["layer_assumption"])
+        self.assertTrue(
+            any("every layer stores full-attention" in w for w in result["warnings"])
+        )
+
+    def test_unknown_kv_estimate_has_no_layer_assumption_warning(self) -> None:
+        incomplete = atlas(details={"layer_count": {"value": 32, "evidence": "observed"}})
+        result = plan_model_feasibility(incomplete, host(), FeasibilityRequest())
+        kv = result["requirements"]["kv_cache"]
+        self.assertIsNone(kv["bytes"])
+        self.assertNotIn("assumes_full_attention_kv_on_every_layer", kv)
+        self.assertFalse(
+            any("every layer stores full-attention" in w for w in result["warnings"])
+        )
+
     def test_model_declared_context_is_used_when_user_does_not_override(self) -> None:
         result = plan_model_feasibility(
             atlas(),

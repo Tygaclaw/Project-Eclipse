@@ -13,6 +13,12 @@ from typing import Any, Mapping
 MiB = 1024 * 1024
 GiB = 1024 * MiB
 
+_KV_LAYER_ASSUMPTION = (
+    "Every layer is assumed to store full-attention key/value state for the whole context. "
+    "Hybrid (for example linear or state-space), sliding-window or latent-attention layers "
+    "may need less, so this estimate can overstate the real KV-cache allocation."
+)
+
 _KV_BYTES_PER_ELEMENT = {
     "f16": 2,
     "bf16": 2,
@@ -195,6 +201,7 @@ def _kv_cache_estimate(
             "sequence_slots": request.sequence_slots,
             "formula": "layers × context × KV heads × (key head dimension + value head dimension) × bytes per element × sequence slots",
             "missing_architecture_facts": missing,
+            "layer_assumption": _KV_LAYER_ASSUMPTION,
             "note": "KV-cache size is unknown until the missing architecture facts are available.",
         }
 
@@ -218,6 +225,8 @@ def _kv_cache_estimate(
         "requested_context_exceeds_declared_limit": exceeds_declared,
         "sequence_slots": request.sequence_slots,
         "formula": "layers × context × KV heads × (key head dimension + value head dimension) × bytes per element × sequence slots",
+        "assumes_full_attention_kv_on_every_layer": True,
+        "layer_assumption": _KV_LAYER_ASSUMPTION,
         "inputs": {
             "layers": layers,
             "context_tokens": context,
@@ -376,6 +385,12 @@ def plan_model_feasibility(
         warnings.append("Complete model tensor storage is not available, so full-model weight residency cannot be estimated.")
     if kv_bytes is None:
         warnings.append("KV-cache size is unknown because one or more required context or architecture facts are missing.")
+    else:
+        warnings.append(
+            "The KV-cache estimate assumes every layer stores full-attention key/value state for the whole context. "
+            "Hybrid, sliding-window or latent-attention models may need less, so a borderline 'oversized' result "
+            "should be re-checked against the backend-reported allocation."
+        )
     if kv.get("requested_context_exceeds_declared_limit"):
         warnings.append("The requested context exceeds the model-declared context limit; no runtime override support is assumed.")
     if gpu_usable is None:

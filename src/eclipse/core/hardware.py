@@ -197,30 +197,45 @@ def _query_nvidia_gpus(
             "NVIDIA GPU telemetry is unavailable because nvidia-smi was not found; GPU memory and backend support remain unknown.",
         )
 
-    command = [
-        candidates[0],
-        "--query-gpu=index,name,memory.total,memory.free,memory.used,driver_version",
-        "--format=csv,noheader,nounits",
-    ]
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    try:
-        result = subprocess.run(
-            command,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout_seconds,
-            check=False,
-            shell=False,
-            creationflags=creationflags,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    result: subprocess.CompletedProcess[str] | None = None
+    last_error: Exception | None = None
+    # Try each known location in order, but only move on when a candidate
+    # cannot be launched at all (for example the file does not exist). A
+    # timeout stops the search so a hung driver tool is not waited on twice,
+    # and a tool that ran but reported failure is not second-guessed.
+    for candidate in candidates:
+        command = [
+            candidate,
+            "--query-gpu=index,name,memory.total,memory.free,memory.used,driver_version",
+            "--format=csv,noheader,nounits",
+        ]
+        try:
+            result = subprocess.run(
+                command,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout_seconds,
+                check=False,
+                shell=False,
+                creationflags=creationflags,
+            )
+            break
+        except subprocess.TimeoutExpired as exc:
+            last_error = exc
+            break
+        except OSError as exc:
+            last_error = exc
+            continue
+    if result is None:
+        error_name = type(last_error).__name__ if last_error is not None else "OSError"
         return (
             (),
             {"status": "error", "source": "nvidia-smi", "evidence": "unknown"},
-            f"NVIDIA GPU telemetry query did not complete: {type(exc).__name__}. GPU memory and backend support remain unknown.",
+            f"NVIDIA GPU telemetry query did not complete: {error_name}. GPU memory and backend support remain unknown.",
         )
 
     if result.returncode != 0:
