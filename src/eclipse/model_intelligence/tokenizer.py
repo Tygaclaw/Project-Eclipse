@@ -639,6 +639,22 @@ def _vocab_size_summary(
     }
 
 
+def _bounded_utf8_size(text: str, maximum: int) -> tuple[int, bool]:
+    """Count UTF-8 bytes without encoding an oversized template all at once.
+
+    The scan stops as soon as the byte ceiling is exceeded. The returned size
+    is then a lower bound (maximum + 1), which is enough to reject the value.
+    """
+
+    total = 0
+    chunk_chars = 4096
+    for start in range(0, len(text), chunk_chars):
+        total += len(text[start : start + chunk_chars].encode("utf-8"))
+        if total > maximum:
+            return maximum + 1, True
+    return total, False
+
+
 def _template_entry(
     name: str,
     origin: str,
@@ -717,8 +733,13 @@ def _embedded_templates(
         if not isinstance(template_text, str):
             continue
         template_name = name if isinstance(name, str) and name else "default"
-        size_bytes = len(template_text.encode("utf-8"))
-        reason = budget.reserve(size_bytes)
+        size_bytes, exceeds_per_template = _bounded_utf8_size(
+            template_text, limits.max_template_bytes
+        )
+        if exceeds_per_template:
+            reason = budget.reserve(size_bytes)
+        else:
+            reason = budget.reserve(size_bytes)
         if reason is not None:
             entries.append(_skipped_template_entry(template_name, origin, kind, size_bytes, reason))
             warnings.append(f"Skipped chat template {template_name!r} from {origin}: {reason}")
@@ -864,6 +885,37 @@ def _collect_chat_templates(
     warnings: list[str] = []
     budget = _TemplateBudget(limits)
 
+    # Spend the shared budget in loader-precedence order. Legacy embedded
+    # metadata must not exhaust the budget before a modern standalone default
+    # or named template gets a chance to be inspected.
+    if _CHAT_TEMPLATE_JINJA in files:
+        entry, asset, entry_warnings = _read_template_file(
+            base / _CHAT_TEMPLATE_JINJA, "default", "standalone_jinja", limits, budget
+        )
+        warnings.extend(entry_warnings)
+        if asset is not None:
+            assets.append(asset)
+        if entry is not None:
+            sources.append(entry)
+
+    for name in sorted(add_dir_files):
+        if not name.endswith(_JINJA_SUFFIX):
+            continue
+        stem = name[: -len(_JINJA_SUFFIX)]
+        template_name = stem if stem else name
+        entry, asset, entry_warnings = _read_template_file(
+            base / _ADDITIONAL_TEMPLATES_DIR / name,
+            template_name,
+            "additional_named_jinja",
+            limits,
+            budget,
+        )
+        warnings.extend(entry_warnings)
+        if asset is not None:
+            assets.append(asset)
+        if entry is not None:
+            sources.append(entry)
+
     config = documents.get(_TOKENIZER_CONFIG)
     if isinstance(config, dict) and "chat_template" in config:
         embedded, embedded_warnings = _embedded_templates(
@@ -895,34 +947,6 @@ def _collect_chat_templates(
             warnings.append(
                 f"{_CHAT_TEMPLATE_JSON} did not contain a usable chat_template string"
             )
-
-    if _CHAT_TEMPLATE_JINJA in files:
-        entry, asset, entry_warnings = _read_template_file(
-            base / _CHAT_TEMPLATE_JINJA, "default", "standalone_jinja", limits, budget
-        )
-        warnings.extend(entry_warnings)
-        if asset is not None:
-            assets.append(asset)
-        if entry is not None:
-            sources.append(entry)
-
-    for name in sorted(add_dir_files):
-        if not name.endswith(_JINJA_SUFFIX):
-            continue
-        stem = name[: -len(_JINJA_SUFFIX)]
-        template_name = stem if stem else name
-        entry, asset, entry_warnings = _read_template_file(
-            base / _ADDITIONAL_TEMPLATES_DIR / name,
-            template_name,
-            "additional_named_jinja",
-            limits,
-            budget,
-        )
-        warnings.extend(entry_warnings)
-        if asset is not None:
-            assets.append(asset)
-        if entry is not None:
-            sources.append(entry)
 
     incompatible = _CHAT_TEMPLATE_JSON in files and (
         _CHAT_TEMPLATE_JINJA in files or bool(add_dir_files)
