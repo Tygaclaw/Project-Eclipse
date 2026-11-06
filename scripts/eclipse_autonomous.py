@@ -489,7 +489,10 @@ def run_agent_with_failover(
             continue
 
         context_compacted = False
-        for attempt in range(max_calls_per_model):
+        attempt = -1
+        calls_made = 0
+        while calls_made < max_calls_per_model:
+            attempt += 1
             if deadline is not None:
                 remaining_for_model = int(deadline - time.monotonic() - 45 * 60)
                 if remaining_for_model < 60:
@@ -506,6 +509,7 @@ def run_agent_with_failover(
                 route, current_prompt, session_id, run_title,
                 timeout=current_timeout, source_env=source_env,
             )
+            calls_made += 1
             session_id = observed_session or session_id
             raw_output = redact(result.stdout + "\n" + result.stderr, source_env)
 
@@ -520,10 +524,10 @@ def run_agent_with_failover(
                 if failure.kind == "context_length":
                     if not context_compacted:
                         context_compacted = True
-                        attempt -= 1  # context compaction does not consume a retry
+                        calls_made -= 1  # context compaction does not consume a retry
                         continue
                     break
-                if failure.retryable and attempt + 1 < max_calls_per_model:
+                if failure.retryable and calls_made < max_calls_per_model:
                     sleep(min(MAX_BACKOFF, (2 ** attempt) + rng() * 3))
                     continue
                 break
@@ -539,7 +543,7 @@ def run_agent_with_failover(
             if valid:
                 return True, session_id, route.open_code_id, ""
             last_failure = redact(validation_output, source_env)
-            if attempt + 1 < max_calls_per_model:
+            if calls_made < max_calls_per_model:
                 continue
             break
 

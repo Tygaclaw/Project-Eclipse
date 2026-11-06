@@ -28,3 +28,11 @@ Not yet implemented as a working integrated product: actual ECLIPSE-managed infe
 ## Latest milestone result
 
 Update this section after each milestone with changed files, commit/PR, selected model(s), retries/failovers, checks and the next acceptance step.
+
+### Audit and repair — 2026-11-06 (setup engineer session)
+
+- Audited PR #12: ranked routing, initial attempt + five retries, immediate failover on auth/quota/rate-limit/model errors, same-session continuation, credential scrubbing, protected-path draft policy and CI-repair resume are all present and unit-tested.
+- Fixed: a context-length compaction call wrongly consumed one of the six calls for a model (the old `attempt -= 1` inside a `for` loop had no effect). Added a regression test that fails on the old code.
+- Added: a test that fails CI if the controller's route order ever differs from the ranked table in `docs/FREE_MODEL_PROVIDER_POOL.md`.
+- Still unproven: no live Actions run, live provider smoke test or real failover has happened yet. Activation requires the owner to merge PR #12 (it changes protected automation files, so it must stay draft until reviewed) and dispatch `ECLIPSE autonomous engineering` once.
+

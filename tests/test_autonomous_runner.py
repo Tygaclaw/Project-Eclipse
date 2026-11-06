@@ -268,5 +268,47 @@ class FailoverLoopTests(unittest.TestCase):
         self.assertEqual(selected_model, ROUTES[1].open_code_id)
 
 
+    def test_context_compaction_does_not_consume_a_retry(self) -> None:
+        from scripts.eclipse_autonomous import run_agent_with_failover
+
+        calls = []
+        session = "ses_compactretry1234"
+
+        def fake_call(route, prompt, session_id, run_title, **kwargs):
+            calls.append(route.open_code_id)
+            if route == ROUTES[0]:
+                if len(calls) == 1:
+                    return RunResult(1, stderr="context_length_exceeded: maximum context length"), session
+                return RunResult(1, stderr="HTTP 503 gateway temporarily unavailable"), session
+            return RunResult(0, stdout='{"type":"session.updated"}'), session_id or session
+
+        success, _session, selected_model, failure = run_agent_with_failover(
+            "initial task", "compaction-budget", self.all_provider_secrets(),
+            max_calls_per_model=6,
+            call=fake_call,
+            validate=lambda: (True, "all passed"),
+            sleep=lambda _seconds: None,
+            rng=lambda: 0.0,
+        )
+
+        self.assertTrue(success, failure)
+        # One compaction call plus the full initial call and five retries on rank 1.
+        self.assertEqual(calls[:7], [ROUTES[0].open_code_id] * 7)
+        self.assertEqual(calls[7], ROUTES[1].open_code_id)
+        self.assertEqual(selected_model, ROUTES[1].open_code_id)
+
+
+class RankedPoolConsistencyTests(unittest.TestCase):
+    def test_controller_route_order_matches_ranked_provider_pool_document(self) -> None:
+        import re
+        from pathlib import Path
+
+        doc = (Path(__file__).resolve().parents[1] / "docs" / "FREE_MODEL_PROVIDER_POOL.md").read_text(encoding="utf-8")
+        ranked = re.findall(r"^\|\s*\*{0,2}(\d+)\*{0,2}\s*\|[^|]*\|[^|]*\|\s*`([^`]+)`", doc, re.M)
+        ranked.sort(key=lambda row: int(row[0]))
+        self.assertEqual(len(ranked), 12)
+        self.assertEqual([row[1] for row in ranked], [route.open_code_id for route in ROUTES])
+
+
 if __name__ == "__main__":
     unittest.main()
