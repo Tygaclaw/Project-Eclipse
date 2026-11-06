@@ -1,8 +1,19 @@
 # ECLIPSE Project Status
 
-**Status:** `ACTIVE — PR5_CORRECTIONS_IMPLEMENTED_AWAITING_REVIEW`
+**Status:** `ACTIVE — HARDWARE_FEASIBILITY_CLOSEOUT_AWAITING_REVIEW`
 
 **Last updated:** 2026-11-06
+
+## Branch stack (read this first)
+
+This branch (`feature/hardware-feasibility-v1`) is **stacked on PR #5's branch** (`opencode/issue2-20261106071400`); it is not based on `main` alone.
+
+- `main` (`04e46ce`) contains only the merged PR #3 and PR #4 foundation.
+- PR #5 (tokenizer and chat-template intelligence) is open, unmerged and awaiting the owner's fresh review. Its only review is `CHANGES_REQUESTED`, written against an older commit than the current head.
+- PR #6 (documentation-only product/runtime specification, `docs/COMPLETE_PRODUCT_RUNTIME_VISION.md`) is open and unmerged. That file is **not** on this branch; the two branches diverged and are reconciled only when the owner merges them. The specification states requirements, not implementation status.
+- PR #7 (OpenCode `external_directory` permission fix in `opencode.json`) is open and unmerged. Passing application CI does not prove the OpenCode hang is fixed; that needs a real headless OpenCode run after it is merged.
+- The hardware-feasibility work is the 13 commits on top of PR #5's branch plus the close-out commits. It is opened as a stacked PR **targeting PR #5's branch** so its diff shows only hardware work. It must not become a 45-commit PR against `main`. After the owner merges PR #5, retarget it to `main` and re-run all PR checks.
+- CI note: `ci.yml` runs on pushes to `feature/**` and on PRs to `main`; `desktop.yml` runs only on PRs to `main` or by manual dispatch. A PR into PR #5's branch therefore does not start the Windows Qt/PyInstaller build automatically. It is dispatched manually, and `.github/workflows/*` is intentionally untouched.
 
 ## Completed in this repository increment
 
@@ -35,6 +46,11 @@
 - [x] Reused GGUF `tokenizer.*` metadata (bounded previews already read by the GGUF parser) for a GGUF tokenizer/chat-template summary without rereading the file.
 - [x] Added the `eclipse inspect-tokenizer <folder>` CLI command and surfaced a beginner-friendly "Tokenizer and chat format" card (with a technical disclosure) and a tokenizer evidence label in the Model Atlas and desktop workspace.
 - [x] Hardened tokenizer inspection for PR #5 review: per-file and aggregate JSON/template byte caps; shared embedded/file/GGUF template count and byte budgets; bounded added-token entry scans; clipped token previews; nested/root symlink handling; source immutability/path privacy tests; HF processor-template compatibility warning; and vocabulary evidence rendering.
+- [x] Added a read-only host snapshot (`src/eclipse/core/hardware.py`): OS/CPU, RAM total/available via `GlobalMemoryStatusEx` (POSIX `sysconf` fallback), NVIDIA GPU name/VRAM/driver through `nvidia-smi` when it responds, and selected-volume storage capacity. Unavailable values stay unknown, never zero; no CUDA/Vulkan/backend compatibility is inferred.
+- [x] Added bounded architecture facts with key aliases for GGUF (observed) and Hugging Face `config.json`/`text_config` (declared); conflicting aliases remain unknown.
+- [x] Added a static memory-feasibility planner (`src/eclipse/model_intelligence/feasibility.py`): weights, a KV-cache estimate (layers × context × KV heads × key+value dimensions × dtype bytes × sequence slots), RAM and largest-single-GPU VRAM budgets with reserves, SSD reported separately, and a conditional performance-goal classification that applies the 10+ / 15–20+ tokens/second goals only to candidates oversized for the requested profile.
+- [x] Added `inspect-host` and `plan-feasibility` CLI commands and hardware/memory-fit controls in the existing Model Intelligence workspace (background worker with cancellation).
+- [x] Hardware-feasibility close-out: `nvidia-smi` discovery now tries each known location in turn when one cannot be launched (previously only the first location was tried), and the KV-cache estimate now states in its output and warnings that it assumes full-attention key/value state on every layer and can overstate hybrid, sliding-window or latent-attention models.
 
 ## What works now
 
@@ -43,6 +59,8 @@
 - `py -3 -m eclipse inspect-hf-folder <folder>` summarizes `config.json`, enumerates shard sizes, and cross-checks the shard index against the files on disk.
 - `py -3 -m eclipse inspect-tokenizer <folder>` statically summarizes tokenizer assets and chat templates from small control files, with observed/declared/unknown evidence labels and no template execution.
 - `py -3 -m eclipse build-atlas <path>` dispatches by input type and emits one evidence-labelled JSON atlas that now includes a `tokenizer` section (folder and GGUF sources; Safetensors reports it as unavailable).
+- `py -3 -m eclipse inspect-host [--storage-path <path>]` prints a read-only host snapshot (OS/CPU, RAM total/available, NVIDIA VRAM when `nvidia-smi` responds, storage volume capacity). Unavailable values are reported as unknown.
+- `py -3 -m eclipse plan-feasibility <model path>` builds the atlas and prints a static memory-capacity estimate (weights plus KV cache against usable RAM and the largest single GPU). It is a capacity envelope only: no layer placement, backend validation, model load or tokens/second prediction.
 - `eclipse-desktop` opens the three-workspace shell; the Model Intelligence workspace selects a GGUF, Safetensors file or Hugging Face folder, runs the atlas with progress, cancellation and prior-inspection evidence, and renders model/architecture, parameters/storage, distribution, tokenizer/chat format, warnings, safety, evidence and an advanced disclosure.
 - `packaging/launcher.py` + `packaging/eclipse-desktop.spec` build a windowed onedir `dist/ECLIPSE/ECLIPSE.exe`; `ECLIPSE.exe --atlas-backend ...` reuses the unchanged `build-atlas` CLI.
 - Parser limits cap header/index bytes, tensor count, metadata entry count, strings, array elements, dimensions, header size, folder entries and shard count.
@@ -51,6 +69,7 @@
 
 ## Local verification evidence
 
+- Hardware-feasibility close-out, local sandbox run (Linux, Python 3.13.18, PySide6 not installed): `python -m unittest discover -s tests` ran **190 tests, OK, 11 skipped**; all 11 skips are the optional Qt desktop smoke tests (`PySide6 is not installed`). `python -m compileall -q src tests .github/scripts` passed. Before the close-out the same branch ran 184 tests (11 skipped), matching the recorded CI count; the close-out adds 6 tests (4 for `nvidia-smi` lookup, 2 for the KV assumption). This is local, synthetic-fixture evidence on a non-Windows host; it is not Windows, Qt or owner-machine evidence.
 - Historical initial PR #5 local verification only (before review corrections): Python 3.14.4 with PySide6 `6.12.0`; **131 tests passed**. This is historical local evidence and is not used as the acceptance result for the corrected branch.
 - Corrected PR #5 final code head `ce8fcb679373129365a4fb067a50b4777570330f`: Python matrix [run #42198091790](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198091790) passed all four Windows jobs on Python 3.11–3.14; each ran **145 tests**, with 8 optional Qt tests skipped because PySide6 is absent from the core matrix.
 - Corrected PR #5 Windows desktop [run #42198092066](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198092066) passed **145 tests with PySide6**, PyInstaller Windows x64 packaging, packaged backend `--help` smoke test, ZIP creation and artifact upload. Artifact `ECLIPSE-windows-x64`, ID `13493741785`, size **50,965,917 bytes**, SHA-256 `3d6220bbf9736d39fd840fc65b3b9c82eb99f6d779af4632b0ef49aa603f1a49`.
@@ -69,6 +88,7 @@ User-reported manual Windows 11 real-file validation (packaged application):
 
 ## CI verification evidence
 
+- Hardware branch head `4385fb6076a866875e817465332e9ec48d475564` (before the close-out commit): Python checks [run #42204589092](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42204589092) succeeded on Windows Python 3.11–3.14, **184 tests per job, 11 skipped**. No Windows desktop (Qt/PyInstaller) run exists for this stack at that head. Results for the close-out head are recorded on the stacked PR rather than in this file.
 - The original PR #5 head `17c2d4e0da480374a33c4de95debf9dce4e77d07` had no associated workflow runs; that is historical only. The corrected final code head `ce8fcb679373129365a4fb067a50b4777570330f` has successful Python 3.11–3.14 matrix [#42198091790](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198091790) and Windows Qt/PyInstaller build [#42198092066](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198092066).
 - Baseline CI on `main` (parent commit `122fc56`) is **success**: workflow "Python checks" run [#17](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42157195462) on `windows-latest`, Python 3.11, 3.12, 3.13 and 3.14, all four jobs passed "Run unit tests".
 - The prior increment's pull-request CI run is **success**: PR #3 run [#42164928747](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42164928747), all four Windows jobs passed on Python 3.11, 3.12, 3.13 and 3.14; that suite contained **86 tests**.
@@ -84,7 +104,8 @@ User-reported manual Windows 11 real-file validation (packaged application):
 - [x] PR #5 reviewer corrections, bounded-resource hardening, branch synchronization, and PR-head CI acceptance; PR remains open for owner review.
 - [ ] Remote model-card metadata retrieval (no network access is used).
 - [ ] Derived GGUF sizes reconciled against a trusted full checkpoint.
-- [ ] Memory/VRAM feasibility planner.
+- [x] Static memory/VRAM feasibility estimate (capacity envelope only) implemented on this branch; owner Windows 11 validation of the host snapshot, CLI and UI controls is pending.
+- [ ] Executable placement planning, backend/operator compatibility, runtime-overhead estimates, hybrid/sliding-window/latent-attention KV layouts, and any measured tokens/second.
 - [x] User-reported Windows 11 manual launch and navigation smoke test: app opened successfully and all three workspaces were clickable and displayed without an observed problem.
 - [ ] Model preparation/transformation, runtime adapters or inference.
 - [ ] Capability Amplification system, Obsidian integration, or a working ECLIPSE Agent (placeholder screens only).
@@ -100,6 +121,8 @@ py -3 -m eclipse inspect-safetensors "D:\Models\model.safetensors"
 py -3 -m eclipse inspect-hf-folder "D:\Models\YourModelFolder"
 py -3 -m eclipse inspect-tokenizer "D:\Models\YourModelFolder"
 py -3 -m eclipse build-atlas "D:\Models\YourModelFolder"
+py -3 -m eclipse inspect-host --storage-path "D:\Models"
+py -3 -m eclipse plan-feasibility "D:\Models\model.gguf" --context-tokens 8192
 py -3 -m unittest discover -s tests -v
 ```
 
@@ -127,6 +150,9 @@ The result is `dist\ECLIPSE\ECLIPSE.exe`. No administrator privileges, model run
 - Architecture-specific interpretation is still limited to metadata directly present in the checkpoint.
 - The packaged Windows x64 build and backend smoke test passed on a GitHub-hosted Windows runner; the GUI shell passed 8 offscreen Qt tests there. The user confirmed interactive Windows 11 launch/navigation and successfully inspected one real GGUF through the packaged UI. The Atlas reported 0 tensor payload bytes read and no source modification. Real Safetensors/Hugging Face-folder validation, GPU runtime and inference remain untested.
 - The agent workspace is a placeholder with no model adapter and no chat input, by design.
+- The feasibility result is a static capacity envelope, not an executable placement manifest. It does not choose layers/tensors/experts, validate a backend or operators, verify context allocation, measure memory, load a model or predict speed. An estimated fit does not prove a model runs, and an "oversized" classification does not prove every possible placement fails.
+- The KV-cache estimate assumes full-attention key/value state on every layer. Hybrid (linear/state-space), sliding-window or latent-attention models can need less, so a borderline "oversized" result must be re-checked against backend-reported allocation. Whether the owner's `qwen35` GGUF is such a case has not been checked.
+- Host discovery covers NVIDIA GPUs through `nvidia-smi` only; AMD/Intel GPU telemetry, compute capability and Vulkan/CUDA support are not detected. The snapshot is point-in-time and free memory changes while other programs run.
 
 ## Free & Safe Checklist
 

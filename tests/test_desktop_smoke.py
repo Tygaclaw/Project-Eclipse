@@ -223,6 +223,153 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertIn("tokenizer_config.json:vocab_size", text)
         self.assertIn("8", text)
 
+    def test_memory_fit_controls_are_user_adjustable_and_require_an_atlas(self) -> None:
+        window = self.make_window()
+        workspace = window.model_workspace
+        self.assertTrue(workspace._detect_hardware_button.isEnabled())
+        self.assertFalse(workspace._check_fit_button.isEnabled())
+        self.assertIsNone(workspace._context_combo.currentData())
+        self.assertAlmostEqual(workspace._ram_reserve_spin.value(), 8.0)
+        self.assertAlmostEqual(workspace._vram_reserve_spin.value(), 0.75)
+        workspace.apply_atlas(sample_atlas())
+        self.assertTrue(workspace._check_fit_button.isEnabled())
+
+    def test_feasibility_result_renders_as_a_memory_estimate_not_runtime_success(self) -> None:
+        window = self.make_window()
+        workspace = window.model_workspace
+        workspace.apply_atlas(sample_atlas())
+        workspace._render_feasibility(
+            {
+                "host": {
+                    "operating_system": {"name": "Windows", "release": "11", "evidence": "observed"},
+                    "processor": {"reported_identifier": "Intel Core i7", "logical_processors": 12, "evidence": "observed"},
+                    "system_memory": {
+                        "physical_total_bytes": 48 * 1024**3,
+                        "available_bytes": 20 * 1024**3,
+                        "evidence": "observed",
+                    },
+                    "gpus": [
+                        {
+                            "name": "NVIDIA Example GPU",
+                            "memory_total_bytes": 8 * 1024**3,
+                            "memory_free_bytes": 6 * 1024**3,
+                            "evidence": "observed",
+                        },
+                        {
+                            "name": "Second Example GPU",
+                            "memory_total_bytes": 16 * 1024**3,
+                            "memory_free_bytes": 12 * 1024**3,
+                            "evidence": "observed",
+                        },
+                    ],
+                    "storage": {"free_bytes": 500 * 1024**3, "evidence": "observed"},
+                    "warnings": [],
+                },
+                "plan": {
+                    "requirements": {
+                        "weight_storage": {"bytes": 16 * 1024**3, "evidence": "derived"},
+                        "kv_cache": {
+                            "bytes": 2 * 1024**3,
+                            "evidence": "estimated",
+                            "context_tokens": 32768,
+                            "context_source": "model_declared",
+                        },
+                    },
+                    "budgets": {
+                        "system_ram_usable_bytes": 12 * 1024**3,
+                        "single_gpu_vram_usable_bytes": 5 * 1024**3,
+                        "combined_system_ram_and_single_gpu_bytes": 17 * 1024**3,
+                    },
+                    "capacity_assessment": {
+                        "memory_classification": "estimated_resident_memory_fit",
+                        "native_memory_candidate": "within_resident_capacity_candidate",
+                        "evidence": "estimated",
+                    },
+                    "execution_feasibility": {
+                        "performance_goal_policy": {
+                            "applies_to_this_profile": False,
+                            "native_fit_policy": "No fixed throughput floor.",
+                        }
+                    },
+                    "host": {
+                        "selected_gpu": {
+                            "device_name": "Second Example GPU",
+                            "evidence": "observed",
+                        }
+                    },
+                    "warnings": ["Static memory estimate only."],
+                },
+            }
+        )
+        text = " ".join(widget_texts(workspace))
+        self.assertIn("Memory fit estimate", text)
+        self.assertIn("Estimated KV cache", text)
+        self.assertIn("Not validated", text)
+        self.assertIn("Second Example GPU", text)
+        self.assertIn("Performance goal scope", text)
+        self.assertIn("No fixed throughput floor", text)
+        self.assertIn("Static memory estimate only.", text)
+        self.assertNotIn("10+ sustained tokens/second", text)
+
+    def test_oversized_candidate_displays_only_the_large_model_goals(self) -> None:
+        window = self.make_window()
+        workspace = window.model_workspace
+        workspace.apply_atlas(sample_atlas())
+        workspace._render_feasibility(
+            {
+                "host": {
+                    "system_memory": {
+                        "physical_total_bytes": 48 * 1024**3,
+                        "available_bytes": 8 * 1024**3,
+                    },
+                    "gpus": [
+                        {
+                            "name": "Example GPU",
+                            "memory_total_bytes": 8 * 1024**3,
+                            "memory_free_bytes": 2 * 1024**3,
+                        }
+                    ],
+                    "storage": {},
+                    "warnings": [],
+                },
+                "plan": {
+                    "requirements": {
+                        "weight_storage": {"bytes": 40 * 1024**3, "evidence": "derived"},
+                        "kv_cache": {"bytes": None, "evidence": "unknown", "context_source": "unknown"},
+                    },
+                    "budgets": {
+                        "system_ram_usable_bytes": 8 * 1024**3,
+                        "single_gpu_vram_usable_bytes": 2 * 1024**3,
+                        "combined_system_ram_and_single_gpu_bytes": 10 * 1024**3,
+                    },
+                    "capacity_assessment": {
+                        "memory_classification": "exceeds_resident_capacity_even_before_kv_cache",
+                        "native_memory_candidate": "oversized_candidate",
+                        "evidence": "estimated",
+                    },
+                    "execution_feasibility": {
+                        "performance_goal_policy": {
+                            "applies_to_this_profile": True,
+                            "primary_acceptance_goal": "10+ sustained tokens/second",
+                            "preferred_stretch_goal": "15–20+ sustained tokens/second",
+                        }
+                    },
+                    "host": {
+                        "selected_gpu": {
+                            "device_name": "Example GPU",
+                            "evidence": "observed",
+                        }
+                    },
+                    "warnings": ["Static memory estimate only."],
+                },
+            }
+        )
+        text = " ".join(widget_texts(workspace))
+        self.assertIn("Oversized model candidate", text)
+        self.assertIn("10+ sustained tokens/second", text)
+        self.assertIn("15–20+ sustained tokens/second", text)
+        self.assertIn("not a predicted or measured result", text)
+
     def test_window_starts_and_closes_cleanly(self) -> None:
         window = self.make_window()
         window.show()

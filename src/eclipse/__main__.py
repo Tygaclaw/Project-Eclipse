@@ -6,7 +6,11 @@ import argparse
 import json
 import sys
 
+from eclipse.core import detect_host_hardware
 from eclipse.model_intelligence import (
+    FeasibilityError,
+    FeasibilityRequest,
+    plan_model_feasibility,
     GGUFError,
     HFFolderError,
     HFFolderLimits,
@@ -88,6 +92,25 @@ def build_parser() -> argparse.ArgumentParser:
     atlas.add_argument("path", help="path to a .gguf file, a .safetensors file or a model folder")
     atlas.add_argument("--max-shards", type=int, default=4096)
     atlas.add_argument("--compact", action="store_true", help="emit compact JSON")
+
+    host = commands.add_parser(
+        "inspect-host",
+        help="report currently observable host hardware and available memory",
+    )
+    host.add_argument("--storage-path", help="optional model file/folder path used to identify its storage volume")
+    host.add_argument("--compact", action="store_true", help="emit compact JSON")
+
+    feasibility = commands.add_parser(
+        "plan-feasibility",
+        help="estimate model weight and KV-cache memory against current host resources",
+    )
+    feasibility.add_argument("path", help="path to a supported GGUF, Safetensors file or model folder")
+    feasibility.add_argument("--context-tokens", type=int, help="requested context; defaults to the model-declared value")
+    feasibility.add_argument("--kv-cache-dtype", choices=("f16", "bf16", "f32"), default="f16")
+    feasibility.add_argument("--sequence-slots", type=int, default=1)
+    feasibility.add_argument("--ram-reserve-mib", type=int, default=8192)
+    feasibility.add_argument("--vram-reserve-mib", type=int, default=768)
+    feasibility.add_argument("--compact", action="store_true", help="emit compact JSON")
 
     return parser
 
@@ -189,6 +212,45 @@ def _run_tokenizer(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
     return 0
 
 
+
+def _run_inspect_host(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    try:
+        report = detect_host_hardware(args.storage_path).to_dict()
+    except (OSError, ValueError) as exc:
+        print(f"ECLIPSE: hardware discovery failed: {type(exc).__name__}", file=sys.stderr)
+        return 2
+    print(json.dumps(report, ensure_ascii=False, indent=None if args.compact else 2, allow_nan=False))
+    return 0
+
+
+def _run_plan_feasibility(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    for option in ("sequence_slots",):
+        if getattr(args, option) <= 0:
+            parser.error(f"--{option.replace('_', '-')} must be greater than zero")
+    for option in ("ram_reserve_mib", "vram_reserve_mib"):
+        if getattr(args, option) < 0:
+            parser.error(f"--{option.replace('_', '-')} cannot be negative")
+    if args.context_tokens is not None and args.context_tokens <= 0:
+        parser.error("--context-tokens must be greater than zero")
+
+    request = FeasibilityRequest(
+        context_tokens=args.context_tokens,
+        kv_cache_dtype=args.kv_cache_dtype,
+        sequence_slots=args.sequence_slots,
+        system_ram_reserve_bytes=args.ram_reserve_mib * 1024 * 1024,
+        gpu_vram_reserve_bytes=args.vram_reserve_mib * 1024 * 1024,
+    )
+    try:
+        atlas = build_model_atlas(args.path)
+        host = detect_host_hardware(args.path)
+        report = plan_model_feasibility(atlas, host, request)
+    except (FeasibilityError, ModelAtlasError, OSError, ValueError) as exc:
+        print(f"ECLIPSE: feasibility planning failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(report, ensure_ascii=False, indent=None if args.compact else 2, allow_nan=False))
+    return 0
+
+
 def _run_build_atlas(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if args.max_shards < 0:
         parser.error("--max-shards cannot be negative")
@@ -215,6 +277,10 @@ def main(argv: list[str] | None = None) -> int:
         return _run_tokenizer(args, parser)
     if args.command == "build-atlas":
         return _run_build_atlas(args, parser)
+    if args.command == "inspect-host":
+        return _run_inspect_host(args, parser)
+    if args.command == "plan-feasibility":
+        return _run_plan_feasibility(args, parser)
     parser.error(f"Unknown command: {args.command}")
     return 2
 
