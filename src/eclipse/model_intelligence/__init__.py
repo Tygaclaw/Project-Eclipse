@@ -37,6 +37,7 @@ from .tokenizer import (
     inspect_tokenizer,
     summarize_gguf_tokenizer,
 )
+from .feasibility import FeasibilityError, FeasibilityRequest, plan_model_feasibility
 from .model_atlas import (
     ModelAtlasError,
     ModelAtlasFormatError,
@@ -48,6 +49,8 @@ __all__ = [
     "GGMLType",
     "GGML_TYPE_TRAITS_REVISION",
     "GGML_TYPE_TRAITS_SOURCE",
+    "FeasibilityError",
+    "FeasibilityRequest",
     "GGUFError",
     "GGUFFormatError",
     "GGUFResourceLimitError",
@@ -68,6 +71,7 @@ __all__ = [
     "TokenizerLimits",
     "TokenizerResourceLimitError",
     "build_model_atlas",
+    "plan_model_feasibility",
     "get_ggml_type",
     "inspect_gguf",
     "inspect_hf_folder",
