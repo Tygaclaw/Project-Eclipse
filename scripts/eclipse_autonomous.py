@@ -413,11 +413,17 @@ def run_agent_with_failover(
     sleep: Callable[[float], None] = time.sleep,
     rng: Callable[[], float] = random.random,
     deadline: float | None = None,
+    initial_session_id: str | None = None,
+    start_model_id: str | None = None,
 ) -> tuple[bool, str | None, str, str | None]:
-    session_id: str | None = None
+    session_id: str | None = initial_session_id
     skipped_providers: set[str] = set()
     last_failure = ""
-    for route in route_models():
+    routes = route_models()
+    if start_model_id:
+        start_index = next((i for i, item in enumerate(routes) if item.open_code_id == start_model_id), 0)
+        routes = routes[start_index:]
+    for route in routes:
         if deadline is not None and deadline - time.monotonic() < 90:
             return False, session_id, "", last_failure or "Autonomous run time budget reached; checkpoint required."
         if route.provider in skipped_providers:
@@ -476,6 +482,41 @@ def run_agent_with_failover(
             break
 
     return False, session_id, "", last_failure or "No approved free model route was available."
+
+
+def remote_ci_failure_context(
+    pr_url: str, branch: str, source_env: dict[str, str]
+) -> str:
+    """Collect failed GitHub Actions logs for the exact current PR head."""
+    details = json.loads(gh(
+        ["pr", "view", pr_url, "--json", "headRefOid"],
+        source_env=source_env,
+    ).stdout)
+    expected_head = details.get("headRefOid")
+    runs_result = gh(
+        ["run", "list", "--branch", branch, "--limit", "20",
+         "--json", "databaseId,headSha,status,conclusion,name"],
+        source_env=source_env,
+    )
+    runs = json.loads(runs_result.stdout or "[]")
+    failed = [
+        run for run in runs
+        if run.get("headSha") == expected_head
+        and run.get("status") == "completed"
+        and run.get("conclusion") in {"failure", "timed_out", "cancelled", "action_required"}
+    ]
+    chunks: list[str] = []
+    for run in failed[:6]:
+        run_id = str(run.get("databaseId", ""))
+        if not run_id:
+            continue
+        logs = gh(["run", "view", run_id, "--log-failed"], source_env=source_env, check=False)
+        raw = (logs.stdout or "") + (logs.stderr or "")
+        chunks.append(
+            f"===== {run.get('name', 'GitHub Actions')} run {run_id} "
+            f"({run.get('conclusion')}) =====\n{redact(raw, source_env)[-8_000:]}"
+        )
+    return "\n\n".join(chunks)[-24_000:]
 
 
 def make_pr_body(branch: str, paths: Sequence[str], validation: str, protected: bool) -> str:
@@ -655,8 +696,46 @@ def main() -> int:
     print("\n".join(final_paths))
 
     checks = gh(["pr", "checks", pr_url, "--watch", "--fail-fast"], source_env=source_env, check=False)
+    for repair_round in range(5):
+        if checks.returncode == 0:
+            break
+        failure_context = remote_ci_failure_context(pr_url, branch, source_env)
+        if not failure_context:
+            print("CI_NOT_GREEN: no failed-run logs could be retrieved; preserving PR without merge.")
+            print(redact(checks.stdout + checks.stderr, source_env)[-8_000:])
+            return 4
+        repair_prompt = build_repair_prompt(
+            "The PR's Windows/GitHub Actions checks failed. Repair the real failure in this same "
+            "OpenCode session and current feature branch. Keep all existing successful work.\n\n"
+            + failure_context
+        )
+        repaired, session_id, selected_model, repair_failure = run_agent_with_failover(
+            repair_prompt,
+            run_title + f" CI repair {repair_round + 1}",
+            source_env,
+            turn_timeout=DEFAULT_TURN_TIMEOUT,
+            deadline=deadline,
+            initial_session_id=session_id,
+            start_model_id=selected_model,
+        )
+        if not repaired:
+            print("CI_REPAIR_EXHAUSTED: PR remains open and will not be merged.")
+            print(redact(repair_failure or "", source_env)[-8_000:])
+            return 4
+        try:
+            repair_paths, repair_protected, guard_note = commit_and_push_worktree(branch, source_env)
+        except Exception as exc:
+            print(f"CI_REPAIR_SAFETY_BLOCKED: {type(exc).__name__}: {exc}")
+            return 4
+        if not repair_paths:
+            print("CI_REPAIR_MADE_NO_CHANGES: PR remains open and will not be merged.")
+            return 4
+        protected = protected or repair_protected
+        print(f"CI repair {repair_round + 1} committed by controller; updated paths: {len(repair_paths)}")
+        checks = gh(["pr", "checks", pr_url, "--watch", "--fail-fast"], source_env=source_env, check=False)
+
     if checks.returncode != 0:
-        print("CI_NOT_GREEN: PR remains open and will not be merged.")
+        print("CI_NOT_GREEN_AFTER_REPAIR_LIMIT: PR remains open and will not be merged.")
         print(redact(checks.stdout + checks.stderr, source_env)[-8_000:])
         return 4
 
