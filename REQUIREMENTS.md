@@ -20,9 +20,10 @@
 | R-016 | Complete four remaining model-agent evaluations | Pending: multi-file feature, runtime debugging, connected-codebase modification, Three.js/game development |
 | R-017 | Preserve completed A* evaluation and known-good Qwen baseline | Historical state only; do not make setup or A* retest a prerequisite |
 | R-018 | Beginner-friendly Windows desktop with three primary workspaces | PySide6 `6.12.0` shell with all three workspaces navigable; Model Intelligence connected to Model Atlas; packaged Windows x64 artifact built and user-validated with one real GGUF |
-| R-022 | Reproducible Windows desktop packaging | PyInstaller spec/launcher and active workflow at `.github/workflows/desktop.yml`; Windows x64 artifact built and uploaded successfully in run #42173214699 |
+| R-022 | Reproducible Windows desktop packaging | PyInstaller spec/launcher and active workflow at `.github/workflows/desktop.yml`; Windows x64 artifact built and uploaded successfully in corrected PR #5 run [#42198092066](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198092066) |
 | R-019 | Safe sandboxed execution and permission boundaries | Requirements recorded in `SECURITY.md`; implementation pending |
 | R-020 | Honest status and reproducible evidence | Status/continuation registers and automated tests added |
-| R-021 | Discover local Hugging Face model folders | Bounded `config.json` summary and `model.safetensors.index.json` shard-index cross-check implemented; tokenizer parsing and real-folder validation pending |
+| R-021 | Discover local Hugging Face model folders | Bounded `config.json` summary and `model.safetensors.index.json` shard-index cross-check implemented; tokenizer assets are now inspected statically; real-folder validation pending |
+| R-023 | Static tokenizer and chat-template intelligence without execution | Bounded read-only folder/GGUF inspection, `inspect-tokenizer` CLI and Atlas/desktop integration; synthetic tests cover aggregate/per-file JSON and template limits, bounded token-entry scans, clipped previews, symlink handling, invalid UTF-8, named templates, processor compatibility, privacy and source immutability. Templates are never imported, compiled or rendered; real multi-file folder validation pending |
 
 A feature is complete only when its acceptance evidence exists. One real GGUF desktop inspection is now verified on Windows 11; this does not satisfy broader Safetensors/Hugging Face, GPU or inference acceptance gates.

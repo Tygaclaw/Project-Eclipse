@@ -150,6 +150,13 @@ def build_stylesheet() -> str:
     QLabel#SuccessText {
         color: #74d9a0;
     }
+    QLabel#CodeBlock {
+        color: #c6e4ff;
+        background: #0a1422;
+        border: 1px solid #1f3350;
+        border-radius: 8px;
+        padding: 10px;
+    }
     QLabel#EvidenceBadge {
         border-radius: 8px;
         padding: 3px 9px;
@@ -163,7 +170,8 @@ def build_stylesheet() -> str:
         color: #7ceaf5;
         border: 1px solid #1d6c7c;
     }
-    QLabel#EvidenceBadge[evidence="derived"] {
+    QLabel#EvidenceBadge[evidence="derived"],
+    QLabel#EvidenceBadge[evidence="declared"] {
         background: #2a2413;
         color: #f3c77a;
         border: 1px solid #6b5526;

@@ -15,6 +15,7 @@ _EVIDENCE_TEXT = {
     "observed_metadata": "Observed metadata",
     "observed_header": "Observed header",
     "derived": "Derived",
+    "declared": "Declared",
     "partial": "Partial",
     "estimated": "Estimated",
     "hypothesized": "Hypothesized",

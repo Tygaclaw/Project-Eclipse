@@ -54,11 +54,71 @@ def sample_atlas() -> dict[str, object]:
                 "registry_revision": "test-revision",
             }
         },
+        "tokenizer": {
+            "available": True,
+            "source": "gguf_metadata",
+            "tokenizer_model_type": "gpt2",
+            "model_label": "gpt2",
+            "pre_tokenizer_type": "llama-bpe",
+            "vocab_size": 4,
+            "vocab_size_evidence": "observed",
+            "vocab_size_source": "gguf:tokenizer.ggml.tokens",
+            "vocab_size_candidates": [
+                {
+                    "source": "gguf:tokenizer.ggml.tokens",
+                    "count": 4,
+                    "evidence": "observed",
+                },
+                {
+                    "source": "tokenizer_config.json:vocab_size",
+                    "count": 8,
+                    "evidence": "declared",
+                },
+            ],
+            "special_tokens": {
+                "bos": {
+                    "content": None,
+                    "id": 1,
+                    "id_evidence": "declared",
+                    "content_evidence": "unknown",
+                    "source": "gguf metadata",
+                }
+            },
+            "chat_templates": {
+                "count": 1,
+                "sources": [
+                    {
+                        "name": "default",
+                        "origin": "tokenizer.chat_template",
+                        "kind": "gguf_metadata",
+                        "preview": "{{ messages }}",
+                    }
+                ],
+                "default": {
+                    "name": "default",
+                    "origin": "tokenizer.chat_template",
+                    "kind": "gguf_metadata",
+                    "evidence": "documented_loader_precedence",
+                },
+            },
+            "fields": [
+                {
+                    "key": "tokenizer.ggml.tokens",
+                    "value_type": "array",
+                    "element_type": "string",
+                    "count": 4,
+                    "preview": ["a", "b", "<s>", "</s>"],
+                    "evidence": "observed",
+                }
+            ],
+            "warnings": [],
+        },
         "warnings": ["Example warning from the inspector."],
         "evidence": {
             "parameters": "observed",
             "storage_bytes": "derived",
             "architecture": "observed_metadata",
+            "tokenizer": "observed",
         },
         "inspection": {
             "mode": "static_read_only",
@@ -147,6 +207,7 @@ class DesktopSmokeTests(unittest.TestCase):
             "Model & architecture",
             "Parameters and storage",
             "Type / dtype distribution",
+            "Tokenizer and chat format",
             "Warnings",
             "Evidence labels",
             "Inspection safety",
@@ -156,7 +217,11 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertIn("sample-model.gguf", text)
         self.assertIn("Observed", text)
         self.assertIn("Derived", text)
+        self.assertIn("Declared", text)
         self.assertIn("Show technical details", text)
+        self.assertIn("gguf:tokenizer.ggml.tokens", text)
+        self.assertIn("tokenizer_config.json:vocab_size", text)
+        self.assertIn("8", text)
 
     def test_window_starts_and_closes_cleanly(self) -> None:
         window = self.make_window()

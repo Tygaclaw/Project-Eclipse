@@ -16,6 +16,12 @@ from typing import Any
 from .gguf import GGUFError, InspectionLimits, inspect_gguf
 from .hf_folder import HFFolderError, HFFolderLimits, inspect_hf_folder
 from .safetensors import SafetensorsError, SafetensorsLimits, inspect_safetensors
+from .tokenizer import (
+    TokenizerError,
+    TokenizerLimits,
+    inspect_tokenizer,
+    summarize_gguf_tokenizer,
+)
 
 _GGUF_SUFFIX = ".gguf"
 _SAFETENSORS_SUFFIX = ".safetensors"
@@ -43,6 +49,7 @@ class ModelAtlasLimits:
     gguf: InspectionLimits = field(default_factory=InspectionLimits)
     safetensors: SafetensorsLimits = field(default_factory=SafetensorsLimits)
     folder: HFFolderLimits = field(default_factory=HFFolderLimits)
+    tokenizer: TokenizerLimits = field(default_factory=TokenizerLimits)
     max_shards: int = 4096
 
     def __post_init__(self) -> None:
@@ -54,6 +61,8 @@ class ModelAtlasLimits:
             raise ValueError("safetensors must be a SafetensorsLimits instance")
         if not isinstance(self.folder, HFFolderLimits):
             raise ValueError("folder must be an HFFolderLimits instance")
+        if not isinstance(self.tokenizer, TokenizerLimits):
+            raise ValueError("tokenizer must be a TokenizerLimits instance")
 
 
 def _detect_kind(path: Path) -> str:
@@ -99,9 +108,40 @@ def _summarize_tensors(
     }
 
 
+def _tokenizer_section_from_folder(path: Path, limits: ModelAtlasLimits) -> tuple[dict[str, Any], list[str]]:
+    try:
+        report = inspect_tokenizer(path, limits.tokenizer)
+    except TokenizerError as exc:
+        message = f"Tokenizer inspection was unavailable: {exc}"
+        return (
+            {
+                "available": False,
+                "source": "huggingface_folder",
+                "error": str(exc),
+                "warnings": [message],
+            },
+            [message],
+        )
+
+    section = dict(report["tokenizer"])
+    has_data = bool(report["assets"]) or report["chat_templates"]["count"] > 0
+    section.update(
+        {
+            "available": has_data,
+            "source": "huggingface_folder",
+            "assets": report["assets"],
+            "chat_templates": report["chat_templates"],
+            "evidence": report["evidence"],
+            "warnings": list(report["warnings"]),
+        }
+    )
+    return section, list(report["warnings"])
+
+
 def _atlas_from_gguf(path: Path, limits: ModelAtlasLimits) -> dict[str, Any]:
     report = inspect_gguf(path, limits.gguf)
     summary = _summarize_tensors(report["tensors"], kind_key="type_name")
+    tokenizer = summarize_gguf_tokenizer(report["metadata"], limits.tokenizer)
     return {
         "source_kind": "gguf",
         "source_name": report["source_file_name"],
@@ -119,6 +159,7 @@ def _atlas_from_gguf(path: Path, limits: ModelAtlasLimits) -> dict[str, Any]:
             "parameters_evidence": "observed",
             "storage_evidence": "derived",
         },
+        "tokenizer": tokenizer,
         "components": {
             "gguf": {
                 "format": report["format"],
@@ -147,6 +188,15 @@ def _atlas_from_safetensors(path: Path, limits: ModelAtlasLimits) -> dict[str, A
             "distribution": {"label": "safetensors_dtype", "counts": summary["counts"]},
             "parameters_evidence": "observed",
             "storage_evidence": "observed",
+        },
+        "tokenizer": {
+            "available": False,
+            "source": "unknown",
+            "note": (
+                "A standalone Safetensors file does not carry tokenizer assets. Choose the "
+                "model folder to inspect its tokenizer and chat templates."
+            ),
+            "warnings": [],
         },
         "components": {
             "safetensors": {
@@ -234,6 +284,9 @@ def _atlas_from_folder(path: Path, limits: ModelAtlasLimits) -> dict[str, Any]:
         )
         complete = False
 
+    tokenizer, tokenizer_warnings = _tokenizer_section_from_folder(path, limits)
+    warnings.extend(tokenizer_warnings)
+
     return {
         "source_kind": "huggingface_folder",
         "source_name": folder["folder_name"],
@@ -251,6 +304,7 @@ def _atlas_from_folder(path: Path, limits: ModelAtlasLimits) -> dict[str, Any]:
             "parameters_evidence": "observed",
             "storage_evidence": "observed",
         },
+        "tokenizer": tokenizer,
         "components": {
             "folder": {
                 "shard_count": (
@@ -292,6 +346,11 @@ def build_model_atlas(
     except (GGUFError, HFFolderError, SafetensorsError) as exc:
         raise ModelAtlasError(str(exc)) from exc
 
+    tokenizer_section = body.get("tokenizer")
+    tokenizer_label = (
+        "observed" if isinstance(tokenizer_section, dict) and tokenizer_section.get("available") is True else "unknown"
+    )
+
     return {
         "format": "eclipse_model_atlas",
         "atlas_version": 1,
@@ -300,6 +359,7 @@ def build_model_atlas(
             "parameters": body["summary"]["parameters_evidence"],
             "storage_bytes": body["summary"]["storage_evidence"],
             "architecture": body["architecture"]["evidence"],
+            "tokenizer": tokenizer_label,
         },
         "inspection": dict(_STATIC_INSPECTION),
     }

@@ -29,7 +29,115 @@ from ..formatting import (
     human_count,
     source_kind_text,
 )
-from ..widgets import add_fact, add_text, clear_layout, make_card, make_empty_card, make_header
+from ..widgets import (
+    add_fact,
+    add_plain_text,
+    add_text,
+    clear_layout,
+    make_card,
+    make_disclosure,
+    make_empty_card,
+    make_header,
+)
+
+
+_SPECIAL_TOKEN_ORDER = ("bos", "eos", "unk", "pad", "sep", "cls", "mask")
+
+
+def _special_token_summary(special: Any) -> str:
+    if not isinstance(special, dict):
+        return ""
+    parts: list[str] = []
+    for key in _SPECIAL_TOKEN_ORDER:
+        entry = special.get(key)
+        if not isinstance(entry, dict):
+            continue
+        content = entry.get("content")
+        token_id = entry.get("id")
+        if content and token_id is not None:
+            parts.append(f"{key}: {content} (#{token_id})")
+        elif content:
+            parts.append(f"{key}: {content}")
+        elif token_id is not None:
+            parts.append(f"{key}: #{token_id}")
+    return ", ".join(parts)
+
+
+def _special_token_evidence(special: Any) -> str:
+    if not isinstance(special, dict) or not special:
+        return "unknown"
+    labels: set[str] = set()
+    for entry in special.values():
+        if not isinstance(entry, dict):
+            continue
+        labels.add(str(entry.get("id_evidence") or "unknown"))
+        labels.add(str(entry.get("content_evidence") or "unknown"))
+    if "declared" in labels:
+        return "declared"
+    if "observed" in labels:
+        return "observed"
+    return "unknown"
+
+
+def _render_assets(layout: QVBoxLayout, assets: Any) -> None:
+    if not isinstance(assets, list) or not assets:
+        return
+    add_plain_text(layout, "Tokenizer files", "FactLabel")
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        name = str(asset.get("name") or "unknown")
+        kind = str(asset.get("kind") or "unknown").replace("_", " ")
+        pieces = [name, kind]
+        size = asset.get("size_bytes")
+        if isinstance(size, int) and not isinstance(size, bool):
+            pieces.append(human_bytes(size))
+        status = asset.get("status")
+        if status and status != "present":
+            pieces.append(f"status: {status}")
+        add_plain_text(layout, "  ".join(pieces), "Muted", monospace=True)
+
+
+def _render_templates(layout: QVBoxLayout, sources: Any) -> None:
+    if not isinstance(sources, list) or not sources:
+        return
+    add_plain_text(layout, "Chat template sources", "FactLabel")
+    for template in sources:
+        if not isinstance(template, dict):
+            continue
+        name = str(template.get("name") or "default")
+        origin = str(template.get("origin") or "unknown")
+        kind = str(template.get("kind") or "unknown").replace("_", " ")
+        status = template.get("status")
+        if status and status != "parsed":
+            add_plain_text(layout, f"{name} - {origin} ({kind}) [status: {status}]", "WarningText")
+        else:
+            add_plain_text(layout, f"{name} - {origin} ({kind})", "Muted")
+        reason = template.get("reason")
+        if isinstance(reason, str) and reason:
+            add_text(layout, reason, "WarningText")
+        preview = template.get("preview")
+        if status in (None, "parsed") and isinstance(preview, str) and preview.strip():
+            add_plain_text(layout, preview, "CodeBlock", monospace=True)
+
+
+def _render_gguf_fields(layout: QVBoxLayout, fields: Any) -> None:
+    if not isinstance(fields, list) or not fields:
+        return
+    add_plain_text(layout, "GGUF tokenizer metadata", "FactLabel")
+    for field in fields:
+        if not isinstance(field, dict):
+            continue
+        key = str(field.get("key") or "unknown")
+        value_type = str(field.get("value_type") or "unknown")
+        count = field.get("count")
+        if isinstance(count, int) and not isinstance(count, bool):
+            detail = f"{value_type} [{human_count(count)}]"
+        elif "value" in field:
+            detail = f"{value_type} = {field.get('value')!r}"
+        else:
+            detail = value_type
+        add_plain_text(layout, f"{key}: {detail}", "Muted", monospace=True)
 
 
 class _InspectionWorker(QThread):
@@ -399,6 +507,8 @@ class ModelIntelligenceWorkspace(QWidget):
             add_text(distribution_layout, "No tensor types were reported.", "Muted")
         self._results_layout.addWidget(distribution_card)
 
+        self._results_layout.addWidget(self._tokenizer_card(document))
+
         warnings_card, warnings_layout = make_card(
             "Warnings",
             "Limits, truncated data, unresolved tensor types and other inspector findings.",
@@ -420,6 +530,7 @@ class ModelIntelligenceWorkspace(QWidget):
             ("Parameters", "parameters"),
             ("Storage", "storage_bytes"),
             ("Architecture", "architecture"),
+            ("Tokenizer", "tokenizer"),
         ):
             value = evidence.get(key)
             add_fact(evidence_layout, label, evidence_text(value), value or "unknown")
@@ -452,6 +563,121 @@ class ModelIntelligenceWorkspace(QWidget):
         self._results_layout.addWidget(safety_card)
 
         self._results_layout.addWidget(self._advanced_card(document, components, source_kind))
+
+    def _tokenizer_card(self, document: dict[str, Any]) -> QWidget:
+        tokenizer = document.get("tokenizer") if isinstance(document.get("tokenizer"), dict) else {}
+        card, layout = make_card(
+            "Tokenizer and chat format",
+            "Facts read from the tokenizer's control files. Chat templates are shown as plain text "
+            "and are never imported, compiled or run.",
+        )
+        if tokenizer.get("available") is not True:
+            message = (
+                tokenizer.get("note")
+                or tokenizer.get("error")
+                or "No tokenizer or chat-template files were found for this source."
+            )
+            add_text(layout, str(message), "Muted")
+            return card
+
+        class_name = tokenizer.get("class")
+        add_fact(layout, "Tokenizer class", str(class_name) if class_name else "Unknown")
+        vocab_size = tokenizer.get("vocab_size")
+        add_fact(
+            layout,
+            "Vocabulary size",
+            human_count(vocab_size) if vocab_size is not None else "Unknown",
+            tokenizer.get("vocab_size_evidence") or "unknown",
+        )
+        model_type = tokenizer.get("tokenizer_model_type") or tokenizer.get("model_label")
+        add_fact(layout, "Tokenizer model", str(model_type) if model_type else "Unknown")
+        added = tokenizer.get("added_token_count")
+        add_fact(
+            layout,
+            "Added tokens",
+            human_count(added) if added is not None else "Unknown",
+        )
+        special = tokenizer.get("special_tokens")
+        add_fact(
+            layout,
+            "Special tokens",
+            _special_token_summary(special) or "None declared",
+            _special_token_evidence(special),
+        )
+
+        templates = (
+            tokenizer.get("chat_templates")
+            if isinstance(tokenizer.get("chat_templates"), dict)
+            else {}
+        )
+        count = templates.get("count")
+        add_fact(
+            layout,
+            "Chat templates",
+            human_count(count) if count is not None else "0",
+            "observed" if count else "unknown",
+        )
+        default = templates.get("default")
+        if isinstance(default, dict):
+            add_fact(
+                layout,
+                "Default template",
+                f"{default.get('origin')} ({str(default.get('kind') or 'unknown').replace('_', ' ')})",
+            )
+
+        details_layout = make_disclosure(layout)
+        add_fact(details_layout, "Tokenizer source", str(tokenizer.get("source") or "Unknown"))
+        add_fact(
+            details_layout,
+            "Vocabulary evidence",
+            str(tokenizer.get("vocab_size_source") or "Unknown"),
+        )
+        candidates = tokenizer.get("vocab_size_candidates")
+        if isinstance(candidates, list) and candidates:
+            add_plain_text(details_layout, "Vocabulary size candidates", "FactLabel")
+            for candidate in candidates:
+                if not isinstance(candidate, dict):
+                    continue
+                source_name = str(candidate.get("source") or "unknown source")
+                candidate_count = candidate.get("count")
+                count_text = (
+                    human_count(candidate_count)
+                    if isinstance(candidate_count, int) and not isinstance(candidate_count, bool)
+                    else "Unknown"
+                )
+                add_fact(
+                    details_layout,
+                    source_name,
+                    count_text,
+                    str(candidate.get("evidence") or "unknown"),
+                )
+
+        for label, key in (
+            ("Pre-tokenizer", "pre_tokenizer_type"),
+            ("Decoder", "decoder_type"),
+            ("Normalizer", "normalizer_type"),
+            ("Padding side", "padding_side"),
+            ("Truncation side", "truncation_side"),
+        ):
+            value = tokenizer.get(key)
+            if value not in (None, ""):
+                add_fact(details_layout, label, str(value))
+        max_length = tokenizer.get("max_length")
+        if max_length is not None:
+            add_fact(details_layout, "Declared max length", human_count(max_length))
+
+        source = tokenizer.get("source")
+        _render_assets(details_layout, tokenizer.get("assets"))
+        _render_templates(details_layout, templates.get("sources"))
+        if source == "gguf_metadata":
+            _render_gguf_fields(details_layout, tokenizer.get("fields"))
+
+        warnings = [item for item in tokenizer.get("warnings", []) if isinstance(item, str)]
+        if warnings:
+            add_plain_text(details_layout, "Tokenizer warnings", "FactLabel")
+            for warning in warnings:
+                add_text(details_layout, warning, "WarningText")
+        return card
 
     def _advanced_card(
         self,

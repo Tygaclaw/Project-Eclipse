@@ -2,7 +2,7 @@
 
 ## Current automated suite
 
-The core inspection suite uses only Python's standard library and synthetic binary fixtures. The desktop tests additionally require PySide6 `6.12.0` and skip when it is not installed. Together the suite currently contains 110 tests and covers:
+The core inspection suite uses only Python's standard library and synthetic binary fixtures. The desktop tests additionally require PySide6 `6.12.0` and skip when it is not installed. The tokenizer review-correction suite adds cases for bounded embedded/standalone templates, JSON budgets, token previews, privacy, symlinks and compatibility; use the latest CI run for the authoritative test count.
 
 - GGUF v2/v3 and big-endian v3 header handling.
 - Metadata and tensor descriptor parsing.
@@ -14,9 +14,10 @@ The core inspection suite uses only Python's standard library and synthetic bina
 - GGML type registry block/type sizes, derived exact GGUF storage bytes, non-block-multiple rows and truncated-file warnings.
 - Safetensors header parsing, metadata, unknown dtypes, shape/range mismatch warnings, overlapping/out-of-range/negative offsets, invalid JSON, header limits and read-only behavior.
 - Hugging Face folder discovery: `config.json` summaries, shard-index weight-map parsing, referenced/missing/unreferenced shard handling, bounded lazy directory enumeration, capped control-file reads, path-separator rejection, symlink skipping and read-only behavior.
-- Model Atlas core: GGUF/Safetensors/folder dispatch, tensor-element and storage aggregation, evidence labels, missing/corrupt shard incompleteness, unreferenced-shard exclusion, tensor-data total reconciliation, unsupported input and shard limits.
+- Model Atlas core: GGUF/Safetensors/folder dispatch, tensor-element and storage aggregation, evidence labels, missing/corrupt shard incompleteness, unreferenced-shard exclusion, tensor-data total reconciliation, unsupported input and shard limits, plus the tokenizer section for folder/GGUF sources and the honest unavailable section for Safetensors.
+- Tokenizer and chat templates (`tests/test_tokenizer.py`): asset inventory (`tokenizer.json`, `tokenizer_config.json`, `special_tokens_map.json`, `added_tokens.json`, `vocab.json`, `vocab.txt`, `merges.txt`, SentencePiece models as inventory-only), observed/declared vocabulary candidates, added and special tokens, aggregate and per-file JSON/template byte limits, aggregate template-count limits shared across embedded and file-based sources, bounded token-entry work, clipped previews, nested/root symlink rejection, invalid UTF-8 templates, named embedded-template lists, legacy/modern processor-template incompatibility, path privacy, source immutability, GGUF tokenizer metadata, CLI limits and no-execution invariants.
 - Desktop boundary (`tests/test_atlas_client.py`): argument-list command construction, a real synthetic GGUF integration run, invalid JSON/contract rejection, payload-safety invariant rejection, bounded output, stderr propagation, cancellation and timeout.
-- Desktop smoke (`tests/test_desktop_smoke.py`): offscreen Qt startup, all three navigation destinations, navigation switching, honest placeholder checks, empty state and Atlas section rendering.
+- Desktop smoke (`tests/test_desktop_smoke.py`): offscreen Qt startup, all three navigation destinations, navigation switching, honest placeholder checks, empty state and Atlas section rendering, including the "Tokenizer and chat format" card and the `Declared` evidence label.
 
 Run (desktop tests need PySide6; use an offscreen platform on headless machines):
 
@@ -29,10 +30,16 @@ py -3 -m unittest discover -s tests -v
 QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
+## Local verification evidence
+
+- Historical pre-review local result: **131 tests passed** on Python 3.14.4 with PySide6 `6.12.0`; historical only.
+- Corrected PR #5 code head `ce8fcb679373129365a4fb067a50b4777570330f`: Python checks [#42198091790](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198091790) passed Python 3.11, 3.12, 3.13 and 3.14, **145 tests per job**, with 8 Qt tests skipped in this core-only matrix.
+- The same corrected code head's Windows desktop run [#42198092066](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198092066) passed **145 tests including Qt**, PyInstaller build, packaged backend smoke test, ZIP creation and artifact upload. Artifact ID `13493741785`, 50,965,917 bytes, SHA-256 `3d6220bbf9736d39fd840fc65b3b9c82eb99f6d779af4632b0ef49aa603f1a49`.
+
 ## Verified GitHub Actions evidence
 
-- Latest dedicated Windows desktop run [#42173214699](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699): all **110 tests passed** with PySide6 installed, including all 8 offscreen UI tests; PyInstaller created the Windows x64 app; the packaged `ECLIPSE.exe --atlas-backend --help` smoke test passed; the ZIP was uploaded as `ECLIPSE-windows-x64` (50,929,741 bytes).
-- Latest core CI matrix [#42173214668](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214668): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in this matrix because PySide6 is optional there; they ran without skips in the dedicated desktop job.
+- Latest PR #5 corrected Windows desktop run [#42198092066](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198092066): all **145 tests passed** with PySide6 installed; PyInstaller created the Windows x64 app; packaged `ECLIPSE.exe --atlas-backend --help` passed; ZIP and artifact upload succeeded (ID `13493741785`, 50,965,917 bytes).
+- Latest PR #5 corrected Python matrix [#42198091790](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198091790): all four Windows jobs passed Python 3.11–3.14, with **145 tests per job**; 8 Qt tests skip in this matrix because PySide6 is intentionally optional, and run in the dedicated desktop job.
 
 ## Manual Windows 11 smoke test
 
@@ -51,5 +58,5 @@ Synthetic tests prove parser behavior for the cases represented by their fixture
 2. Large metadata arrays and resource-limit behavior on Windows.
 3. Real Safetensors files and multi-shard Hugging Face folders on Windows.
 4. Compare metadata/tensor descriptor output and derived sizes with a trusted upstream loader.
-5. Add static tokenizer/chat-template file inspection and bounded metadata handling.
+5. Run the tokenizer/chat-format card against a real multi-file Hugging Face folder (including `additional_chat_templates/*.jinja`) and a real GGUF with embedded `tokenizer.chat_template`.
 6. Add the static memory/VRAM feasibility estimator, then separately validate runtime correctness and preparation integrity.
