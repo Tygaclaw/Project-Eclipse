@@ -51,13 +51,36 @@ _CONFIG_SCALAR_KEYS = (
     "model_type",
     "torch_dtype",
     "num_hidden_layers",
+    "n_layer",
+    "n_layers",
     "hidden_size",
+    "n_embd",
+    "d_model",
     "intermediate_size",
+    "n_inner",
+    "d_ff",
     "num_attention_heads",
+    "n_head",
+    "num_heads",
     "num_key_value_heads",
+    "num_kv_heads",
+    "n_head_kv",
+    "head_dim",
+    "key_head_dim",
+    "value_head_dim",
     "vocab_size",
     "max_position_embeddings",
+    "max_sequence_length",
+    "max_seq_len",
+    "n_positions",
+    "seq_length",
     "tie_word_embeddings",
+    "num_local_experts",
+    "num_experts",
+    "num_experts_per_tok",
+    "num_experts_per_token",
+    "num_shared_experts",
+    "n_expert",
 )
 
 _CONFIG_PRESENCE_KEYS = ("text_config", "vision_config", "quantization_config")
@@ -83,22 +106,39 @@ def _read_bounded_text(path: Path, max_bytes: int) -> tuple[str | None, str | No
         return None, f"{path.name} is not valid UTF-8"
 
 
-def _summarize_config(config: dict[str, Any]) -> dict[str, Any]:
+def _summarize_config(
+    config: dict[str, Any],
+    *,
+    include_text_config: bool = True,
+) -> dict[str, Any]:
+    """Retain only whitelisted architecture scalars from bounded config JSON."""
+
     summary: dict[str, Any] = {}
     for key in _CONFIG_SCALAR_KEYS:
         value = config.get(key)
         if isinstance(value, bool):
             summary[key] = value
-        elif isinstance(value, (int, str)):
+        elif isinstance(value, (int, str)) and not isinstance(value, bool):
             summary[key] = value
     architectures = config.get("architectures")
     if isinstance(architectures, list):
-        summary["architectures"] = [item for item in architectures[:16] if isinstance(item, str)]
+        summary["architectures"] = [
+            item[:256] for item in architectures[:16]
+            if isinstance(item, str)
+        ]
     for key in _CONFIG_PRESENCE_KEYS:
         summary[f"has_{key}"] = key in config
     quantization = config.get("quantization_config")
     if isinstance(quantization, dict) and isinstance(quantization.get("quant_method"), str):
-        summary["quantization_method"] = quantization["quant_method"]
+        summary["quantization_method"] = quantization["quant_method"][:128]
+    nested = config.get("text_config")
+    if include_text_config and isinstance(nested, dict):
+        # Keep one bounded level of text-only architecture facts; do not copy
+        # the full multimodal configuration tree into the Atlas.
+        summary["text_config"] = _summarize_config(
+            nested,
+            include_text_config=False,
+        )
     return summary
 
 
