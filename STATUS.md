@@ -1,6 +1,6 @@
 # ECLIPSE Project Status
 
-**Status:** `AUTONOMOUS_BOOTSTRAP_IMPLEMENTED_ON_FEATURE_BRANCH — OWNER_REVIEW_PENDING`  
+**Status:** `AUTONOMOUS_BOOTSTRAP_CI_VERIFIED_ON_FEATURE_BRANCH — OWNER_REVIEW_PENDING`  
 **Last updated:** 2026-11-06  
 **Current main head audited:** `876034bc42566b79dcf144867664b443317a1a95`
 
@@ -86,3 +86,20 @@ Keep these gates `WAITING_FOR_OWNER_VALIDATION` until real evidence exists. Do n
 - [ ] Each API route passes live non-confidential text and tool-call smoke tests.
 - [ ] Runtime, sandbox, Obsidian, Agent, security/dependency scans and release gates complete.
 - [ ] License selection remains an owner decision; Qt/PySide6 LGPL packaging obligations must be addressed before redistribution.
+
+## Autonomous bootstrap verification evidence — PR #12
+
+PR: https://github.com/Tygaclaw/Project-Eclipse/pull/12  
+Branch: `feature/autonomous-engineering-engine-2026-11-06`  
+Last verified PR head before this documentation update: `44a463732448c6faa544620760eb725ab8944563`.
+
+- [x] Windows Python matrix run [#42292375849](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42292375849): Python 3.11, 3.12, 3.13 and 3.14 all succeeded; each ran 210 unit tests with 11 expected optional dependency skips.
+- [x] Windows desktop run [#42292375824](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42292375824): full suite including Qt/offscreen desktop tests succeeded; PyInstaller Windows x64 build succeeded; packaged backend smoke test succeeded; ZIP creation and artifact upload succeeded.
+- [x] Artifact `ECLIPSE-windows-x64` uploaded successfully (51,137,344 bytes).
+- [x] Mocked tests cover initial + five retries, same-session model switch, provider quota/auth handling, context compaction, standalone OpenCode session invocation and child credential scrubbing.
+- [ ] Live API text/tool-call smoke test across the 12 routes; these tests are not yet claimed.
+- [ ] End-to-end failure injection to prove GitHub CI repair and scheduled checkpoint resume.
+- [ ] Owner review/merge of protected bootstrap PR #12 and observation of its first live autonomous workflow run.
+
+The PR remains a draft because it changes protected workflow/controller/security behavior. Do not mark AUTO-01/02/03 completely accepted before the remaining gates above are satisfied.
+
