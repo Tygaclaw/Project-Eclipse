@@ -25,6 +25,7 @@
 - [x] Added honest Capability and Agent placeholder screens; the Agent screen has no chat input and reports that no adapter is connected.
 - [x] Added desktop boundary and offscreen Qt smoke tests.
 - [x] Added a PyInstaller spec/launcher and pinned desktop requirements.
+- [x] Installed the Windows x64 desktop build workflow at `.github/workflows/desktop.yml` using the owner-level GitHub connection; the reference copy remains at `docs/desktop-build-workflow.yml`.
 
 ## What works now
 
@@ -48,7 +49,7 @@
 
 - Baseline CI on `main` (parent commit `122fc56`) is **success**: workflow "Python checks" run [#17](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42157195462) on `windows-latest`, Python 3.11, 3.12, 3.13 and 3.14, all four jobs passed "Run unit tests".
 - The prior increment's pull-request CI run is **success**: PR #3 run [#42164928747](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42164928747), all four Windows jobs passed on Python 3.11, 3.12, 3.13 and 3.14; that suite contained **86 tests**.
-- The desktop workflow proposed at `docs/desktop-build-workflow.yml` has **not run**: the OpenCode GitHub App cannot create or update `.github/workflows/` files, so no Windows desktop artifact exists yet. A maintainer must install it as `.github/workflows/desktop.yml` and verify the `ECLIPSE-windows-x64` artifact.
+- The active desktop workflow at `.github/workflows/desktop.yml` is now installed. Its first pull-request run against this increment must be inspected before claiming Windows build validation; no verified Windows desktop artifact exists yet.
 - Real Windows/model-file validation has not run.
 
 ## Not completed / not claimed
@@ -57,7 +58,7 @@
 - [ ] Tokenizer/chat-template inspection and remote model-card metadata.
 - [ ] Derived GGUF sizes reconciled against a trusted full checkpoint.
 - [ ] Memory/VRAM feasibility planner.
-- [ ] Windows desktop artifact built and smoke-tested on a real Windows runner (spec/workflow provided, not yet run).
+- [ ] Windows desktop artifact built and smoke-tested on a Windows runner (workflow installed; run pending).
 - [ ] Model preparation/transformation, runtime adapters or inference.
 - [ ] Capability Amplification system, Obsidian integration, or a working ECLIPSE Agent (placeholder screens only).
 
