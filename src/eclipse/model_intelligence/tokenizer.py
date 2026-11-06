@@ -779,7 +779,11 @@ def _read_template_file(
         warnings.append(f"Skipped chat template {path.name}: {reserve_reason}")
         return entry, asset, warnings
 
-    data, reason = _read_bounded(path, limits.max_template_bytes)
+    aggregate_remaining = limits.max_total_template_bytes - (
+        budget.bytes_reserved - size
+    )
+    read_limit = min(limits.max_template_bytes, max(0, aggregate_remaining))
+    data, reason = _read_bounded(path, read_limit)
     if reason is not None:
         entry = _skipped_template_entry(name, path.name, kind, size, reason)
         asset = _asset_entry(path.name, size, kind, "skipped", reason)
@@ -1298,16 +1302,33 @@ def summarize_gguf_tokenizer(
 
     chat_template = metadata.get("tokenizer.chat_template")
     if isinstance(chat_template, str):
-        chat_sources.append(
-            _template_entry(
-                "default",
-                "tokenizer.chat_template",
-                "gguf_metadata",
-                chat_template,
-                len(chat_template.encode("utf-8")),
-                limits,
-            )
+        template_budget = _TemplateBudget(limits)
+        template_size, _ = _bounded_utf8_size(
+            chat_template, limits.max_template_bytes
         )
+        reason = template_budget.reserve(template_size)
+        if reason is None:
+            chat_sources.append(
+                _template_entry(
+                    "default",
+                    "tokenizer.chat_template",
+                    "gguf_metadata",
+                    chat_template,
+                    template_size,
+                    limits,
+                )
+            )
+        else:
+            chat_sources.append(
+                _skipped_template_entry(
+                    "default",
+                    "tokenizer.chat_template",
+                    "gguf_metadata",
+                    template_size,
+                    reason,
+                )
+            )
+            warnings.append(f"Skipped GGUF chat template: {reason}")
     elif chat_template is not None:
         warnings.append("tokenizer.chat_template was present but was not a string")
 
