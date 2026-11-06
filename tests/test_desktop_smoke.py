@@ -63,6 +63,18 @@ def sample_atlas() -> dict[str, object]:
             "vocab_size": 4,
             "vocab_size_evidence": "observed",
             "vocab_size_source": "gguf:tokenizer.ggml.tokens",
+            "vocab_size_candidates": [
+                {
+                    "source": "gguf:tokenizer.ggml.tokens",
+                    "count": 4,
+                    "evidence": "observed",
+                },
+                {
+                    "source": "tokenizer_config.json:vocab_size",
+                    "count": 8,
+                    "evidence": "declared",
+                },
+            ],
             "special_tokens": {
                 "bos": {
                     "content": None,
@@ -207,6 +219,9 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertIn("Derived", text)
         self.assertIn("Declared", text)
         self.assertIn("Show technical details", text)
+        self.assertIn("gguf:tokenizer.ggml.tokens", text)
+        self.assertIn("tokenizer_config.json:vocab_size", text)
+        self.assertIn("8", text)
 
     def test_window_starts_and_closes_cleanly(self) -> None:
         window = self.make_window()
