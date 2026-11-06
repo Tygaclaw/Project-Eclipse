@@ -61,3 +61,9 @@
 **Decision:** Build the Windows-first desktop shell with PySide6 `6.12.0`, packaged with PyInstaller `6.22.3`, and keep the Model Atlas JSON contract and Python inspectors as the single source of model facts.
 
 **Reason:** PySide6 keeps the shell in the same language as the shared Core and existing inspectors, avoids a second-language rewrite or bridge, and has a mature Windows packaging story. The frozen build reuses the existing `build-atlas` CLI through a `--atlas-backend` dispatch so packaged and command-line behavior cannot drift. See `docs/ADR-001-desktop-framework.md` for the compared options (WPF, Tauri 2, Avalonia).
+
+## D-012 — Inspect tokenizer and chat templates as untrusted static data
+
+**Decision:** Summarise tokenizer assets and chat templates statically, using only small control files and bounded UTF-8 reads. Never import, compile, render or execute a template; inventory SentencePiece `*.model` files by name and size only; and surface the documented Hugging Face loader precedence (`chat_template.jinja` → `additional_chat_templates/*.jinja` → embedded `tokenizer_config.json` → legacy `chat_template.json`) as a citation rather than an inferred behaviour. GGUF tokenizer facts are derived only from the bounded `tokenizer.*` previews the GGUF parser already produced.
+
+**Reason:** Chat templates are executable Jinja in the Transformers runtime and are untrusted data here. Treating them as inert text preserves the project's no-execution trust boundary while still telling the user what the model declares. Reusing the GGUF parser's bounded previews avoids a second read of the file and keeps memory use capped. Documented loader precedence keeps ECLIPSE from claiming behaviour it has not verified at runtime.

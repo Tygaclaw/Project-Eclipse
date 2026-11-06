@@ -15,10 +15,13 @@ from eclipse.model_intelligence import (
     ModelAtlasLimits,
     SafetensorsError,
     SafetensorsLimits,
+    TokenizerError,
+    TokenizerLimits,
     build_model_atlas,
     inspect_gguf,
     inspect_hf_folder,
     inspect_safetensors,
+    inspect_tokenizer,
 )
 
 
@@ -61,6 +64,18 @@ def build_parser() -> argparse.ArgumentParser:
     folder.add_argument("--max-entries", type=int, default=100_000)
     folder.add_argument("--max-weight-map-entries", type=int, default=1_000_000)
     folder.add_argument("--compact", action="store_true", help="emit compact JSON")
+
+    tokenizer = commands.add_parser(
+        "inspect-tokenizer",
+        help="statically summarize tokenizer assets and chat templates in a model folder",
+    )
+    tokenizer.add_argument("folder", help="path to a local Hugging Face model folder")
+    tokenizer.add_argument("--max-entries", type=int, default=100_000)
+    tokenizer.add_argument("--max-json-mib", type=int, default=128)
+    tokenizer.add_argument("--max-text-mib", type=int, default=128)
+    tokenizer.add_argument("--max-template-mib", type=int, default=4)
+    tokenizer.add_argument("--max-token-preview-items", type=int, default=16)
+    tokenizer.add_argument("--compact", action="store_true", help="emit compact JSON")
 
     atlas = commands.add_parser(
         "build-atlas",
@@ -137,6 +152,29 @@ def _run_hf_folder(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
     return 0
 
 
+def _run_tokenizer(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    for option in ("max_json_mib", "max_text_mib", "max_template_mib"):
+        if getattr(args, option) <= 0:
+            parser.error(f"--{option.replace('_', '-')} must be greater than zero")
+    for option in ("max_entries", "max_token_preview_items"):
+        if getattr(args, option) < 0:
+            parser.error(f"--{option.replace('_', '-')} cannot be negative")
+    limits = TokenizerLimits(
+        max_entries=args.max_entries,
+        max_json_bytes=args.max_json_mib * 1024 * 1024,
+        max_text_bytes=args.max_text_mib * 1024 * 1024,
+        max_template_bytes=args.max_template_mib * 1024 * 1024,
+        max_token_preview_items=args.max_token_preview_items,
+    )
+    try:
+        report = inspect_tokenizer(args.folder, limits)
+    except (TokenizerError, ValueError) as exc:
+        print(f"ECLIPSE: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(report, ensure_ascii=False, indent=None if args.compact else 2, allow_nan=False))
+    return 0
+
+
 def _run_build_atlas(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if args.max_shards < 0:
         parser.error("--max-shards cannot be negative")
@@ -159,6 +197,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_safetensors(args, parser)
     if args.command == "inspect-hf-folder":
         return _run_hf_folder(args, parser)
+    if args.command == "inspect-tokenizer":
+        return _run_tokenizer(args, parser)
     if args.command == "build-atlas":
         return _run_build_atlas(args, parser)
     parser.error(f"Unknown command: {args.command}")

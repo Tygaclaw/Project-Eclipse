@@ -2,7 +2,7 @@
 
 ## Current automated suite
 
-The core inspection suite uses only Python's standard library and synthetic binary fixtures. The desktop tests additionally require PySide6 `6.12.0` and skip when it is not installed. Together the suite currently contains 110 tests and covers:
+The core inspection suite uses only Python's standard library and synthetic binary fixtures. The desktop tests additionally require PySide6 `6.12.0` and skip when it is not installed. Together the suite currently contains 131 tests and covers:
 
 - GGUF v2/v3 and big-endian v3 header handling.
 - Metadata and tensor descriptor parsing.
@@ -14,9 +14,10 @@ The core inspection suite uses only Python's standard library and synthetic bina
 - GGML type registry block/type sizes, derived exact GGUF storage bytes, non-block-multiple rows and truncated-file warnings.
 - Safetensors header parsing, metadata, unknown dtypes, shape/range mismatch warnings, overlapping/out-of-range/negative offsets, invalid JSON, header limits and read-only behavior.
 - Hugging Face folder discovery: `config.json` summaries, shard-index weight-map parsing, referenced/missing/unreferenced shard handling, bounded lazy directory enumeration, capped control-file reads, path-separator rejection, symlink skipping and read-only behavior.
-- Model Atlas core: GGUF/Safetensors/folder dispatch, tensor-element and storage aggregation, evidence labels, missing/corrupt shard incompleteness, unreferenced-shard exclusion, tensor-data total reconciliation, unsupported input and shard limits.
+- Model Atlas core: GGUF/Safetensors/folder dispatch, tensor-element and storage aggregation, evidence labels, missing/corrupt shard incompleteness, unreferenced-shard exclusion, tensor-data total reconciliation, unsupported input and shard limits, plus the tokenizer section for folder/GGUF sources and the honest unavailable section for Safetensors.
+- Tokenizer and chat templates (`tests/test_tokenizer.py`): asset inventory (`tokenizer.json`, `tokenizer_config.json`, `special_tokens_map.json`, `added_tokens.json`, `vocab.json`, `vocab.txt`, `merges.txt`, SentencePiece models as inventory-only), tokenizer class/model/pre-tokenizer/decoder/normalizer, observed vs declared vocabulary candidates, added and special tokens, documented chat-template precedence, additional named templates, legacy `chat_template.json`, conflict detection, bounded previews and template-size limits, invalid JSON and symlink safety, entry limits, non-directory/missing-path errors, GGUF tokenizer metadata summarisation, the `inspect-tokenizer` CLI and the no-execution invariants (`templates_rendered`, `jinja_imported`).
 - Desktop boundary (`tests/test_atlas_client.py`): argument-list command construction, a real synthetic GGUF integration run, invalid JSON/contract rejection, payload-safety invariant rejection, bounded output, stderr propagation, cancellation and timeout.
-- Desktop smoke (`tests/test_desktop_smoke.py`): offscreen Qt startup, all three navigation destinations, navigation switching, honest placeholder checks, empty state and Atlas section rendering.
+- Desktop smoke (`tests/test_desktop_smoke.py`): offscreen Qt startup, all three navigation destinations, navigation switching, honest placeholder checks, empty state and Atlas section rendering, including the "Tokenizer and chat format" card and the `Declared` evidence label.
 
 Run (desktop tests need PySide6; use an offscreen platform on headless machines):
 
@@ -28,6 +29,10 @@ py -3 -m unittest discover -s tests -v
 ```bash
 QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m unittest discover -s tests -v
 ```
+
+## Local verification evidence
+
+- Tokenizer/chat-template increment, Python 3.14.4 with PySide6 `6.12.0`: `python -m compileall -q src tests` passed; `PYTHONPATH=src python -m unittest discover -s tests` → **131 tests passed, 0 skipped**. This is local evidence; GitHub Actions evidence for this increment is produced once the branch is pushed.
 
 ## Verified GitHub Actions evidence
 
@@ -51,5 +56,5 @@ Synthetic tests prove parser behavior for the cases represented by their fixture
 2. Large metadata arrays and resource-limit behavior on Windows.
 3. Real Safetensors files and multi-shard Hugging Face folders on Windows.
 4. Compare metadata/tensor descriptor output and derived sizes with a trusted upstream loader.
-5. Add static tokenizer/chat-template file inspection and bounded metadata handling.
+5. Run the tokenizer/chat-format card against a real multi-file Hugging Face folder (including `additional_chat_templates/*.jinja`) and a real GGUF with embedded `tokenizer.chat_template`.
 6. Add the static memory/VRAM feasibility estimator, then separately validate runtime correctness and preparation integrity.

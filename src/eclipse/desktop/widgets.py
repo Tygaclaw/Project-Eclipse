@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -121,6 +122,54 @@ def add_text(layout: QVBoxLayout, text: str, object_name: str = "Muted") -> QLab
     widget.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     layout.addWidget(widget)
     return widget
+
+
+def add_plain_text(
+    layout: QVBoxLayout,
+    text: str,
+    object_name: str = "Muted",
+    monospace: bool = False,
+) -> QLabel:
+    widget = QLabel(text)
+    widget.setObjectName(object_name)
+    widget.setWordWrap(True)
+    widget.setTextFormat(Qt.TextFormat.PlainText)
+    widget.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    if monospace:
+        font = widget.font()
+        font.setStyleHint(font.StyleHint.Monospace)
+        font.setFamily("Consolas")
+        widget.setFont(font)
+    layout.addWidget(widget)
+    return widget
+
+
+def make_disclosure(
+    layout: QVBoxLayout,
+    show_text: str = "Show technical details",
+    hide_text: str = "Hide technical details",
+) -> QVBoxLayout:
+    details = QWidget()
+    details_layout = QVBoxLayout(details)
+    details_layout.setContentsMargins(0, 6, 0, 0)
+    details_layout.setSpacing(10)
+    details.setVisible(False)
+
+    toggle = QToolButton()
+    toggle.setObjectName("Disclosure")
+    toggle.setCheckable(True)
+    toggle.setArrowType(Qt.ArrowType.RightArrow)
+    toggle.setText(show_text)
+
+    def update(checked: bool) -> None:
+        details.setVisible(checked)
+        toggle.setArrowType(Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow)
+        toggle.setText(hide_text if checked else show_text)
+
+    toggle.toggled.connect(update)
+    layout.addWidget(toggle)
+    layout.addWidget(details)
+    return details_layout
 
 
 def planned_capabilities(items: list[tuple[str, str]]) -> QFrame:

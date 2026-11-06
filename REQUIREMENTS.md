@@ -23,6 +23,7 @@
 | R-022 | Reproducible Windows desktop packaging | PyInstaller spec/launcher and active workflow at `.github/workflows/desktop.yml`; Windows x64 artifact built and uploaded successfully in run #42173214699 |
 | R-019 | Safe sandboxed execution and permission boundaries | Requirements recorded in `SECURITY.md`; implementation pending |
 | R-020 | Honest status and reproducible evidence | Status/continuation registers and automated tests added |
-| R-021 | Discover local Hugging Face model folders | Bounded `config.json` summary and `model.safetensors.index.json` shard-index cross-check implemented; tokenizer parsing and real-folder validation pending |
+| R-021 | Discover local Hugging Face model folders | Bounded `config.json` summary and `model.safetensors.index.json` shard-index cross-check implemented; tokenizer assets are now inspected statically; real-folder validation pending |
+| R-023 | Static tokenizer and chat-template intelligence without execution | Bounded, read-only tokenizer/chat-template inspector implemented for local folders plus GGUF metadata; `inspect-tokenizer` CLI, Atlas `tokenizer` section, desktop card and 21 synthetic tests added. Templates are never imported, compiled or rendered; real multi-file folder validation pending |
 
 A feature is complete only when its acceptance evidence exists. One real GGUF desktop inspection is now verified on Windows 11; this does not satisfy broader Safetensors/Hugging Face, GPU or inference acceptance gates.

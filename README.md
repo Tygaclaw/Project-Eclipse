@@ -10,15 +10,16 @@ The five model-engineering subsystems from the original ECLIPSE v3.0 plan remain
 
 ## Current working features
 
-Three read-only, static inspectors emit JSON without loading model weights:
+Four read-only, static inspectors emit JSON without loading model weights:
 
 - **GGUF v2/v3 inspector** — reads the header, bounded metadata, tensor descriptors and per-tensor storage bytes. Storage bytes are derived from a versioned GGML type registry pinned to a reviewed upstream llama.cpp/GGML revision. Unknown tensor type IDs and rows that are not block-multiple remain explicitly unknown.
 - **Safetensors inspector** — reads the 8-byte header length, the bounded JSON header and the declared tensor byte ranges. It does not read, map or decode tensor payloads.
 - **Hugging Face folder inspector** — reads only the small control files (`config.json`, `model.safetensors.index.json`), lists shard file sizes and cross-checks the shard index against the files on disk. It does not follow symbolic links or read shard payloads.
+- **Tokenizer and chat-template inspector** — reads the small tokenizer control files (`tokenizer.json`, `tokenizer_config.json`, `special_tokens_map.json`, `added_tokens.json`, `vocab.json`, `vocab.txt`, `merges.txt`, `chat_template.jinja`, `additional_chat_templates/*.jinja` and legacy `chat_template.json`) and reports tokenizer class/model, observed vs declared vocabulary size, added and special tokens, and chat templates with bounded plain-text previews. SentencePiece `*.model` files are inventoried by name and size only. Templates are treated as untrusted text: they are never imported, compiled or rendered, and the documented Hugging Face loader precedence is cited rather than guessed.
 
-On top of these, `build-atlas` composes the relevant inspector into one evidence-labelled JSON atlas (parameters, storage bytes and type/dtype distribution) chosen automatically from the input.
+On top of these, `build-atlas` composes the relevant inspectors into one evidence-labelled JSON atlas (parameters, storage bytes, type/dtype distribution and, for folder/GGUF sources, a tokenizer section) chosen automatically from the input.
 
-No inspector loads, maps, decodes or executes tensor weights.
+No inspector loads, maps, decodes or executes tensor weights, and no inspector imports, compiles or renders a chat template.
 
 ## Desktop application
 
@@ -42,6 +43,7 @@ $env:PYTHONPATH = "src"
 py -3 -m eclipse inspect-gguf "D:\Models\model.gguf"
 py -3 -m eclipse inspect-safetensors "D:\Models\model.safetensors"
 py -3 -m eclipse inspect-hf-folder "D:\Models\YourModelFolder"
+py -3 -m eclipse inspect-tokenizer "D:\Models\YourModelFolder"
 py -3 -m eclipse build-atlas "D:\Models\YourModelFolder"
 ```
 

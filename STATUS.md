@@ -1,6 +1,6 @@
 # ECLIPSE Project Status
 
-**Status:** `ACTIVE — DESKTOP_AND_MODEL_ATLAS_REAL_GGUF_VALIDATED`
+**Status:** `ACTIVE — TOKENIZER_AND_CHAT_TEMPLATE_INTELLIGENCE`
 
 **Last updated:** 2026-11-06
 
@@ -27,14 +27,20 @@
 - [x] Added a PyInstaller spec/launcher and pinned desktop requirements.
 - [x] Installed the Windows x64 desktop build workflow at `.github/workflows/desktop.yml` using the owner-level GitHub connection; the reference copy remains at `docs/desktop-build-workflow.yml`.
 - [x] Manually validated the packaged desktop-to-Atlas flow on Windows 11 using a real local GGUF file; the UI rendered the atlas and reported zero tensor payload bytes read and no source modification.
+- [x] Added a bounded, read-only tokenizer and chat-template inspector (`tokenizer.py`) for local Hugging Face folders: tokenizer class/model/pre-tokenizer/decoder/normalizer, declared and observed vocabulary size candidates, added tokens, special tokens, and declared max length are read from small control files only.
+- [x] Inventoried all supported tokenizer assets (`tokenizer.json`, `tokenizer_config.json`, `special_tokens_map.json`, `added_tokens.json`, `vocab.json`, `vocab.txt`, `merges.txt`, legacy `chat_template.json`, and SentencePiece `*.model` files as inventory-only).
+- [x] Added static chat-template discovery (`chat_template.jinja`, `additional_chat_templates/*.jinja` and embedded `tokenizer_config.json` templates) with a documented loader-precedence note, bounded plain-text previews, content hashes and conflict detection; templates are never imported, compiled or rendered.
+- [x] Reused GGUF `tokenizer.*` metadata (bounded previews already read by the GGUF parser) for a GGUF tokenizer/chat-template summary without rereading the file.
+- [x] Added the `eclipse inspect-tokenizer <folder>` CLI command and surfaced a beginner-friendly "Tokenizer and chat format" card (with a technical disclosure) and a tokenizer evidence label in the Model Atlas and desktop workspace.
 
 ## What works now
 
 - `py -3 -m eclipse inspect-gguf <file.gguf>` parses GGUF header, metadata, tensor index and per-tensor derived storage bytes without loading weights.
 - `py -3 -m eclipse inspect-safetensors <file.safetensors>` parses the header length, bounded JSON header and declared tensor byte ranges without loading weights.
 - `py -3 -m eclipse inspect-hf-folder <folder>` summarizes `config.json`, enumerates shard sizes, and cross-checks the shard index against the files on disk.
-- `py -3 -m eclipse build-atlas <path>` dispatches by input type and emits one evidence-labelled JSON atlas.
-- `eclipse-desktop` opens the three-workspace shell; the Model Intelligence workspace selects a GGUF, Safetensors file or Hugging Face folder, runs the atlas with progress, cancellation and prior-inspection evidence, and renders model/architecture, parameters/storage, distribution, warnings, safety, evidence and an advanced disclosure.
+- `py -3 -m eclipse inspect-tokenizer <folder>` statically summarizes tokenizer assets and chat templates from small control files, with observed/declared/unknown evidence labels and no template execution.
+- `py -3 -m eclipse build-atlas <path>` dispatches by input type and emits one evidence-labelled JSON atlas that now includes a `tokenizer` section (folder and GGUF sources; Safetensors reports it as unavailable).
+- `eclipse-desktop` opens the three-workspace shell; the Model Intelligence workspace selects a GGUF, Safetensors file or Hugging Face folder, runs the atlas with progress, cancellation and prior-inspection evidence, and renders model/architecture, parameters/storage, distribution, tokenizer/chat format, warnings, safety, evidence and an advanced disclosure.
 - `packaging/launcher.py` + `packaging/eclipse-desktop.spec` build a windowed onedir `dist/ECLIPSE/ECLIPSE.exe`; `ECLIPSE.exe --atlas-backend ...` reuses the unchanged `build-atlas` CLI.
 - Parser limits cap header/index bytes, tensor count, metadata entry count, strings, array elements, dimensions, header size, folder entries and shard count.
 - Malformed or unsupported inputs fail with a clear error instead of being guessed.
@@ -42,6 +48,7 @@
 
 ## Local verification evidence
 
+- Tokenizer/chat-template increment, Python 3.14.4 with PySide6 `6.12.0` installed: `python -m compileall -q src tests` passed; `PYTHONPATH=src python -m unittest discover -s tests` → **131 tests passed** (0 skipped). This includes 21 new `tests/test_tokenizer.py` tests and the extended Model Intelligence desktop assertions; no tensor payloads are read and no Jinja is imported or rendered.
 - Latest Windows desktop run [#42173214699](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699), Python 3.12 + PySide6 `6.12.0`: **110 tests passed**, including all 8 offscreen desktop UI tests; PyInstaller build, packaged backend smoke test, ZIP and artifact upload all succeeded.
 - Latest Python matrix run [#42173214668](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214668): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in that dependency-free matrix; the dedicated desktop job above runs them with PySide6 installed.
 - Latest uploaded GitHub artifact from desktop run [#42173214699](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699): `ECLIPSE-windows-x64` (50,929,741 bytes).
@@ -67,7 +74,8 @@ User-reported manual Windows 11 real-file validation (packaged application):
 
 - [x] One real local GGUF file inspected through the packaged desktop UI on Windows 11 (details recorded above).
 - [ ] Real Safetensors file and multi-shard Hugging Face folder validation.
-- [ ] Tokenizer/chat-template inspection and remote model-card metadata.
+- [x] Local tokenizer/chat-template inspection (folder and GGUF metadata), with no template execution.
+- [ ] Remote model-card metadata retrieval (no network access is used).
 - [ ] Derived GGUF sizes reconciled against a trusted full checkpoint.
 - [ ] Memory/VRAM feasibility planner.
 - [x] User-reported Windows 11 manual launch and navigation smoke test: app opened successfully and all three workspaces were clickable and displayed without an observed problem.
@@ -83,6 +91,7 @@ $env:PYTHONPATH = "src"
 py -3 -m eclipse inspect-gguf "D:\Models\model.gguf"
 py -3 -m eclipse inspect-safetensors "D:\Models\model.safetensors"
 py -3 -m eclipse inspect-hf-folder "D:\Models\YourModelFolder"
+py -3 -m eclipse inspect-tokenizer "D:\Models\YourModelFolder"
 py -3 -m eclipse build-atlas "D:\Models\YourModelFolder"
 py -3 -m unittest discover -s tests -v
 ```
@@ -105,7 +114,7 @@ The result is `dist\ECLIPSE\ECLIPSE.exe`. No administrator privileges, model run
 
 ## Known limitations
 
-- GGUF v2/v3, Safetensors and Hugging Face model folders are supported; tokenizer files and remote metadata are not read.
+- GGUF v2/v3, Safetensors and Hugging Face model folders are supported. Local tokenizer files and chat templates are inspected statically; remote model-card metadata is not read and no network access is used.
 - Tensor payloads are not decoded. GGUF sizes are derived from a pinned GGML registry; Safetensors and folder shard sizes are observed.
 - Derived GGUF sizes are not yet reconciled against a trusted full checkpoint.
 - Architecture-specific interpretation is still limited to metadata directly present in the checkpoint.

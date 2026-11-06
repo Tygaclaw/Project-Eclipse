@@ -29,6 +29,14 @@ from .safetensors import (
     SafetensorsResourceLimitError,
     inspect_safetensors,
 )
+from .tokenizer import (
+    TokenizerError,
+    TokenizerFormatError,
+    TokenizerLimits,
+    TokenizerResourceLimitError,
+    inspect_tokenizer,
+    summarize_gguf_tokenizer,
+)
 from .model_atlas import (
     ModelAtlasError,
     ModelAtlasFormatError,
@@ -55,11 +63,17 @@ __all__ = [
     "SafetensorsFormatError",
     "SafetensorsLimits",
     "SafetensorsResourceLimitError",
+    "TokenizerError",
+    "TokenizerFormatError",
+    "TokenizerLimits",
+    "TokenizerResourceLimitError",
     "build_model_atlas",
     "get_ggml_type",
     "inspect_gguf",
     "inspect_hf_folder",
     "inspect_safetensors",
+    "inspect_tokenizer",
+    "summarize_gguf_tokenizer",
     "tensor_storage_bytes",
     "type_name",
 ]

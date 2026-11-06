@@ -3,13 +3,21 @@
 ## Current checkpoint
 
 - Repository: `Tygaclaw/Project-Eclipse`.
-- Working branch: `opencode/issue2-20261106051627` (feature branch for this increment).
-- Increment: PySide6 Windows-first desktop shell with the three primary workspaces; Model Intelligence workspace connected to the existing Model Atlas through a bounded, cancellable subprocess boundary; PyInstaller packaging and an active Windows workflow.
+- Working branch: `opencode/issue2-20261106071400` (feature branch for this increment, based on `main` at `4c88716`).
+- Increment: bounded, read-only tokenizer and chat-template intelligence, integrated into the evidence-labelled Model Atlas and the Model Intelligence desktop workspace, plus the `inspect-tokenizer` CLI command.
 - Primary workspaces: Model Intelligence & Inference Platform; Capability Amplification & Knowledge System; ECLIPSE Agent.
+- The prior increment delivered the PySide6 Windows-first desktop shell, the Model Atlas subprocess boundary, PyInstaller packaging and the active Windows workflow; that work is unchanged.
 
 ## What was actually verified in this increment
 
-- Latest Windows desktop workflow [run #42173214699](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699), Python 3.12 + PySide6 `6.12.0`: 110 tests passed, including all 8 offscreen desktop UI tests with no skips. PyInstaller built the Windows x64 package; the packaged backend smoke test, ZIP creation and artifact upload all passed. Artifact `ECLIPSE-windows-x64` is 50,929,741 bytes.
+- Tokenizer/chat-template increment, Python 3.14.4 with PySide6 `6.12.0`: `python -m compileall -q src tests` passed; `PYTHONPATH=src python -m unittest discover -s tests` → **131 tests passed, 0 skipped** (110 prior + 21 new tokenizer tests, with the desktop smoke test extended to assert the tokenizer card).
+- `tokenizer.py` reads only small control files and bounded UTF-8 templates, never imports or renders Jinja, never follows symlinks, and reports `templates_rendered == False`, `jinja_imported == False` and `tensor_payload_bytes_read == 0`.
+- Chat-template precedence follows the documented Hugging Face loader order (standalone `chat_template.jinja` → `additional_chat_templates/*.jinja` → embedded `tokenizer_config.json` → legacy `chat_template.json`) and is labelled `documented_loader_precedence`, not an ECLIPSE inference.
+- GGUF tokenizer facts are summarised only from the bounded `tokenizer.*` metadata previews already produced by the GGUF parser; the file is not reread. Safetensors and non-tokenizer sources report an honest unavailable tokenizer section.
+- `py -3 -m eclipse inspect-tokenizer <folder>` emits the standalone `eclipse_tokenizer_inspection` JSON, and `build-atlas` adds a top-level `tokenizer` section plus an `evidence.tokenizer` label without changing `atlas_version == 1`.
+- The desktop Model Intelligence workspace renders a "Tokenizer and chat format" card with a beginner summary and a hidden technical disclosure; template previews are shown as untrusted plain text.
+- Not yet pushed: this branch is local; the GitHub PR/CI evidence for this increment is still to be produced.
+- The prior increment's Windows desktop workflow [run #42173214699](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699), Python 3.12 + PySide6 `6.12.0`: 110 tests passed, including all 8 offscreen desktop UI tests with no skips. PyInstaller built the Windows x64 package; the packaged backend smoke test, ZIP creation and artifact upload all passed. Artifact `ECLIPSE-windows-x64` is 50,929,741 bytes.
 - Latest core CI matrix [run #42173214668](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214668) passed Python 3.11–3.14. Its eight UI tests were skipped because PySide6 is intentionally optional in that dependency-free matrix.
 - The desktop Atlas path runs the unchanged `build-atlas` command via `subprocess.Popen` with an argument list, a timeout, cancellation and bounded output, and validates the `eclipse_model_atlas`/`atlas_version == 1` contract and read-only invariants before rendering.
 - `packaging/eclipse-desktop.spec` and `packaging/launcher.py` built a windowed onedir `ECLIPSE.exe` on a GitHub-hosted Windows runner; `ECLIPSE.exe --atlas-backend --help` passed.
@@ -36,11 +44,10 @@ User-reported manual Windows 11 real-file validation (packaged application):
 ## Next engineering actions
 
 1. Review and include PySide6/Qt LGPL notices, relinking instructions and a corresponding-source offer in the public release package before broader redistribution.
-2. Add bounded, static tokenizer and chat-template inspection (no downloaded code execution), with clear observed/derived/unknown labels and tests.
-3. Reconcile derived GGUF storage against a trusted upstream loader using a real full checkpoint; keep the registry-derived warning visible until independently verified.
-4. Add the evidence-labelled memory/VRAM feasibility planner with explicit assumptions, RAM/VRAM budgets and unknowns; do not claim runtime success from a static estimate.
-5. Validate a real Safetensors file and a multi-shard Hugging Face folder on Windows.
-6. Continue Capability Amplification and ECLIPSE Agent through the shared Core, without repeating completed Qwen/API setup or the A* evaluation.
+2. Reconcile derived GGUF storage against a trusted upstream loader using a real full checkpoint; keep the registry-derived warning visible until independently verified.
+3. Add the evidence-labelled memory/VRAM feasibility planner with explicit assumptions, RAM/VRAM budgets and unknowns; do not claim runtime success from a static estimate.
+4. Validate a real Safetensors file and a multi-shard Hugging Face folder on Windows, including the tokenizer/chat-format card on a real model folder.
+5. Continue Capability Amplification and ECLIPSE Agent through the shared Core, without repeating completed Qwen/API setup or the A* evaluation.
 
 ## Do not repeat
 
