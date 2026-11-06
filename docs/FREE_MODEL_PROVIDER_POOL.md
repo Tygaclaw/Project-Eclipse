@@ -84,6 +84,7 @@ These are the published Free Plan base limits at the time of review; the owner's
 | `/oc-nvidia` | `nvidia/deepseek-ai/deepseek-v4.1-flash` | 1M | Free Endpoint in NVIDIA API Catalog; published ceiling 40 RPM / 10,000 RPD (can vary). |
 | `/oc-nvidia-lightning` | `nvidia/nemotron-3.5-lightning-30b-a3b` | 1M | Free Endpoint; 30B MoE for agentic and coding workloads. |
 | `/oc-nvidia-supervl` | `nvidia/nemotron-3.5-super-vl-120b-a12b` | 262K | Free Endpoint; multimodal text/image/video and tool use. |
+| `/oc-nvidia-super` | `nvidia/nemotron-3-super-120b-a12b` | 1M configured | OpenCode's NVIDIA catalogue example; verify that this exact endpoint still shows Free Endpoint in the live catalogue before use. |
 
 NVIDIA's Developer Program gives members free API endpoint access for prototyping and experimentation. Only select models tagged **Free Endpoint** in the live NVIDIA API Catalog. Published limits can vary and a saved key does not prove every model is usable. Do not select partner-hosted paid endpoints, create paid deployments, or accept a paid plan.
 
