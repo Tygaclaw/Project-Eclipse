@@ -108,6 +108,13 @@
           "limit": {
             "context": 1048576
           }
+        },
+        "liquid/lfm-2.5-2.6b:free": {
+          "name": "Liquid LFM2.5 2.6B (Free; lightweight helper, not coding specialist)",
+          "limit": {
+            "context": 65536,
+            "output": 8192
+          }
         }
       }
     },
@@ -139,6 +146,34 @@
           "limit": {
             "context": 256000,
             "output": 32768
+          }
+        },
+        "gemini-3.7-flash": {
+          "name": "Gemini 3.7 Flash (Free Tier)",
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          }
+        },
+        "gemini-3.6-flash": {
+          "name": "Gemini 3.6 Flash (Free Tier)",
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          }
+        },
+        "gemini-3.5-flash": {
+          "name": "Gemini 3.5 Flash (Free Tier)",
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          }
+        },
+        "gemini-3.1-flash-lite": {
+          "name": "Gemini 3.1 Flash-Lite (Free Tier)",
+          "limit": {
+            "context": 1048576,
+            "output": 65536
           }
         }
       }
@@ -176,6 +211,27 @@
             "context": 1000000,
             "output": 16384
           }
+        },
+        "deepseek-ai/deepseek-v4.1-flash": {
+          "name": "DeepSeek V4.1 Flash via NVIDIA NIM Free Endpoint",
+          "limit": {
+            "context": 1048576,
+            "output": 131072
+          }
+        },
+        "nemotron-3.5-lightning-30b-a3b": {
+          "name": "Nemotron 3.5 Lightning 30B A3B via NVIDIA NIM Free Endpoint",
+          "limit": {
+            "context": 1048576,
+            "output": 16384
+          }
+        },
+        "nemotron-3.5-super-vl-120b-a12b": {
+          "name": "Nemotron 3.5 Super VL 120B A12B via NVIDIA NIM Free Endpoint",
+          "limit": {
+            "context": 262144,
+            "output": 16384
+          }
         }
       }
     },
@@ -208,10 +264,10 @@
             "output": 16384
           }
         },
-        "@cf/nvidia/nemotron-3-120b-a12b": {
-          "name": "Nemotron 3 Super via Cloudflare Workers AI (Free Neurons)",
+        "@cf/qwen/qwen3.8-27b": {
+          "name": "Qwen 3.8 27B via Cloudflare Workers AI (Free Neurons)",
           "limit": {
-            "context": 256000,
+            "context": 262144,
             "output": 16384
           }
         }
