@@ -68,16 +68,15 @@ _SAFETENSORS_SUFFIX = ".safetensors"
 
 
 def _read_bounded_text(path: Path, max_bytes: int) -> tuple[str | None, str | None]:
+    # Read at most max_bytes + 1 so a file changed after inspection cannot
+    # bypass the memory limit between a stat() call and read_bytes().
     try:
-        size = path.stat().st_size
+        with path.open("rb") as handle:
+            data = handle.read(max_bytes + 1)
     except OSError as exc:
         return None, f"{path.name} could not be read: {exc}"
-    if size > max_bytes:
-        return None, f"{path.name} is {size:,} bytes; limit is {max_bytes:,} bytes"
-    try:
-        data = path.read_bytes()
-    except OSError as exc:
-        return None, f"{path.name} could not be read: {exc}"
+    if len(data) > max_bytes:
+        return None, f"{path.name} exceeds the {max_bytes:,}-byte read limit"
     try:
         return data.decode("utf-8", errors="strict"), None
     except UnicodeDecodeError:
@@ -165,6 +164,7 @@ def _parse_index(
         "file_name": _INDEX_FILE,
         "tensor_count": len(weight_map),
         "referenced_shard_count": len(referenced),
+        "referenced_shards": sorted(referenced),
         "declared_total_size_bytes": declared_total,
         "missing_shards": missing,
         "unreferenced_shards": unreferenced,
@@ -194,31 +194,32 @@ def inspect_hf_folder(
     entry_count = 0
 
     try:
-        entries = list(os.scandir(base))
+        # Keep the scan lazy. Materializing list(os.scandir(...)) first would
+        # allocate memory for every directory entry before enforcing max_entries.
+        with os.scandir(base) as entries:
+            for entry in entries:
+                entry_count += 1
+                if entry_count > limits.max_entries:
+                    raise HFFolderResourceLimitError(
+                        f"Folder has more than {limits.max_entries:,} entries"
+                    )
+                if len(entry.name.encode("utf-8")) > limits.max_name_bytes:
+                    raise HFFolderResourceLimitError(
+                        f"Folder entry name exceeds {limits.max_name_bytes:,} bytes"
+                    )
+                if entry.is_symlink():
+                    symlinks.append(entry.name)
+                elif entry.is_dir(follow_symlinks=False):
+                    directories.append(entry.name)
+                elif entry.is_file(follow_symlinks=False):
+                    try:
+                        files[entry.name] = entry.stat(follow_symlinks=False).st_size
+                    except OSError as exc:
+                        warnings.append(f"Could not read the size of {entry.name!r}: {exc}")
+                else:
+                    other.append(entry.name)
     except OSError as exc:
         raise HFFolderError(f"Cannot list input folder: {exc}") from exc
-
-    for entry in entries:
-        entry_count += 1
-        if entry_count > limits.max_entries:
-            raise HFFolderResourceLimitError(
-                f"Folder has more than {limits.max_entries:,} entries"
-            )
-        if len(entry.name.encode("utf-8")) > limits.max_name_bytes:
-            raise HFFolderResourceLimitError(
-                f"Folder entry name exceeds {limits.max_name_bytes:,} bytes"
-            )
-        if entry.is_symlink():
-            symlinks.append(entry.name)
-        elif entry.is_dir(follow_symlinks=False):
-            directories.append(entry.name)
-        elif entry.is_file(follow_symlinks=False):
-            try:
-                files[entry.name] = entry.stat(follow_symlinks=False).st_size
-            except OSError as exc:
-                warnings.append(f"Could not read the size of {entry.name!r}: {exc}")
-        else:
-            other.append(entry.name)
 
     config_summary: dict[str, Any] | None = None
     config_error: str | None = None
@@ -261,13 +262,9 @@ def inspect_hf_folder(
                     + ", ".join(unreferenced[:10])
                     + (" ..." if len(unreferenced) > 10 else "")
                 )
-            declared_total = index_summary["declared_total_size_bytes"]
-            if declared_total is not None and declared_total != total_shard_bytes:
-                warnings.append(
-                    "Observed Safetensors shard bytes "
-                    f"({total_shard_bytes:,}) differ from the index declared total_size "
-                    f"({declared_total:,})"
-                )
+            # The index's metadata.total_size describes tensor-data bytes,
+            # not the complete shard files (which also contain headers). Reconcile
+            # it only after each Safetensors header has been inspected.
 
     if not safetensors_shards:
         warnings.append("No .safetensors files were found in the folder")
