@@ -167,9 +167,9 @@ class TokenizerTests(unittest.TestCase):
             TokenizerLimits(max_template_bytes=20, max_total_template_bytes=10),
         )
         by_kind = {item["kind"]: item for item in report["chat_templates"]["sources"]}
-        self.assertEqual(by_kind["embedded_tokenizer_config"]["status"], "parsed")
-        self.assertEqual(by_kind["standalone_jinja"]["status"], "skipped")
-        self.assertIn("aggregate template byte limit", by_kind["standalone_jinja"]["reason"])
+        self.assertEqual(by_kind["standalone_jinja"]["status"], "parsed")
+        self.assertEqual(by_kind["embedded_tokenizer_config"]["status"], "skipped")
+        self.assertIn("aggregate template byte limit", by_kind["embedded_tokenizer_config"]["reason"])
 
     def test_nested_additional_template_symlink_is_reported_and_not_followed(self) -> None:
         directory = self.root / "additional_chat_templates"
@@ -340,7 +340,11 @@ class TokenizerTests(unittest.TestCase):
     def test_template_over_limit_is_skipped(self) -> None:
         self.write_text("chat_template.jinja", "x" * 5000)
         report = inspect_tokenizer(self.root, TokenizerLimits(max_template_bytes=1024))
-        self.assertEqual(report["chat_templates"]["count"], 0)
+        self.assertEqual(report["chat_templates"]["count"], 1)
+        self.assertEqual(report["chat_templates"]["parsed_count"], 0)
+        self.assertEqual(report["chat_templates"]["skipped_count"], 1)
+        self.assertEqual(report["chat_templates"]["sources"][0]["status"], "skipped")
+        self.assertIsNone(report["chat_templates"]["default"])
         self.assertTrue(any("exceeds the" in warning for warning in report["warnings"]))
 
     def test_template_preview_is_bounded(self) -> None:
