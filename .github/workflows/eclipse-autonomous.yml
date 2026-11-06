@@ -1,0 +1,84 @@
+name: ECLIPSE autonomous engineering
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Run the next ready ECLIPSE backlog milestone
+        type: choice
+        options:
+          - start
+          - continue
+        default: start
+        required: true
+  schedule:
+    - cron: "17 */6 * * *"
+
+concurrency:
+  group: eclipse-autonomous-mainline
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  autonomous-milestone:
+    if: github.repository == 'Tygaclaw/Project-Eclipse'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Checkout selected execution ref without persisting write credentials
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pinned OpenCode CLI
+        run: npm install --global opencode-ai@1.19.5
+
+      - name: Verify OpenCode CLI version
+        run: opencode --version
+
+      - name: Run one bounded autonomous milestone
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DAHL_API_KEY: ${{ secrets.DAHL_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          TOKENHARBOR_API_KEY: ${{ secrets.TOKENHARBOR_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          ECLIPSE_MAX_AGENT_MINUTES: "240"
+        run: python scripts/eclipse_autonomous.py --max-agent-minutes 240
+
+      - name: Publish autonomous execution summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## ECLIPSE autonomous run"
+            echo
+            echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Ref: ${GITHUB_REF_NAME}"
+            echo "- Mode: ${{ inputs.mode || 'scheduled' }}"
+            echo "- The controller never passes GitHub write tokens or other providers' keys to the OpenCode child process."
+            echo "- Safe code PRs require both Windows CI workflows before auto-merge; protected automation/security changes remain draft."
+          } >> "$GITHUB_STEP_SUMMARY"
