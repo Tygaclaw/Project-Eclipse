@@ -64,8 +64,8 @@
         "nvidia/nemotron-3.5-super-vl:free": {
           "name": "NVIDIA Nemotron 3.5 Super VL (Free)",
           "limit": {
-            "context": 1048576,
-            "output": 65536
+            "context": 1000000,
+            "output": 131072
           }
         },
         "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
@@ -88,6 +88,26 @@
             "context": 262144,
             "output": 32768
           }
+        },
+        "nvidia/nemotron-3-ultra-550b-a55b:free": {
+          "name": "NVIDIA Nemotron 3 Ultra 550B A55B (Free)",
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          }
+        },
+        "dots-studio/dots-3-note-preview:free": {
+          "name": "Dots3-Note Preview (Free; retires 2026-12-31)",
+          "limit": {
+            "context": 512000,
+            "output": 32768
+          }
+        },
+        "stealth/crouton-alpha": {
+          "name": "Crouton Alpha (Free; anonymous provider preview)",
+          "limit": {
+            "context": 1048576
+          }
         }
       }
     },
@@ -98,6 +118,27 @@
           "limit": {
             "context": 1048576,
             "output": 65536
+          }
+        },
+        "gemini-3.5-flash-lite": {
+          "name": "Gemini 3.5 Flash-Lite (Free Tier)",
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          }
+        },
+        "gemma-4-31b-it": {
+          "name": "Gemma 4 31B IT (Free Tier)",
+          "limit": {
+            "context": 256000,
+            "output": 32768
+          }
+        },
+        "gemma-4-26b-a4b-it": {
+          "name": "Gemma 4 26B A4B IT (Free Tier)",
+          "limit": {
+            "context": 256000,
+            "output": 32768
           }
         }
       }
@@ -116,6 +157,13 @@
           "limit": {
             "context": 131072,
             "output": 16384
+          }
+        },
+        "openai/gpt-oss-20b": {
+          "name": "GPT-OSS 20B via Groq Free Plan",
+          "limit": {
+            "context": 131072,
+            "output": 65536
           }
         }
       }
