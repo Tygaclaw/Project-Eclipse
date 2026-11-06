@@ -138,7 +138,7 @@ def _find_session_id(value: object) -> str | None:
             if key.lower() in {"sessionid", "session_id"} and isinstance(nested, str):
                 if nested.startswith("ses_"):
                     return nested
-            for nested in value.values():
+        for nested in value.values():
             found = _find_session_id(nested)
             if found:
                 return found
@@ -425,7 +425,7 @@ def run_agent_with_failover(
             continue
 
         for attempt in range(max_calls_per_model):
-                    current_prompt = (
+            current_prompt = (
                 prompt if attempt == 0 and session_id is None
                 else build_repair_prompt(last_failure) if last_failure
                 else prompt
@@ -588,7 +588,8 @@ def main() -> int:
 
     details = json.loads(gh(["pr", "view", pr_url, "--json", "headRefOid,state,isDraft"], source_env=source_env).stdout)
     current_head = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True, check=True
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, env=controller_env,
+        text=True, capture_output=True, check=True
     ).stdout.strip()
     if details.get("state") != "OPEN" or details.get("isDraft") or details.get("headRefOid") != current_head:
         print("PR_HEAD_CHANGED_OR_NOT_MERGEABLE: refusing automatic merge.")
