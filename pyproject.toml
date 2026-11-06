@@ -4,15 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eclipse-core"
-version = "0.1.0"
+version = "0.2.0"
 description = "Windows-first, local-first ECLIPSE AI ecosystem core"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Project ECLIPSE contributors" }]
 dependencies = []
 
+[project.optional-dependencies]
+desktop = ["PySide6==6.12.0"]
+packaging = ["PyInstaller==6.22.3"]
+
 [project.scripts]
 eclipse = "eclipse.__main__:main"
+eclipse-desktop = "eclipse.desktop.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

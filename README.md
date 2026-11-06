@@ -20,11 +20,18 @@ On top of these, `build-atlas` composes the relevant inspector into one evidence
 
 No inspector loads, maps, decodes or executes tensor weights.
 
+## Desktop application
+
+A PySide6 `6.12.0` Windows-first shell (`eclipse-desktop`) hosts the three primary workspaces. The Model Intelligence workspace lets you pick a GGUF, Safetensors file or Hugging Face folder and renders the same evidence-labelled atlas, with progress, cancellation and read-only safety reporting. It talks to the core through a bounded, cancellable subprocess boundary, so no parsing is duplicated in the UI. The Capability and Agent workspaces are honest placeholders; the Agent screen has no chat input and reports that no model adapter is connected.
+
+See [`docs/ADR-001-desktop-framework.md`](docs/ADR-001-desktop-framework.md) for the framework decision. The proposed Windows build workflow is at [`docs/desktop-build-workflow.yml`](docs/desktop-build-workflow.yml); a maintainer must install it under `.github/workflows/` because the OpenCode GitHub App cannot write workflow files.
+
 ## Requirements
 
 - Windows 11 is the primary target. The core parsers are portable Python.
 - Python 3.11 or newer.
-- No third-party runtime packages are required by the current features.
+- The static inspectors and Model Atlas core require no third-party runtime packages.
+- The desktop shell requires the pinned packages in `requirements-desktop.txt` (PySide6 `6.12.0`).
 
 ## Run from PowerShell
 
@@ -53,6 +60,22 @@ py -3 -m unittest discover -s tests -v
 ```
 
 The input checkpoint is opened read-only. The report includes only the source filename by default, not the full local path.
+
+To run the desktop shell from source:
+
+```powershell
+py -3 -m pip install -r requirements-desktop.txt
+$env:PYTHONPATH = "src"
+py -3 -m eclipse.desktop.app
+```
+
+To build the Windows executable:
+
+```powershell
+py -3 -m PyInstaller --noconfirm --clean packaging/eclipse-desktop.spec
+```
+
+This produces `dist\ECLIPSE\ECLIPSE.exe`.
 
 ## Project status
 

@@ -1,6 +1,6 @@
 # ECLIPSE Project Status
 
-**Status:** `ACTIVE — STATIC_INSPECTION_AND_MODEL_ATLAS_CORE`
+**Status:** `ACTIVE — DESKTOP_SHELL_AND_MODEL_ATLAS_UI`
 
 **Last updated:** 2026-11-06
 
@@ -19,6 +19,12 @@
 - [x] Added an evidence-labelled Model Atlas core that composes the three inspectors into one summary (parameters, storage bytes, type/dtype distribution).
 - [x] Made Atlas completeness depend on the referenced shard set; unrelated shards are excluded and index `total_size` is reconciled against tensor-data bytes, not whole-file sizes.
 - [x] Added JSON CLI output and standard-library synthetic tests.
+- [x] Chose PySide6 `6.12.0` + PyInstaller `6.22.3` for the Windows-first desktop shell and recorded the comparison in `docs/ADR-001-desktop-framework.md` (D-011).
+- [x] Built a three-workspace `MainWindow` (`Model Intelligence & Inference Platform`, `Capability Amplification & Knowledge System`, `ECLIPSE Agent`) with sidebar navigation and `Ctrl+1/2/3` shortcuts.
+- [x] Connected the Model Intelligence workspace to the existing Model Atlas through a bounded, cancellable `AtlasClient` subprocess boundary; no parsing is duplicated in the UI.
+- [x] Added honest Capability and Agent placeholder screens; the Agent screen has no chat input and reports that no adapter is connected.
+- [x] Added desktop boundary and offscreen Qt smoke tests.
+- [x] Added a PyInstaller spec/launcher and pinned desktop requirements.
 
 ## What works now
 
@@ -26,20 +32,23 @@
 - `py -3 -m eclipse inspect-safetensors <file.safetensors>` parses the header length, bounded JSON header and declared tensor byte ranges without loading weights.
 - `py -3 -m eclipse inspect-hf-folder <folder>` summarizes `config.json`, enumerates shard sizes, and cross-checks the shard index against the files on disk.
 - `py -3 -m eclipse build-atlas <path>` dispatches by input type and emits one evidence-labelled JSON atlas.
+- `eclipse-desktop` opens the three-workspace shell; the Model Intelligence workspace selects a GGUF, Safetensors file or Hugging Face folder, runs the atlas with progress, cancellation and prior-inspection evidence, and renders model/architecture, parameters/storage, distribution, warnings, safety, evidence and an advanced disclosure.
+- `packaging/launcher.py` + `packaging/eclipse-desktop.spec` build a windowed onedir `dist/ECLIPSE/ECLIPSE.exe`; `ECLIPSE.exe --atlas-backend ...` reuses the unchanged `build-atlas` CLI.
 - Parser limits cap header/index bytes, tensor count, metadata entry count, strings, array elements, dimensions, header size, folder entries and shard count.
 - Malformed or unsupported inputs fail with a clear error instead of being guessed.
 - Unknown tensor types are retained as explicit unknown IDs with unknown storage size.
 
 ## Local verification evidence
 
-- Python 3.14.4: `PYTHONPATH=src python -m unittest discover -s tests -v` — **82 tests passed**.
-- Python 3.14.4: `python -m compileall -q src tests .github/scripts` — passed.
-- Python 3.14.4: `inspect-safetensors --compact`, `inspect-hf-folder --compact` and `build-atlas --compact` CLI smoke tests — exit 0 with valid JSON.
+- Python 3.14.4 with PySide6 `6.12.0` + PyInstaller `6.22.3` in a local venv: `QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m unittest discover -s tests -v` — **109 tests passed**, including 8 desktop tests; the 8 desktop tests skip cleanly when PySide6 is not installed.
+- Python 3.14.4: `python -m compileall -q src tests packaging` — passed.
+- Python 3.14.4: `inspect-safetensors --compact`, `inspect-hf-folder --compact`, `build-atlas --compact` and desktop offscreen startup smoke tests — exit 0 with valid JSON / a shown window.
 
 ## CI verification evidence
 
 - Baseline CI on `main` (parent commit `122fc56`) is **success**: workflow "Python checks" run [#17](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42157195462) on `windows-latest`, Python 3.11, 3.12, 3.13 and 3.14, all four jobs passed "Run unit tests".
-- This increment's latest pull-request CI run is **success**: PR #3 run [#42164928747](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42164928747), all four Windows jobs passed on Python 3.11, 3.12, 3.13 and 3.14; the latest suite contains **86 tests**.
+- The prior increment's pull-request CI run is **success**: PR #3 run [#42164928747](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42164928747), all four Windows jobs passed on Python 3.11, 3.12, 3.13 and 3.14; that suite contained **86 tests**.
+- The desktop workflow proposed at `docs/desktop-build-workflow.yml` has **not run**: the OpenCode GitHub App cannot create or update `.github/workflows/` files, so no Windows desktop artifact exists yet. A maintainer must install it as `.github/workflows/desktop.yml` and verify the `ECLIPSE-windows-x64` artifact.
 - Real Windows/model-file validation has not run.
 
 ## Not completed / not claimed
@@ -47,10 +56,10 @@
 - [ ] Real user GGUF/Safetensors/folder validated on Windows.
 - [ ] Tokenizer/chat-template inspection and remote model-card metadata.
 - [ ] Derived GGUF sizes reconciled against a trusted full checkpoint.
-- [ ] Model Atlas desktop UI and memory/VRAM feasibility planner (atlas core only today).
+- [ ] Memory/VRAM feasibility planner.
+- [ ] Windows desktop artifact built and smoke-tested on a real Windows runner (spec/workflow provided, not yet run).
 - [ ] Model preparation/transformation, runtime adapters or inference.
-- [ ] Capability Amplification system, Obsidian integration, or ECLIPSE Agent.
-- [ ] Windows desktop application.
+- [ ] Capability Amplification system, Obsidian integration, or a working ECLIPSE Agent (placeholder screens only).
 
 ## Run locally
 
@@ -65,7 +74,21 @@ py -3 -m eclipse build-atlas "D:\Models\YourModelFolder"
 py -3 -m unittest discover -s tests -v
 ```
 
-No administrator privileges, model runtime, API key or GPU are required for these commands.
+To run the desktop shell from source, install the pinned desktop dependencies and launch it:
+
+```powershell
+py -3 -m pip install -r requirements-desktop.txt
+$env:PYTHONPATH = "src"
+py -3 -m eclipse.desktop.app
+```
+
+To build the Windows executable with PyInstaller:
+
+```powershell
+py -3 -m PyInstaller --noconfirm --clean packaging/eclipse-desktop.spec
+```
+
+The result is `dist\ECLIPSE\ECLIPSE.exe`. No administrator privileges, model runtime, API key or GPU are required for these commands.
 
 ## Known limitations
 
@@ -73,7 +96,8 @@ No administrator privileges, model runtime, API key or GPU are required for thes
 - Tensor payloads are not decoded. GGUF sizes are derived from a pinned GGML registry; Safetensors and folder shard sizes are observed.
 - Derived GGUF sizes are not yet reconciled against a trusted full checkpoint.
 - Architecture-specific interpretation is still limited to metadata directly present in the checkpoint.
-- Desktop/backend technology comparison remains open.
+- The desktop shell is verified by offscreen Qt tests on Linux; the PyInstaller Windows build and the packaged executable have not been run on a Windows machine.
+- The agent workspace is a placeholder with no model adapter and no chat input, by design.
 
 ## Free & Safe Checklist
 

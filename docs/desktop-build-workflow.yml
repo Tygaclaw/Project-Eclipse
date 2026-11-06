@@ -1,0 +1,75 @@
+# Proposed Windows desktop build workflow.
+#
+# The OpenCode GitHub App cannot create or update files under .github/workflows/.
+# A repository maintainer should copy this file to .github/workflows/desktop.yml,
+# review the pinned actions, then run the workflow and verify the Windows x64
+# artifact. Until that happens, no downloadable desktop artifact exists.
+#
+# Artifact name: ECLIPSE-windows-x64
+# Artifact contents: ECLIPSE-windows-x64.zip (the PyInstaller onedir ECLIPSE folder)
+
+name: Windows desktop build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64-desktop:
+    name: Windows x64 desktop package
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-desktop.txt
+
+      - name: Install pinned desktop dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-desktop.txt
+
+      - name: Compile source, tests and packaging files
+        run: python -m compileall -q src tests packaging
+
+      - name: Run full test suite including desktop smoke tests
+        env:
+          PYTHONPATH: src
+          QT_QPA_PLATFORM: offscreen
+        run: python -m unittest discover -s tests -v
+
+      - name: Build Windows desktop executable with PyInstaller
+        run: python -m PyInstaller --noconfirm --clean packaging/eclipse-desktop.spec
+
+      - name: Smoke-test the packaged backend entry point
+        run: dist\ECLIPSE\ECLIPSE.exe --atlas-backend --help
+
+      - name: Create the Windows x64 zip
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path dist\ECLIPSE\* `
+            -DestinationPath ECLIPSE-windows-x64.zip `
+            -CompressionLevel Optimal
+
+      - name: Upload the Windows x64 desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ECLIPSE-windows-x64
+          path: ECLIPSE-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14

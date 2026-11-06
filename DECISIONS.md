@@ -55,3 +55,9 @@
 **Decision:** Build the Model Atlas core as a pure, standard-library composition of the existing inspectors that emits one machine-readable JSON document with explicit `observed`/`derived`/`unknown` labels. A desktop/UI renderer is a separate layer over this contract.
 
 **Reason:** Keeping the atlas as data lets it be tested with synthetic fixtures, reused by the future feasibility estimator and CLI, and rendered later without re-deriving model facts. It preserves the single read-only no-payload trust boundary and avoids coupling model facts to a still-undecided UI framework.
+
+## D-011 — PySide6 desktop shell over the existing Python core
+
+**Decision:** Build the Windows-first desktop shell with PySide6 `6.12.0`, packaged with PyInstaller `6.22.3`, and keep the Model Atlas JSON contract and Python inspectors as the single source of model facts.
+
+**Reason:** PySide6 keeps the shell in the same language as the shared Core and existing inspectors, avoids a second-language rewrite or bridge, and has a mature Windows packaging story. The frozen build reuses the existing `build-atlas` CLI through a `--atlas-backend` dispatch so packaged and command-line behavior cannot drift. See `docs/ADR-001-desktop-framework.md` for the compared options (WPF, Tauri 2, Avalonia).
