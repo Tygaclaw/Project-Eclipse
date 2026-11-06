@@ -11,6 +11,9 @@ on:
           - continue
         default: start
         required: true
+  push:
+    branches:
+      - main
   schedule:
     - cron: "17 */6 * * *"
 
