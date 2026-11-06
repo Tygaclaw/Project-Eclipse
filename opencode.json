@@ -25,6 +25,23 @@
           }
         }
       }
+    },
+    "openrouter": {
+      "models": {
+        "cohere/north-mini-code:free": {
+          "name": "Cohere North Mini Code (Free)",
+          "limit": {
+            "context": 262144,
+            "output": 65536
+          }
+        },
+        "recursive/flint-v1.0:free": {
+          "name": "Recursive Flint 1.0 (Free)",
+          "limit": {
+            "context": 262144
+          }
+        }
+      }
     }
   },
   "permission": {
