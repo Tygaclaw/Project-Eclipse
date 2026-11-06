@@ -7,7 +7,9 @@ import threading
 from typing import Any
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtWidgets import (
+from PySide6.QtWidgets (
+    QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
@@ -19,6 +21,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from eclipse.core import detect_host_hardware
+from eclipse.model_intelligence import FeasibilityRequest, plan_model_feasibility
 
 from ..atlas_client import AtlasCancelledError, AtlasClient, AtlasClientError
 from ..formatting import (
@@ -167,6 +172,48 @@ class _InspectionWorker(QThread):
             self.succeeded.emit(document)
 
 
+class _FeasibilityWorker(QThread):
+    succeeded = Signal(dict)
+    failed = Signal(str)
+    cancelled = Signal()
+
+    def __init__(
+        self,
+        atlas: dict[str, Any] | None,
+        storage_path: Path | None,
+        request: FeasibilityRequest | None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._atlas = atlas
+        self._storage_path = storage_path
+        self._request = request
+        self._cancel_event = threading.Event()
+
+    def cancel(self) -> None:
+        self._cancel_event.set()
+
+    def run(self) -> None:
+        try:
+            host = detect_host_hardware(self._storage_path)
+            if self._cancel_event.is_set():
+                self.cancelled.emit()
+                return
+            plan = (
+                plan_model_feasibility(self._atlas, host, self._request)
+                if self._atlas is not None and self._request is not None
+                else None
+            )
+            if self._cancel_event.is_set():
+                self.cancelled.emit()
+                return
+            self.succeeded.emit({"host": host.to_dict(), "plan": plan})
+        except Exception as exc:
+            self.failed.emit(
+                f"Hardware discovery or feasibility planning failed ({type(exc).__name__})."
+            )
+
+
 class ModelIntelligenceWorkspace(QWidget):
     """Static Model Atlas workspace connected to the existing Python backend."""
 
@@ -177,7 +224,9 @@ class ModelIntelligenceWorkspace(QWidget):
         self._client = client or AtlasClient()
         self._source: Path | None = None
         self._worker: _InspectionWorker | None = None
+        self._feasibility_worker: _FeasibilityWorker | None = None
         self._last_atlas: dict[str, Any] | None = None
+        self._last_feasibility: dict[str, Any] | None = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -195,8 +244,8 @@ class ModelIntelligenceWorkspace(QWidget):
         layout.addWidget(
             make_header(
                 "Model Intelligence & Inference Platform",
-                "Inspect a model's headers and tensor index, then read a clear, evidence-labelled "
-                "Model Atlas. Tensor weights are never loaded.",
+                "Inspect model structure, then estimate how its weights and KV cache compare with "
+                "the memory currently available on this computer. Static checks never load weights.",
             )
         )
 
@@ -264,6 +313,104 @@ class ModelIntelligenceWorkspace(QWidget):
         )
         layout.addWidget(source_card)
 
+        hardware_card, hardware_layout = make_card(
+            "Hardware and memory fit",
+            "Detect current resources when you run the check. The estimate does not load the model or test inference.",
+        )
+        settings_grid = QGridLayout()
+        settings_grid.setHorizontalSpacing(14)
+        settings_grid.setVerticalSpacing(10)
+
+        self._context_combo = QComboBox()
+        self._context_combo.setAccessibleName("Context length for memory estimate")
+        self._context_combo.addItem("Use model-declared context", None)
+        for context in (4096, 8192, 16384, 32768, 65536, 131072, 262144):
+            self._context_combo.addItem(f"{context:,} tokens", context)
+
+        self._kv_dtype_combo = QComboBox()
+        self._kv_dtype_combo.setAccessibleName("KV cache data type")
+        self._kv_dtype_combo.addItem("FP16 (2 bytes)", "f16")
+        self._kv_dtype_combo.addItem("BF16 (2 bytes)", "bf16")
+        self._kv_dtype_combo.addItem("FP32 (4 bytes)", "f32")
+
+        self._ram_reserve_spin = QDoubleSpinBox()
+        self._ram_reserve_spin.setRange(0.0, 512.0)
+        self._ram_reserve_spin.setDecimals(2)
+        self._ram_reserve_spin.setSingleStep(0.5)
+        self._ram_reserve_spin.setValue(8.0)
+        self._ram_reserve_spin.setSuffix(" GB")
+        self._ram_reserve_spin.setAccessibleName("System RAM to keep available for Windows and other apps")
+
+        self._vram_reserve_spin = QDoubleSpinBox()
+        self._vram_reserve_spin.setRange(0.0, 128.0)
+        self._vram_reserve_spin.setDecimals(2)
+        self._vram_reserve_spin.setSingleStep(0.25)
+        self._vram_reserve_spin.setValue(0.75)
+        self._vram_reserve_spin.setSuffix(" GB")
+        self._vram_reserve_spin.setAccessibleName("GPU memory reserve")
+
+        for row, (label_text, widget) in enumerate(
+            (
+                ("Context length", self._context_combo),
+                ("KV cache format", self._kv_dtype_combo),
+                ("Keep free for Windows", self._ram_reserve_spin),
+                ("Keep free on GPU", self._vram_reserve_spin),
+            )
+        ):
+            label = QLabel(label_text)
+            label.setObjectName("FactLabel")
+            settings_grid.addWidget(label, row, 0)
+            settings_grid.addWidget(widget, row, 1)
+        settings_grid.setColumnStretch(1, 1)
+        hardware_layout.addLayout(settings_grid)
+
+        hardware_buttons = QHBoxLayout()
+        self._detect_hardware_button = QPushButton("Detect hardware")
+        self._detect_hardware_button.setObjectName("QuietButton")
+        self._detect_hardware_button.setAccessibleName("Detect current hardware and available memory")
+        self._detect_hardware_button.clicked.connect(self._start_hardware_detection)
+
+        self._check_fit_button = QPushButton("Check memory fit")
+        self._check_fit_button.setObjectName("PrimaryButton")
+        self._check_fit_button.setAccessibleName("Estimate model memory fit on this computer")
+        self._check_fit_button.setEnabled(False)
+        self._check_fit_button.clicked.connect(self._start_feasibility_check)
+
+        self._cancel_feasibility_button = QPushButton("Cancel")
+        self._cancel_feasibility_button.setObjectName("DangerButton")
+        self._cancel_feasibility_button.setAccessibleName("Cancel hardware discovery and memory planning")
+        self._cancel_feasibility_button.setVisible(False)
+        self._cancel_feasibility_button.clicked.connect(self._cancel_feasibility_check)
+
+        hardware_buttons.addWidget(self._detect_hardware_button)
+        hardware_buttons.addWidget(self._check_fit_button)
+        hardware_buttons.addWidget(self._cancel_feasibility_button)
+        hardware_buttons.addStretch(1)
+        hardware_layout.addLayout(hardware_buttons)
+
+        self._hardware_status = QLabel(
+            "Hardware has not been queried yet. A memory-fit check becomes available after model inspection."
+        )
+        self._hardware_status.setObjectName("StatusLine")
+        self._hardware_status.setWordWrap(True)
+        self._hardware_status.setAccessibleName("Hardware and feasibility status")
+        hardware_layout.addWidget(self._hardware_status)
+
+        self._hardware_progress = QProgressBar()
+        self._hardware_progress.setRange(0, 0)
+        self._hardware_progress.setTextVisible(False)
+        self._hardware_progress.setVisible(False)
+        self._hardware_progress.setAccessibleName("Hardware discovery in progress")
+        hardware_layout.addWidget(self._hardware_progress)
+
+        add_text(
+            hardware_layout,
+            "A fit result is a memory-capacity estimate, not proof that an inference backend supports the model. "
+            "No tokens/second estimate is invented, and no model is loaded.",
+            "Faint",
+        )
+        layout.addWidget(hardware_card)
+
         self._results_layout = QVBoxLayout()
         self._results_layout.setSpacing(18)
         layout.addLayout(self._results_layout)
@@ -296,6 +443,8 @@ class ModelIntelligenceWorkspace(QWidget):
     def _set_source(self, path: Path) -> None:
         self._source = path
         self._last_atlas = None
+        self._last_feasibility = None
+        self._check_fit_button.setEnabled(False)
         self._source_label.setText(path.name)
         self._status_label.setText("Ready to inspect the selected model.")
         self._inspect_button.setEnabled(True)
@@ -306,7 +455,7 @@ class ModelIntelligenceWorkspace(QWidget):
         )
 
     def _start_inspection(self) -> None:
-        if self._worker is not None or self._source is None:
+        if self._worker is not None or self._feasibility_worker is not None or self._source is None:
             return
         self._show_empty(
             "Inspecting headers…",
@@ -344,19 +493,28 @@ class ModelIntelligenceWorkspace(QWidget):
         self._cancel_button.setVisible(running)
         self._cancel_button.setEnabled(running)
         self._progress.setVisible(running)
+        hardware_running = self._feasibility_worker is not None
+        self._detect_hardware_button.setEnabled(not running and not hardware_running)
+        self._check_fit_button.setEnabled(
+            not running and not hardware_running and self._last_atlas is not None
+        )
 
     def _on_success(self, document: dict[str, Any]) -> None:
         self._set_running(False)
         self._last_atlas = document
+        self._check_fit_button.setEnabled(True)
         self._status_label.setObjectName("SuccessText")
         self._status_label.setText(
             "Atlas ready. Static read-only inspection completed with 0 tensor payload bytes read."
         )
         self._render_atlas(document)
+        if self._last_feasibility is not None:
+            self._render_feasibility(self._last_feasibility)
 
     def _on_failure(self, message: str) -> None:
         self._set_running(False)
         self._last_atlas = None
+        self._check_fit_button.setEnabled(False)
         self._status_label.setObjectName("StatusLine")
         self._status_label.setText("The model could not be inspected.")
         self._show_error(message)
@@ -396,7 +554,10 @@ class ModelIntelligenceWorkspace(QWidget):
         """Render an already-validated Atlas. Used by the worker and UI tests."""
 
         self._last_atlas = document
+        self._check_fit_button.setEnabled(True)
         self._render_atlas(document)
+        if self._last_feasibility is not None:
+            self._render_feasibility(self._last_feasibility)
 
     def _render_atlas(self, document: dict[str, Any]) -> None:
         self._clear_results()
@@ -743,3 +904,7 @@ class ModelIntelligenceWorkspace(QWidget):
         if worker is not None and worker.isRunning():
             worker.cancel()
             worker.wait(5_000)
+        feasibility_worker = self._feasibility_worker
+        if feasibility_worker is not None and feasibility_worker.isRunning():
+            feasibility_worker.cancel()
+            feasibility_worker.wait(5_000)
