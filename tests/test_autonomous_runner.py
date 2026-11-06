@@ -11,6 +11,7 @@ from scripts.eclipse_autonomous import (
     extract_session_id,
     safe_child_environment,
     safety_scan,
+    run_opencode,
 )
 
 
@@ -91,6 +92,51 @@ class SafetyScanTests(unittest.TestCase):
         self.assertTrue(safe, message)
         self.assertTrue(protected)
 
+
+
+    def test_opencode_invocation_is_standalone_and_carries_session_and_selected_model(self) -> None:
+        captured = {}
+        route = ROUTES[1]
+
+        def fake_runner(command, **kwargs):
+            captured["command"] = command
+            captured["env"] = kwargs["env"]
+            return __import__("subprocess").CompletedProcess(
+                command, 0,
+                stdout='{"type":"session.updated","sessionID":"ses_abcdefgh12345678"}\\n',
+                stderr="",
+            )
+
+        result, session = run_opencode(
+            route,
+            "continue task",
+            "ses_previous12345678",
+            "autonomous-test",
+            runner=fake_runner,
+            source_env={
+                "PATH": "/usr/bin",
+                "GEMINI_API_KEY": "gemini-test-key",
+                "TOKENHARBOR_API_KEY": "must-not-leak",
+                "GITHUB_TOKEN": "must-not-leak-either",
+            },
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(session, "ses_abcdefgh12345678")
+        self.assertIn("--standalone", captured["command"])
+        self.assertIn("--session", captured["command"])
+        self.assertIn("ses_previous12345678", captured["command"])
+        self.assertIn("--model", captured["command"])
+        self.assertIn(route.open_code_id, captured["command"])
+        self.assertEqual(captured["env"]["GOOGLE_GENERATIVE_AI_API_KEY"], "gemini-test-key")
+        self.assertNotIn("TOKENHARBOR_API_KEY", captured["env"])
+        self.assertNotIn("GITHUB_TOKEN", captured["env"])
+
+    def test_payment_required_skips_provider_without_retry(self) -> None:
+        failure = classify_failure("HTTP 402 Payment Required: credits exhausted")
+        self.assertEqual(failure.kind, "quota")
+        self.assertTrue(failure.skip_provider)
+        self.assertFalse(failure.retryable)
 
 
 class FailoverLoopTests(unittest.TestCase):
