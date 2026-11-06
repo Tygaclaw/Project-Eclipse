@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -333,6 +334,11 @@ class ModelIntelligenceWorkspace(QWidget):
         self._kv_dtype_combo.addItem("BF16 (2 bytes)", "bf16")
         self._kv_dtype_combo.addItem("FP32 (4 bytes)", "f32")
 
+        self._sequence_slots_spin = QSpinBox()
+        self._sequence_slots_spin.setRange(1, 64)
+        self._sequence_slots_spin.setValue(1)
+        self._sequence_slots_spin.setAccessibleName("Number of concurrent context sequences")
+
         self._ram_reserve_spin = QDoubleSpinBox()
         self._ram_reserve_spin.setRange(0.0, 512.0)
         self._ram_reserve_spin.setDecimals(2)
@@ -353,6 +359,7 @@ class ModelIntelligenceWorkspace(QWidget):
             (
                 ("Context length", self._context_combo),
                 ("KV cache format", self._kv_dtype_combo),
+                ("Parallel sequences", self._sequence_slots_spin),
                 ("Keep free for Windows", self._ram_reserve_spin),
                 ("Keep free on GPU", self._vram_reserve_spin),
             )
@@ -445,6 +452,8 @@ class ModelIntelligenceWorkspace(QWidget):
         self._last_atlas = None
         self._last_feasibility = None
         self._check_fit_button.setEnabled(False)
+        self._hardware_status.setObjectName("StatusLine")
+        self._hardware_status.setText("Memory fit has not been checked for the selected model.")
         self._source_label.setText(path.name)
         self._status_label.setText("Ready to inspect the selected model.")
         self._inspect_button.setEnabled(True)
@@ -522,6 +531,7 @@ class ModelIntelligenceWorkspace(QWidget):
     def _on_cancelled(self) -> None:
         self._set_running(False)
         self._last_atlas = None
+        self._check_fit_button.setEnabled(False)
         self._status_label.setObjectName("StatusLine")
         self._status_label.setText("Inspection cancelled.")
         self._show_empty(
@@ -534,6 +544,7 @@ class ModelIntelligenceWorkspace(QWidget):
         return FeasibilityRequest(
             context_tokens=context_tokens if isinstance(context_tokens, int) else None,
             kv_cache_dtype=str(self._kv_dtype_combo.currentData() or "f16"),
+            sequence_slots=self._sequence_slots_spin.value(),
             system_ram_reserve_bytes=int(round(self._ram_reserve_spin.value() * 1024**3)),
             gpu_vram_reserve_bytes=int(round(self._vram_reserve_spin.value() * 1024**3)),
         )
