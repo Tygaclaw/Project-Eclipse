@@ -45,12 +45,15 @@ PROTECTED_PREFIXES = (
     ".github/workflows/",
     ".github/scripts/",
     "scripts/eclipse_autonomous.py",
-    "tests/test_autonomous_runner.py",
+    "tests/test_autonomous_",
+    "scripts/eclipse_review.py",
+    "tests/test_review.py",
     "opencode.json",
     "DEEPSEEK_START_HERE.md",
     "SECURITY.md",
     "docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md",
 )
+MAX_PARKED_OWNER_PRS = 3  # owner-review PRs allowed to wait before new runs pause
 SECRET_PATTERNS = (
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}\b"),
@@ -206,8 +209,8 @@ def safe_child_environment(route: Route, source: dict[str, str]) -> dict[str, st
     return env
 
 
-def build_run_prompt(run_title: str) -> str:
-    return f"""You are the implementation model inside the autonomous ECLIPSE engineering system.
+def build_run_prompt(run_title: str, parked_note: str = "") -> str:
+    return f"""{parked_note}You are the implementation model inside the autonomous ECLIPSE engineering system.
 Run title: {run_title}
 
 Read these files first:
@@ -719,20 +722,34 @@ def create_draft_checkpoint(
     return created.stdout.strip().splitlines()[-1]
 
 
-def find_open_autonomous_pr(source_env: dict[str, str]) -> dict[str, object] | None:
-    result = gh(
+def is_parked_owner_pr(item: dict[str, object]) -> bool:
+    """A finished protected-path draft that only waits for the owner; nothing to resume."""
+    return bool(item.get("isDraft")) and not str(item.get("title", "")).startswith("Checkpoint: ECLIPSE autonomous run")
+
+
+def list_open_autonomous_prs(
+    source_env: dict[str, str],
+    *,
+    gh_fn: Callable[..., subprocess.CompletedProcess[str]] = gh,
+) -> list[dict[str, object]]:
+    result = gh_fn(
         ["pr", "list", "--state", "open", "--base", "main",
          "--json", "number,title,body,headRefName,isDraft,url,headRefOid"],
         source_env=source_env,
     )
-    entries = json.loads(result.stdout or "[]")
-    return next(
-        (
-            item for item in entries
-            if str(item.get("headRefName", "")).startswith("feature/eclipse-autonomous-")
-        ),
-        None,
-    )
+    return [
+        item for item in json.loads(result.stdout or "[]")
+        if str(item.get("headRefName", "")).startswith("feature/eclipse-autonomous-")
+    ]
+
+
+def find_open_autonomous_pr(source_env: dict[str, str]) -> dict[str, object] | None:
+    """The open autonomous PR the loop must resume; owner-review PRs are parked, not resumed."""
+    return next((item for item in list_open_autonomous_prs(source_env) if not is_parked_owner_pr(item)), None)
+
+
+def find_parked_owner_prs(source_env: dict[str, str]) -> list[dict[str, object]]:
+    return [item for item in list_open_autonomous_prs(source_env) if is_parked_owner_pr(item)]
 
 
 def resume_existing_pr(
@@ -906,6 +923,20 @@ def main() -> int:
     if existing_pr:
         return resume_existing_pr(existing_pr, source_env, run_title, deadline)
 
+    parked = find_parked_owner_prs(source_env)
+    if len(parked) >= MAX_PARKED_OWNER_PRS:
+        print(f"WAITING_FOR_OWNER_REVIEW: {len(parked)} owner-review PRs are waiting: "
+              + ", ".join(str(item.get("url")) for item in parked))
+        print("Merge or close some of them to let autonomous work continue.")
+        return 9
+    parked_note = ""
+    if parked:
+        parked_note = (
+            "NOTE: these finished PRs wait for owner review and are NOT on main yet: "
+            + ", ".join(f"#{item.get('number')}" for item in parked)
+            + ". Do not redo their work, do not depend on it, and avoid editing the same files.\n\n"
+        )
+
     orphans = find_orphan_autonomous_branches(source_env)
     if orphans:
         print("ORPHAN_AUTONOMOUS_BRANCH_WITHOUT_PR: " + ", ".join(orphans))
@@ -920,7 +951,7 @@ def main() -> int:
     subprocess.run(["git", "switch", "-c", branch], cwd=ROOT, env=controller_env, check=True)
 
     success, session_id, selected_model, failure = run_agent_with_failover(
-        build_run_prompt(run_title),
+        build_run_prompt(run_title, parked_note),
         run_title,
         source_env,
         turn_timeout=DEFAULT_TURN_TIMEOUT,
