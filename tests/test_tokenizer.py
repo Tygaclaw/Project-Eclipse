@@ -273,6 +273,47 @@ class TokenizerTests(unittest.TestCase):
             before,
         )
 
+    def test_embedded_legacy_chat_template_json_obeys_template_byte_limit(self) -> None:
+        self.write_json("chat_template.json", {"chat_template": "legacy template is too long"})
+        report = inspect_tokenizer(
+            self.root,
+            TokenizerLimits(max_template_bytes=8),
+        )
+        self.assertEqual(report["chat_templates"]["sources"][0]["status"], "skipped")
+        self.assertIsNone(report["chat_templates"]["default"])
+
+    def test_template_count_budget_preserves_modern_root_default(self) -> None:
+        self.write_text("chat_template.jinja", "modern default")
+        self.write_json(
+            "tokenizer_config.json",
+            {
+                "chat_template": [
+                    {"name": "default", "template": "legacy default"},
+                    {"name": "tool_use", "template": "legacy tools"},
+                ]
+            },
+        )
+        report = inspect_tokenizer(
+            self.root,
+            TokenizerLimits(max_template_count=1),
+        )
+        self.assertEqual(report["chat_templates"]["default"]["kind"], "standalone_jinja")
+        self.assertEqual(report["chat_templates"]["parsed_count"], 1)
+        self.assertTrue(any("only 0 were considered" in warning for warning in report["warnings"]))
+
+    def test_rejects_symlinked_input_root(self) -> None:
+        target = self.root / "target-folder"
+        target.mkdir()
+        (target / "tokenizer_config.json").write_text("{}", encoding="utf-8")
+        link = self.root.parent / f"{self.root.name}-link"
+        try:
+            link.symlink_to(target, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("directory symlinks are not supported on this platform")
+        self.addCleanup(lambda: link.unlink(missing_ok=True))
+        with self.assertRaises(TokenizerFormatError):
+            inspect_tokenizer(link)
+
     def test_empty_folder_is_an_honest_empty_state(self) -> None:
         report = inspect_tokenizer(self.root)
         self.assertEqual(report["assets"], [])
