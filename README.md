@@ -24,7 +24,7 @@ No inspector loads, maps, decodes or executes tensor weights.
 
 A PySide6 `6.12.0` Windows-first shell (`eclipse-desktop`) hosts the three primary workspaces. The Model Intelligence workspace lets you pick a GGUF, Safetensors file or Hugging Face folder and renders the same evidence-labelled atlas, with progress, cancellation and read-only safety reporting. It talks to the core through a bounded, cancellable subprocess boundary, so no parsing is duplicated in the UI. The Capability and Agent workspaces are honest placeholders; the Agent screen has no chat input and reports that no model adapter is connected.
 
-See [`docs/ADR-001-desktop-framework.md`](docs/ADR-001-desktop-framework.md) for the framework decision. The proposed Windows build workflow is at [`docs/desktop-build-workflow.yml`](docs/desktop-build-workflow.yml); a maintainer must install it under `.github/workflows/` because the OpenCode GitHub App cannot write workflow files.
+See [`docs/ADR-001-desktop-framework.md`](docs/ADR-001-desktop-framework.md) for the framework decision. The active Windows desktop build workflow is [`.github/workflows/desktop.yml`](.github/workflows/desktop.yml); its readable reference copy is [`docs/desktop-build-workflow.yml`](docs/desktop-build-workflow.yml). The workflow runs on pull requests to `main`, tests the Qt UI, builds a portable Windows x64 package and uploads the `ECLIPSE-windows-x64` artifact. A successful artifact run is still required before claiming the downloadable build has been validated.
 
 ## Requirements
 
