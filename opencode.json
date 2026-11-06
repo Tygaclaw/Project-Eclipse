@@ -330,6 +330,35 @@
           }
         }
       }
+    },
+    "zai": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Z.AI / GLM free Flash API",
+      "options": {
+        "baseURL": "https://api.z.ai/api/paas/v4",
+        "apiKey": "{env:ZAI_API_KEY}"
+      },
+      "models": {
+        "glm-4.7-flash": {
+          "name": "GLM-4.7 Flash (Free API tier)",
+          "limit": {
+            "context": 200000,
+            "output": 128000
+          }
+        },
+        "glm-4.5-flash": {
+          "name": "GLM-4.5 Flash (Free API tier)",
+          "limit": {
+            "context": 131072
+          }
+        },
+        "glm-4.6v-flash": {
+          "name": "GLM-4.6V Flash (Free API tier; vision)",
+          "limit": {
+            "context": 131072
+          }
+        }
+      }
     }
   },
   "permission": {
