@@ -126,3 +126,10 @@ The result is `dist\ECLIPSE\ECLIPSE.exe`. No administrator privileges, model run
 - [ ] PySide6/Qt LGPL license notices, relinking instructions and corresponding-source offer need review and inclusion in the public release package before broader redistribution.
 
 See `CONTINUATION.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `TESTING.md`, `SECURITY.md` and `MODEL_COMPATIBILITY.md` for details.
+
+
+## Provider-pool checkpoint (feature branch only; PR #9)
+
+The branch `feature/openrouter-free-models-20261106` now contains expanded manual model selections for Token Harbor, OpenRouter, Google AI Studio, Groq, NVIDIA API Catalog/NIM, Cloudflare Workers AI and an optional Cohere evaluation route. These changes are not merged into `main`.
+
+The OpenCode workflow preserves the 350-minute timeout and the `external_directory: deny` rule. It checks the selected provider connection and gives the OpenCode process only that selected provider's credential. The owner reports Gemini has also been connected; the exact secret-name match still needs a workflow check. Groq, NVIDIA, Cloudflare and Cohere connections remain unconfirmed. No live inference smoke tests have been run for these newly added routes. Automatic provider failover is still future work.
