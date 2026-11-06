@@ -1113,6 +1113,8 @@ def inspect_tokenizer(
 
     base = Path(path)
     limits = limits or TokenizerLimits()
+    if base.is_symlink():
+        raise TokenizerFormatError("Input folder must not be a symbolic link")
     try:
         base.stat()
     except OSError as exc:
