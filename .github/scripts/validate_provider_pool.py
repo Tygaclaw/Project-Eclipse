@@ -118,6 +118,9 @@ def main() -> int:
         fail("Duplicate comment commands were found.")
 
     seen: dict[str, set[str]] = {name: set() for name in PROVIDERS}
+    # The default /oc route is selected before the case statement, so count it
+    # as an explicit route for the default model.
+    seen[default_provider].add(default_id)
     for command, provider, model in routes:
         if provider not in PROVIDERS:
             fail(f"{command}: provider {provider!r} is not in the six-provider allowlist.")
