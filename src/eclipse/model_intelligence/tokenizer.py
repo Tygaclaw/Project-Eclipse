@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import hashlib
+import itertools
 import json
 import os
 from pathlib import Path
@@ -94,15 +95,18 @@ class TokenizerResourceLimitError(TokenizerError):
 
 @dataclass(frozen=True, slots=True)
 class TokenizerLimits:
-    """Hard limits for untrusted tokenizer folders and chat templates."""
+    """Hard aggregate and per-file limits for untrusted tokenizer assets."""
 
     max_entries: int = 100_000
     max_name_bytes: int = 65_536
-    max_json_bytes: int = 128 * 1024 * 1024
-    max_text_bytes: int = 128 * 1024 * 1024
+    max_json_bytes: int = 16 * 1024 * 1024
+    max_total_json_bytes: int = 32 * 1024 * 1024
+    max_text_bytes: int = 32 * 1024 * 1024
     max_template_bytes: int = 4 * 1024 * 1024
+    max_total_template_bytes: int = 16 * 1024 * 1024
     max_template_count: int = 256
     max_template_preview_bytes: int = 4096
+    max_token_entries: int = 100_000
     max_token_preview_items: int = 16
     max_string_preview_chars: int = 256
 
@@ -112,13 +116,48 @@ class TokenizerLimits:
                 raise ValueError(f"{name} must be a non-negative integer")
         for name in (
             "max_json_bytes",
+            "max_total_json_bytes",
             "max_text_bytes",
             "max_template_bytes",
+            "max_total_template_bytes",
             "max_template_preview_bytes",
             "max_string_preview_chars",
         ):
             if getattr(self, name) == 0:
                 raise ValueError(f"{name} must be greater than zero")
+
+
+@dataclass(slots=True)
+class _TemplateBudget:
+    """One budget shared by embedded, standalone and additional templates."""
+
+    limits: TokenizerLimits
+    candidates_seen: int = 0
+    bytes_reserved: int = 0
+
+    @property
+    def remaining(self) -> int:
+        return max(0, self.limits.max_template_count - self.candidates_seen)
+
+    def reserve(self, size_bytes: int) -> str | None:
+        if self.candidates_seen >= self.limits.max_template_count:
+            return (
+                f"aggregate template count limit "
+                f"({self.limits.max_template_count:,}) reached"
+            )
+        self.candidates_seen += 1
+        if size_bytes > self.limits.max_template_bytes:
+            return (
+                f"template is {size_bytes:,} bytes; per-template limit is "
+                f"{self.limits.max_template_bytes:,} bytes"
+            )
+        if self.bytes_reserved + size_bytes > self.limits.max_total_template_bytes:
+            return (
+                f"aggregate template byte limit "
+                f"({self.limits.max_total_template_bytes:,}) would be exceeded"
+            )
+        self.bytes_reserved += size_bytes
+        return None
 
 
 def _clip_text(text: str, max_bytes: int) -> tuple[str, bool]:
@@ -233,27 +272,58 @@ def _load_json_assets(
     files: dict[str, int],
     limits: TokenizerLimits,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
+    """Load JSON control files under both per-file and aggregate byte budgets."""
+
     parsed: dict[str, Any] = {}
     assets: list[dict[str, Any]] = []
     warnings: list[str] = []
-    for name in sorted(files):
-        if name not in _JSON_ASSETS:
+    priority = (
+        _TOKENIZER_CONFIG,
+        "special_tokens_map.json",
+        "tokenizer.json",
+        "added_tokens.json",
+        "vocab.json",
+        _CHAT_TEMPLATE_JSON,
+    )
+    remaining = limits.max_total_json_bytes
+    for name in priority:
+        if name not in files:
             continue
         size = files[name]
-        data, reason = _read_bounded(base / name, limits.max_json_bytes)
+        if size > limits.max_json_bytes:
+            reason = (
+                f"{name} exceeds the per-file JSON limit "
+                f"({limits.max_json_bytes:,} bytes)"
+            )
+            assets.append(_asset_entry(name, size, "json", "skipped", reason))
+            warnings.append(f"Did not parse {name}: {reason}")
+            continue
+        if size > remaining:
+            reason = (
+                f"{name} would exceed the remaining aggregate JSON metadata budget "
+                f"({remaining:,} bytes)"
+            )
+            assets.append(_asset_entry(name, size, "json", "skipped", reason))
+            warnings.append(f"Did not parse {name}: {reason}")
+            continue
+
+        data, reason = _read_bounded(base / name, min(limits.max_json_bytes, remaining))
         if reason is not None:
             assets.append(_asset_entry(name, size, "json", "skipped", reason))
             warnings.append(f"Did not parse {name}: {reason}")
             continue
+        raw = data or b""
+        remaining -= len(raw)
         try:
-            document = json.loads((data or b"").decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            document = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
             reason = f"{name} is not valid UTF-8 JSON"
             assets.append(_asset_entry(name, size, "json", "error", reason))
             warnings.append(reason)
             continue
         parsed[name] = document
         assets.append(_asset_entry(name, size, "json", "parsed"))
+
     return parsed, assets, warnings
 
 
@@ -303,73 +373,138 @@ def _sentencepiece_inventory(
     return assets, warnings
 
 
-def _added_token_map(documents: dict[str, Any]) -> dict[str, int]:
+def _added_token_map(
+    documents: dict[str, Any],
+    limits: TokenizerLimits,
+) -> tuple[dict[str, int], dict[str, Any]]:
+    """Find IDs only for declared special tokens, with bounded entry work.
+
+    This deliberately does not build a second copy of the complete added-token
+    table. It scans at most the configured number of records and retains at
+    most the handful of IDs needed by the special-token summary.
+    """
+
+    wanted: set[str] = set()
+    for source_name in (_TOKENIZER_CONFIG, "special_tokens_map.json"):
+        document = documents.get(source_name)
+        if not isinstance(document, dict):
+            continue
+        for _, content_key, _ in _SPECIAL_TOKEN_FIELDS:
+            content = _token_content(document.get(content_key))
+            if content:
+                wanted.add(content)
+
     lookup: dict[str, int] = {}
+    processed = 0
+    truncated = False
+
+    def add_match(content: Any, identifier: Any) -> None:
+        if (
+            isinstance(content, str)
+            and content in wanted
+            and isinstance(identifier, int)
+            and not isinstance(identifier, bool)
+        ):
+            lookup.setdefault(content, identifier)
+
     tokenizer_json = documents.get("tokenizer.json")
     if isinstance(tokenizer_json, dict):
-        added = tokenizer_json.get("added_tokens")
-        if isinstance(added, list):
-            for item in added:
-                if not isinstance(item, dict):
-                    continue
-                content = item.get("content")
-                identifier = item.get("id")
-                if isinstance(content, str) and isinstance(identifier, int) and not isinstance(identifier, bool):
-                    lookup.setdefault(content, identifier)
+        records = tokenizer_json.get("added_tokens")
+        if isinstance(records, list):
+            limit = min(len(records), limits.max_token_entries - processed)
+            for item in itertools.islice(records, max(0, limit)):
+                processed += 1
+                if isinstance(item, dict):
+                    add_match(item.get("content"), item.get("id"))
+            if len(records) > limit:
+                truncated = True
+
     config = documents.get(_TOKENIZER_CONFIG)
     if isinstance(config, dict):
-        decoder = config.get("added_tokens_decoder")
-        if isinstance(decoder, dict):
-            for key, item in decoder.items():
-                content = _token_content(item)
-                identifier: int | None = None
-                if isinstance(key, str) and key.isdigit():
-                    identifier = int(key)
-                elif isinstance(item, dict) and isinstance(item.get("id"), int):
-                    identifier = item["id"]
-                if content is not None and identifier is not None:
-                    lookup.setdefault(content, identifier)
-    added_tokens = documents.get("added_tokens.json")
-    if isinstance(added_tokens, dict):
-        for content, identifier in added_tokens.items():
-            if isinstance(content, str) and isinstance(identifier, int) and not isinstance(identifier, bool):
-                lookup.setdefault(content, identifier)
-    return lookup
+        records = config.get("added_tokens_decoder")
+        if isinstance(records, dict) and processed < limits.max_token_entries:
+            total = len(records)
+            limit = min(total, limits.max_token_entries - processed)
+            for key, item in itertools.islice(records.items(), limit):
+                processed += 1
+                identifier = int(key) if isinstance(key, str) and key.isdigit() else None
+                if identifier is None and isinstance(item, dict):
+                    value = item.get("id")
+                    identifier = value if isinstance(value, int) and not isinstance(value, bool) else None
+                add_match(_token_content(item), identifier)
+            if total > limit:
+                truncated = True
+        elif isinstance(records, dict) and records:
+            truncated = True
+
+    records = documents.get("added_tokens.json")
+    if isinstance(records, dict) and processed < limits.max_token_entries:
+        total = len(records)
+        limit = min(total, limits.max_token_entries - processed)
+        for content, identifier in itertools.islice(records.items(), limit):
+            processed += 1
+            add_match(content, identifier)
+        if total > limit:
+            truncated = True
+    elif isinstance(records, dict) and records:
+        truncated = True
+
+    return lookup, {
+        "entries_processed": processed,
+        "entry_limit": limits.max_token_entries,
+        "truncated": truncated,
+    }
 
 
 def _added_token_summary(
     documents: dict[str, Any],
-    lookup: dict[str, int],
     limits: TokenizerLimits,
 ) -> dict[str, Any]:
     preview: list[dict[str, Any]] = []
     count: int | None = None
     source: str | None = None
+    preview_limit = min(limits.max_token_preview_items, limits.max_token_entries)
 
     tokenizer_json = documents.get("tokenizer.json")
     config = documents.get(_TOKENIZER_CONFIG)
     added_tokens_json = documents.get("added_tokens.json")
+    records: Any = None
+    record_kind: str | None = None
 
     if isinstance(tokenizer_json, dict) and isinstance(tokenizer_json.get("added_tokens"), list):
-        items = tokenizer_json["added_tokens"]
-        count = len(items)
+        records = tokenizer_json["added_tokens"]
+        count = len(records)
         source = "tokenizer.json:added_tokens"
-        for item in items[: limits.max_token_preview_items]:
+        record_kind = "list"
+    elif isinstance(config, dict) and isinstance(config.get("added_tokens_decoder"), dict):
+        records = config["added_tokens_decoder"]
+        count = len(records)
+        source = "tokenizer_config.json:added_tokens_decoder"
+        record_kind = "decoder"
+    elif isinstance(added_tokens_json, dict):
+        records = added_tokens_json
+        count = len(records)
+        source = "added_tokens.json"
+        record_kind = "map"
+
+    if record_kind == "list":
+        for item in itertools.islice(records, preview_limit):
             if not isinstance(item, dict):
                 continue
-            entry: dict[str, Any] = {
-                "id": item.get("id") if isinstance(item.get("id"), int) else None,
-                "content": _clip_string(item.get("content"), limits),
-            }
-            if "special" in item:
-                entry["special"] = item.get("special") if isinstance(item.get("special"), bool) else None
-            preview.append(entry)
-    elif isinstance(config, dict) and isinstance(config.get("added_tokens_decoder"), dict):
-        decoder = config["added_tokens_decoder"]
-        count = len(decoder)
-        source = "tokenizer_config.json:added_tokens_decoder"
-        for key, item in list(decoder.items())[: limits.max_token_preview_items]:
+            identifier = item.get("id")
+            preview.append(
+                {
+                    "id": identifier if isinstance(identifier, int) and not isinstance(identifier, bool) else None,
+                    "content": _clip_string(item.get("content"), limits),
+                    "special": item.get("special") if isinstance(item.get("special"), bool) else None,
+                }
+            )
+    elif record_kind == "decoder":
+        for key, item in itertools.islice(records.items(), preview_limit):
             identifier = int(key) if isinstance(key, str) and key.isdigit() else None
+            if identifier is None and isinstance(item, dict):
+                value = item.get("id")
+                identifier = value if isinstance(value, int) and not isinstance(value, bool) else None
             preview.append(
                 {
                     "id": identifier,
@@ -377,10 +512,8 @@ def _added_token_summary(
                     "special": item.get("special") if isinstance(item, dict) and isinstance(item.get("special"), bool) else None,
                 }
             )
-    elif isinstance(added_tokens_json, dict):
-        count = len(added_tokens_json)
-        source = "added_tokens.json"
-        for content, identifier in list(added_tokens_json.items())[: limits.max_token_preview_items]:
+    elif record_kind == "map":
+        for content, identifier in itertools.islice(records.items(), preview_limit):
             preview.append(
                 {
                     "id": identifier if isinstance(identifier, int) and not isinstance(identifier, bool) else None,
@@ -395,6 +528,7 @@ def _added_token_summary(
         "added_tokens_preview": preview,
         "added_tokens_preview_truncated": bool(count is not None and count > len(preview)),
     }
+
 
 
 def _special_token_summary(
@@ -441,6 +575,17 @@ def _special_token_summary(
     return result
 
 
+def _count_text_lines(text: str) -> int:
+    """Count common text-file line endings without allocating splitlines()."""
+
+    if not text:
+        return 0
+    newline_count = text.count("\n") + text.count("\r") - text.count("\r\n")
+    if text.endswith(("\n", "\r")):
+        return newline_count
+    return newline_count + 1
+
+
 def _vocab_size_summary(
     documents: dict[str, Any],
     texts: dict[str, str],
@@ -474,7 +619,7 @@ def _vocab_size_summary(
         candidates.append(
             {
                 "source": "vocab.txt",
-                "count": len(texts["vocab.txt"].splitlines()),
+                "count": _count_text_lines(texts["vocab.txt"]),
                 "evidence": "observed",
             }
         )
@@ -509,10 +654,32 @@ def _template_entry(
         "kind": kind,
         "size_bytes": size_bytes,
         "status": "parsed",
+        "reason": None,
         "preview": preview,
         "preview_truncated": truncated,
         "content_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
         "evidence": "observed",
+    }
+
+
+def _skipped_template_entry(
+    name: str,
+    origin: str,
+    kind: str,
+    size_bytes: int,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "origin": origin,
+        "kind": kind,
+        "size_bytes": size_bytes,
+        "status": "skipped",
+        "reason": reason,
+        "preview": "",
+        "preview_truncated": False,
+        "content_sha256": None,
+        "evidence": "unknown",
     }
 
 
@@ -521,47 +688,51 @@ def _embedded_templates(
     origin: str,
     kind: str,
     limits: TokenizerLimits,
-) -> list[dict[str, Any]]:
+    budget: _TemplateBudget,
+) -> tuple[list[dict[str, Any]], list[str]]:
     entries: list[dict[str, Any]] = []
+    warnings: list[str] = []
+
     if isinstance(value, str):
-        entries.append(_template_entry("default", origin, kind, value, len(value.encode("utf-8")), limits))
+        total = 1
+        candidates = [("default", value)]
     elif isinstance(value, list):
-        for index, item in enumerate(value):
-            if isinstance(item, dict):
-                name = item.get("name")
-                text = item.get("template")
-            else:
-                name = None
-                text = item
-            if not isinstance(text, str):
-                continue
-            template_name = name if isinstance(name, str) and name else f"template_{index}"
-            entries.append(
-                _template_entry(
-                    template_name,
-                    origin,
-                    kind,
-                    text,
-                    len(text.encode("utf-8")),
-                    limits,
-                )
+        total = len(value)
+        candidates = (
+            (
+                item.get("name") if isinstance(item, dict) and isinstance(item.get("name"), str) and item.get("name") else f"template_{index}",
+                item.get("template") if isinstance(item, dict) else item,
             )
+            for index, item in enumerate(itertools.islice(value, budget.remaining))
+        )
     elif isinstance(value, dict):
-        for name, text in value.items():
-            if not isinstance(text, str):
-                continue
-            template_name = name if isinstance(name, str) and name else "default"
-            entries.append(
-                _template_entry(
-                    template_name,
-                    origin,
-                    kind,
-                    text,
-                    len(text.encode("utf-8")),
-                    limits,
-                )
-            )
-    return entries
+        total = len(value)
+        candidates = itertools.islice(value.items(), budget.remaining)
+    else:
+        return entries, warnings
+
+    examined = 0
+    for name, template_text in candidates:
+        examined += 1
+        if not isinstance(template_text, str):
+            continue
+        template_name = name if isinstance(name, str) and name else "default"
+        size_bytes = len(template_text.encode("utf-8"))
+        reason = budget.reserve(size_bytes)
+        if reason is not None:
+            entries.append(_skipped_template_entry(template_name, origin, kind, size_bytes, reason))
+            warnings.append(f"Skipped chat template {template_name!r} from {origin}: {reason}")
+            if "count limit" in reason:
+                break
+            continue
+        entries.append(_template_entry(template_name, origin, kind, template_text, size_bytes, limits))
+
+    if examined < total:
+        warnings.append(
+            f"{origin} contains {total:,} template candidates; only {examined:,} "
+            "were considered under the aggregate template count limit"
+        )
+    return entries, warnings
 
 
 def _read_template_file(
@@ -569,6 +740,7 @@ def _read_template_file(
     name: str,
     kind: str,
     limits: TokenizerLimits,
+    budget: _TemplateBudget,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, list[str]]:
     warnings: list[str] = []
     try:
@@ -578,27 +750,44 @@ def _read_template_file(
         asset = _asset_entry(path.name, 0, kind, "error", reason)
         warnings.append(reason)
         return None, asset, warnings
+
+    reserve_reason = budget.reserve(size)
+    if reserve_reason is not None:
+        entry = _skipped_template_entry(name, path.name, kind, size, reserve_reason)
+        asset = _asset_entry(path.name, size, kind, "skipped", reserve_reason)
+        warnings.append(f"Skipped chat template {path.name}: {reserve_reason}")
+        return entry, asset, warnings
+
     data, reason = _read_bounded(path, limits.max_template_bytes)
     if reason is not None:
+        entry = _skipped_template_entry(name, path.name, kind, size, reason)
         asset = _asset_entry(path.name, size, kind, "skipped", reason)
         warnings.append(reason)
-        return None, asset, warnings
+        return entry, asset, warnings
     try:
         text = (data or b"").decode("utf-8", errors="strict")
     except UnicodeDecodeError:
         reason = f"{path.name} is not valid UTF-8"
+        entry = _skipped_template_entry(name, path.name, kind, size, reason)
         asset = _asset_entry(path.name, size, kind, "error", reason)
         warnings.append(reason)
-        return None, asset, warnings
-    asset = _asset_entry(path.name, size, kind, "parsed")
-    return _template_entry(name, path.name, kind, text, size, limits), asset, warnings
+        return entry, asset, warnings
+    actual_size = len(data or b"")
+    asset = _asset_entry(path.name, actual_size, kind, "parsed")
+    return _template_entry(name, path.name, kind, text, actual_size, limits), asset, warnings
 
 
 def _chat_templates_summary(
     sources: list[dict[str, Any]],
+    incompatible_legacy_modern: bool = False,
 ) -> dict[str, Any]:
+    parsed_sources = [
+        entry
+        for entry in sources
+        if entry.get("status") == "parsed" and isinstance(entry.get("content_sha256"), str)
+    ]
     by_name: dict[str, list[dict[str, Any]]] = {}
-    for source in sources:
+    for source in parsed_sources:
         by_name.setdefault(source["name"], []).append(source)
 
     conflicts: list[dict[str, Any]] = []
@@ -613,9 +802,9 @@ def _chat_templates_summary(
                 }
             )
 
-    defaults = [entry for entry in sources if entry["name"] == "default"]
+    defaults = [entry for entry in parsed_sources if entry["name"] == "default"]
     effective_default: dict[str, Any] | None = None
-    if defaults:
+    if defaults and not incompatible_legacy_modern:
         chosen = min(defaults, key=lambda entry: _TEMPLATE_KIND_RANK.get(entry["kind"], 99))
         effective_default = {
             "name": chosen["name"],
@@ -626,16 +815,32 @@ def _chat_templates_summary(
 
     return {
         "count": len(sources),
+        "parsed_count": len(parsed_sources),
+        "skipped_count": len(sources) - len(parsed_sources),
         "sources": sources,
         "has_multiple": len(sources) > 1,
         "default": effective_default,
         "conflicts": conflicts,
+        "compatibility": {
+            "status": "incompatible_for_processor_repositories" if incompatible_legacy_modern else "not_flagged",
+            "model_kind": "unknown_not_inferred",
+            "reason": (
+                "Hugging Face documents that a processor repository mixing legacy "
+                "chat_template.json with modern .jinja files raises an error on load. "
+                "ECLIPSE does not infer whether this folder is a processor repository; "
+                "the effective default is therefore left unresolved."
+                if incompatible_legacy_modern
+                else None
+            ),
+            "evidence": "published" if incompatible_legacy_modern else "unknown",
+            "reference": _CHAT_PRECEDENCE_REFERENCE if incompatible_legacy_modern else None,
+        },
         "precedence": {
             "order": [
-                "standalone_jinja (chat_template.jinja, default)",
-                "additional_named_jinja (additional_chat_templates/*.jinja)",
-                "embedded_tokenizer_config (tokenizer_config.json chat_template)",
-                "legacy_chat_template_json (chat_template.json)",
+                "embedded tokenizer_config.json chat_template (legacy)",
+                "legacy chat_template.json (processor compatibility format)",
+                "standalone chat_template.jinja overrides the default",
+                "additional_chat_templates/*.jinja are merged by name",
             ],
             "evidence": "documented_loader_precedence",
             "reference": _CHAT_PRECEDENCE_REFERENCE,
@@ -657,16 +862,19 @@ def _collect_chat_templates(
     sources: list[dict[str, Any]] = []
     assets: list[dict[str, Any]] = []
     warnings: list[str] = []
+    budget = _TemplateBudget(limits)
 
     config = documents.get(_TOKENIZER_CONFIG)
     if isinstance(config, dict) and "chat_template" in config:
-        embedded = _embedded_templates(
+        embedded, embedded_warnings = _embedded_templates(
             config.get("chat_template"),
             f"{_TOKENIZER_CONFIG}:chat_template",
             "embedded_tokenizer_config",
             limits,
+            budget,
         )
         sources.extend(embedded)
+        warnings.extend(embedded_warnings)
         if not embedded:
             warnings.append(
                 f"{_TOKENIZER_CONFIG} chat_template was present but had no usable string template"
@@ -674,13 +882,15 @@ def _collect_chat_templates(
 
     legacy = documents.get(_CHAT_TEMPLATE_JSON)
     if isinstance(legacy, dict):
-        embedded = _embedded_templates(
+        embedded, embedded_warnings = _embedded_templates(
             legacy.get("chat_template"),
             f"{_CHAT_TEMPLATE_JSON}:chat_template",
             "legacy_chat_template_json",
             limits,
+            budget,
         )
         sources.extend(embedded)
+        warnings.extend(embedded_warnings)
         if not embedded:
             warnings.append(
                 f"{_CHAT_TEMPLATE_JSON} did not contain a usable chat_template string"
@@ -688,7 +898,7 @@ def _collect_chat_templates(
 
     if _CHAT_TEMPLATE_JINJA in files:
         entry, asset, entry_warnings = _read_template_file(
-            base / _CHAT_TEMPLATE_JINJA, "default", "standalone_jinja", limits
+            base / _CHAT_TEMPLATE_JINJA, "default", "standalone_jinja", limits, budget
         )
         warnings.extend(entry_warnings)
         if asset is not None:
@@ -706,6 +916,7 @@ def _collect_chat_templates(
             template_name,
             "additional_named_jinja",
             limits,
+            budget,
         )
         warnings.extend(entry_warnings)
         if asset is not None:
@@ -713,14 +924,24 @@ def _collect_chat_templates(
         if entry is not None:
             sources.append(entry)
 
-    summary = _chat_templates_summary(sources)
+    incompatible = _CHAT_TEMPLATE_JSON in files and (
+        _CHAT_TEMPLATE_JINJA in files or bool(add_dir_files)
+    )
+    if incompatible:
+        warnings.append(
+            "Legacy chat_template.json and modern .jinja files coexist. Hugging Face "
+            "documents that this combination raises a load error for processor repositories; "
+            "ECLIPSE does not infer whether this folder is a processor, so no effective "
+            "default template is reported."
+        )
+
+    summary = _chat_templates_summary(sources, incompatible)
     if summary["conflicts"]:
         warnings.append(
             "Conflicting chat-template sources were found: "
             + ", ".join(conflict["name"] for conflict in summary["conflicts"][:10])
         )
     return summary, assets, warnings
-
 
 def _scan_additional_templates(
     base: Path,
@@ -729,8 +950,13 @@ def _scan_additional_templates(
     directory = base / _ADDITIONAL_TEMPLATES_DIR
     files: dict[str, int] = {}
     warnings: list[str] = []
+    if directory.is_symlink():
+        warnings.append(
+            f"{_ADDITIONAL_TEMPLATES_DIR} is a symbolic link and was skipped; links are never followed"
+        )
+        return files, [], warnings
     try:
-        is_dir = directory.is_dir() and not directory.is_symlink()
+        is_dir = directory.is_dir()
     except OSError:
         is_dir = False
     if not is_dir:
@@ -741,13 +967,19 @@ def _scan_additional_templates(
         with os.scandir(directory) as entries:
             for entry in entries:
                 count += 1
-                if count > limits.max_template_count:
+                if count > limits.max_entries:
                     warnings.append(
                         f"{_ADDITIONAL_TEMPLATES_DIR} has more than "
-                        f"{limits.max_template_count:,} entries; only the first were considered"
+                        f"{limits.max_entries:,} entries; remaining entries were not inspected"
                     )
                     break
-                if entry.is_symlink() or not entry.is_file(follow_symlinks=False):
+                relative_name = f"{_ADDITIONAL_TEMPLATES_DIR}/{entry.name}"
+                if entry.is_symlink():
+                    warnings.append(
+                        f"{relative_name} is a symbolic link and was skipped; links are never followed"
+                    )
+                    continue
+                if not entry.is_file(follow_symlinks=False):
                     continue
                 name = entry.name
                 if not name.endswith(_JINJA_SUFFIX):
@@ -758,7 +990,7 @@ def _scan_additional_templates(
                 try:
                     files[name] = entry.stat(follow_symlinks=False).st_size
                 except OSError as exc:
-                    warnings.append(f"Could not read the size of {_ADDITIONAL_TEMPLATES_DIR}/{name}: {exc}")
+                    warnings.append(f"Could not read the size of {relative_name}: {exc}")
     except OSError as exc:
         warnings.append(f"Could not list {_ADDITIONAL_TEMPLATES_DIR}: {exc}")
     return files, sorted(files), warnings
@@ -883,14 +1115,22 @@ def inspect_tokenizer(
     summary.update(_extract_config_fields(config_dict))
     summary.update(_extract_tokenizer_json_fields(documents.get("tokenizer.json"), limits))
 
-    lookup = _added_token_map(documents)
-    summary.update(_added_token_summary(documents, lookup, limits))
+    lookup, token_scan = _added_token_map(documents, limits)
+    summary.update(_added_token_summary(documents, limits))
     summary["special_tokens"] = _special_token_summary(documents, lookup, limits)
     summary.update(_vocab_size_summary(documents, texts, config_dict))
+    summary["token_metadata_scan"] = token_scan
+    if token_scan["truncated"]:
+        warnings.append(
+            f"Added-token ID lookup stopped at the {limits.max_token_entries:,}-entry limit; "
+            "special-token IDs not found within the inspected entries remain unknown."
+        )
 
-    additional_preview: list[Any] = []
+    additional_preview: list[str] = []
     additional_count = 0
     additional_source = None
+    additional_preview_limit = min(limits.max_token_preview_items, limits.max_token_entries)
+    additional_preview_truncated = False
     for source_name, source_doc in (
         (_TOKENIZER_CONFIG, config_dict),
         ("special_tokens_map.json", documents.get("special_tokens_map.json")),
@@ -900,13 +1140,16 @@ def inspect_tokenizer(
             if isinstance(value, list):
                 additional_count = len(value)
                 additional_source = source_name
-                additional_preview = [
-                    item if isinstance(item, str) else _token_content(item)
-                    for item in value[: limits.max_token_preview_items]
-                ]
+                for item in itertools.islice(value, additional_preview_limit):
+                    token_text = item if isinstance(item, str) else _token_content(item)
+                    clipped = _clip_string(token_text, limits)
+                    if clipped is not None:
+                        additional_preview.append(clipped)
+                additional_preview_truncated = additional_count > len(additional_preview)
     summary["additional_special_tokens"] = {
         "count": additional_count,
-        "preview": [item for item in additional_preview if isinstance(item, str)],
+        "preview": additional_preview,
+        "preview_truncated": additional_preview_truncated,
         "source": additional_source,
     }
 
