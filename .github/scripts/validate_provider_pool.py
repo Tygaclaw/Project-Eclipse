@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Validate that every OpenCode comment route resolves to a configured model.
-
-This deliberately uses only Python's standard library so CI can run it on every
-supported Python version without installing extra packages.
-"""
+"""Validate ECLIPSE's six-provider, free-model OpenCode pool."""
 
 from __future__ import annotations
 
@@ -12,39 +8,51 @@ import re
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "opencode.json"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "opencode.yml"
 
-PROVIDER_CONFIG_IDS = {
-    "tokenharbor": "tokenharbor",
-    "openrouter": "openrouter",
-    "google": "google",
-    "groq": "groq",
-    "nvidia": "nvidia",
-    "cloudflare": "cloudflare-workers-ai",
-    "cohere": "cohere",
-    "orcarouter": "orcarouter",
-    "kilo": "kilo",
-    "zai": "zai",
+PROVIDERS = {
+    "dahl": {
+        "secret": "DAHL_API_KEY",
+        "models": {
+            "MiniMaxAI/MiniMax-M2.7",
+            "deepseek-ai/DeepSeek-V4-Flash-0731",
+        },
+    },
+    "google": {
+        "secret": "GEMINI_API_KEY",
+        "models": {"gemini-3.8-flash", "gemini-3.7-flash"},
+    },
+    "groq": {
+        "secret": "GROQ_API_KEY",
+        "models": {"openai/gpt-oss-120b", "openai/gpt-oss-20b"},
+    },
+    "openrouter": {
+        "secret": "OPENROUTER_API_KEY",
+        "models": {
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "nvidia/nemotron-3.5-lightning:free",
+        },
+    },
+    "tokenharbor": {
+        "secret": "TOKENHARBOR_API_KEY",
+        "models": {"deepseek-v4.1-flash:free", "mimo-v2.6-flash:free"},
+    },
+    "zai": {
+        "secret": "ZAI_API_KEY",
+        "models": {"glm-4.7-flash", "glm-4.5-flash"},
+    },
 }
 
-PROVIDER_SECRET_NAMES = {
-    "tokenharbor": ("TOKENHARBOR_API_KEY",),
-    "openrouter": ("OPENROUTER_API_KEY",),
-    "google": (
-        "GEMINI_API_KEY",
-        "GOOGLE_GENERATIVE_AI_API_KEY",
-        "GOOGLE_API_KEY",
-    ),
-    "groq": ("GROQ_API_KEY",),
-    "nvidia": ("NVIDIA_API_KEY",),
-    "cloudflare": ("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"),
-    "cohere": ("COHERE_API_KEY",),
-    "orcarouter": ("ORCAROUTER_API_KEY",),
-    "kilo": ("KILO_API_KEY",),
-    "zai": ("ZAI_GLM_API_KEY",),
+DISALLOWED_SECRET_NAMES = {
+    "NVIDIA_API_KEY",
+    "CLOUDFLARE_ACCOUNT_ID",
+    "CLOUDFLARE_API_TOKEN",
+    "COHERE_API_KEY",
+    "ORCAROUTER_API_KEY",
+    "KILO_API_KEY",
+    "ZAI_GLM_API_KEY",
 }
 
 
@@ -70,11 +78,21 @@ def main() -> int:
     if config.get("permission", {}).get("external_directory") != "deny":
         fail("opencode.json must retain permission.external_directory = deny.")
 
+    configured_providers = config.get("provider", {})
+    if set(configured_providers) != set(PROVIDERS):
+        fail(
+            "The OpenCode provider set must be exactly: "
+            + ", ".join(sorted(PROVIDERS))
+            + f"; got: {', '.join(sorted(configured_providers))}"
+        )
+
     default_model = config.get("model", "")
     if "/" not in default_model:
         fail(f"Default model has no provider prefix: {default_model!r}")
     default_provider, default_id = default_model.split("/", 1)
-    if default_id not in config.get("provider", {}).get(default_provider, {}).get("models", {}):
+    if default_provider not in PROVIDERS:
+        fail(f"Default model uses an unapproved provider: {default_provider!r}")
+    if default_id not in configured_providers[default_provider].get("models", {}):
         fail(f"Default model is missing from provider config: {default_model}")
 
     case_match = re.search(
@@ -99,78 +117,62 @@ def main() -> int:
     if len(commands) != len(set(commands)):
         fail("Duplicate comment commands were found.")
 
-    providers = config.get("provider", {})
-    counts: dict[str, int] = {}
-    for command, workflow_provider, model in routes:
-        config_provider = PROVIDER_CONFIG_IDS.get(workflow_provider)
-        if not config_provider:
-            fail(f"{command}: unknown workflow provider {workflow_provider!r}")
-
+    seen: dict[str, set[str]] = {name: set() for name in PROVIDERS}
+    for command, provider, model in routes:
+        if provider not in PROVIDERS:
+            fail(f"{command}: provider {provider!r} is not in the six-provider allowlist.")
         if "/" not in model:
             fail(f"{command}: model must be provider/model, got {model!r}")
 
         model_provider, model_id = model.split("/", 1)
-        if model_provider != config_provider:
-            fail(
-                f"{command}: model provider {model_provider!r} does not match "
-                f"workflow provider {workflow_provider!r} (config key "
-                f"{config_provider!r})."
-            )
+        if model_provider != provider:
+            fail(f"{command}: model provider {model_provider!r} does not match {provider!r}.")
 
-        model_map = providers.get(config_provider, {}).get("models", {})
-        if model_id not in model_map:
+        allowed_models = PROVIDERS[provider]["models"]
+        if model_id not in allowed_models:
+            fail(f"{command}: model {model!r} is not in the approved model set.")
+
+        configured_models = configured_providers[provider].get("models", {})
+        if model_id not in configured_models:
             fail(f"{command}: model {model!r} is missing from opencode.json.")
 
-        counts[workflow_provider] = counts.get(workflow_provider, 0) + 1
+        if model_id in seen[provider]:
+            fail(f"{command}: duplicate model route for {provider}/{model_id}.")
+        seen[provider].add(model_id)
 
-        for secret_name in PROVIDER_SECRET_NAMES[workflow_provider]:
-            if f"secrets.{secret_name}" not in workflow:
-                fail(f"{command}: workflow does not reference {secret_name}.")
+        secret = PROVIDERS[provider]["secret"]
+        if f"secrets.{secret}" not in workflow:
+            fail(f"{command}: workflow does not reference {secret}.")
 
-        # Free OpenRouter selections must be explicit free variants, the
-        # free router, or the published zero-price stealth preview.
-        if workflow_provider == "openrouter":
-            if not (
-                model_id == "free"
-                or model_id.endswith(":free")
-                or model_id == "stealth/crouton-alpha"
-            ):
-                fail(f"{command}: OpenRouter model is not marked free: {model!r}")
+        if provider in {"openrouter", "tokenharbor"} and not model_id.endswith(":free"):
+            fail(f"{command}: route is not explicitly marked free: {model!r}")
 
-        # OrcaRouter must use only its explicit zero-price free routes.
-        if workflow_provider == "orcarouter" and model_id not in {
-            "orcarouter/free",
-            "deepseek/deepseek-v4-flash-free",
-        }:
-            fail(f"{command}: OrcaRouter route is not explicitly free: {model!r}")
+    for provider, details in PROVIDERS.items():
+        expected = details["models"]
+        actual = set(configured_providers[provider].get("models", {}))
+        if actual != expected:
+            fail(f"{provider}: expected exactly {sorted(expected)}, got {sorted(actual)}.")
+        if seen[provider] != expected:
+            fail(f"{provider}: every configured model must have one route; got {sorted(seen[provider])}.")
 
-        if workflow_provider == "kilo" and model_id != "kilo-auto/free":
-            fail(f"{command}: Kilo route is not explicitly Auto Free: {model!r}")
+    action_step = workflow.split("Run OpenCode with the selected provider credential", 1)
+    if len(action_step) != 2:
+        fail("Could not find the OpenCode action step.")
+    action_env = action_step[1]
+    for provider, details in PROVIDERS.items():
+        secret = details["secret"]
+        if f"steps.route.outputs.provider == '{provider}' && secrets.{secret}" not in action_env:
+            fail(f"OpenCode action does not scope {secret} to provider {provider!r}.")
 
-        if workflow_provider == "zai" and model_id not in {
-            "glm-4.7-flash",
-            "glm-4.5-flash",
-            "glm-4.6v-flash",
-        }:
-            fail(f"{command}: Z.AI route is not one of its documented free Flash models: {model!r}")
+    for old_secret in DISALLOWED_SECRET_NAMES:
+        if old_secret in workflow:
+            fail(f"Removed provider secret still appears in workflow: {old_secret}.")
 
-    # The agent step must conditionally pass provider credentials rather than
-    # giving every key to every model.
-    agent_step = workflow.split("Run OpenCode with the selected free", 1)
-    if len(agent_step) == 1:
-        fail("Could not find the selected-model OpenCode action step.")
-    for provider in PROVIDER_CONFIG_IDS:
-        if f"steps.route.outputs.provider == '{provider}'" not in agent_step[1]:
-            fail(f"OpenCode action credentials are not scoped to provider {provider!r}.")
-
-    total_models = sum(len(item.get("models", {})) for item in providers.values())
-    print(f"Provider route validation passed: {len(routes)} commands.")
-    print(f"Configured model/router entries: {total_models}.")
-    print(
-        "Routes by provider: "
-        + ", ".join(f"{key}={value}" for key, value in sorted(counts.items()))
-    )
-    print("Free-only OpenRouter route check: passed.")
+    print("Provider allowlist validation passed: exactly 6 providers.")
+    print("Model selection validation passed: exactly 2 configured models per provider (12 total).")
+    print("All 12 comment routes resolve to configured model IDs and matching GitHub secrets.")
+    print("Only the selected provider credential is passed to OpenCode.")
+    print("No removed-provider secrets remain in the workflow.")
     print("350-minute timeout and external-directory deny rule: preserved.")
     return 0
 
