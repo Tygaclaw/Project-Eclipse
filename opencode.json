@@ -45,32 +45,32 @@
     "groq": {
       "models": {
         "openai/gpt-oss-120b": {
-          "name": "GPT-OSS 120B via Groq",
+          "name": "GPT-OSS 120B via Groq Free Plan",
           "limit": {
             "context": 131072,
             "output": 65536
           }
         },
-        "openai/gpt-oss-20b": {
-          "name": "GPT-OSS 20B via Groq",
+        "qwen/qwen3.8-27b": {
+          "name": "Qwen 3.8 27B via Groq Free Plan (parallel tool use)",
           "limit": {
             "context": 131072,
-            "output": 65536
+            "output": 16384
           }
         }
       }
     },
     "openrouter": {
       "models": {
-        "nvidia/nemotron-3-ultra-550b-a55b:free": {
-          "name": "NVIDIA Nemotron 3 Ultra (OpenRouter Free)",
+        "cohere/north-mini-code:free": {
+          "name": "Cohere North Mini Code (OpenRouter Free; coding-agent specialist)",
           "limit": {
-            "context": 1000000,
+            "context": 262144,
             "output": 65536
           }
         },
-        "nvidia/nemotron-3.5-lightning:free": {
-          "name": "NVIDIA Nemotron 3.5 Lightning (OpenRouter Free)",
+        "nvidia/nemotron-3-ultra-550b-a55b:free": {
+          "name": "NVIDIA Nemotron 3 Ultra (OpenRouter Free; reasoning/agent orchestration)",
           "limit": {
             "context": 1000000,
             "output": 65536
