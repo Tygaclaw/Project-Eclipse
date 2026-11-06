@@ -60,6 +60,34 @@
           "limit": {
             "context": 200000
           }
+        },
+        "nvidia/nemotron-3.5-super-vl:free": {
+          "name": "NVIDIA Nemotron 3.5 Super VL (Free)",
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          }
+        },
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
+          "name": "NVIDIA Nemotron 3 Nano Omni (Free)",
+          "limit": {
+            "context": 256000,
+            "output": 65536
+          }
+        },
+        "xingchen-agi/xing4.0-29b-a4b:free": {
+          "name": "XingChen Xing4.0 29B A4B (Free)",
+          "limit": {
+            "context": 262144,
+            "output": 65536
+          }
+        },
+        "google/gemma-4-31b-it:free": {
+          "name": "Google Gemma 4 31B (Free)",
+          "limit": {
+            "context": 262144,
+            "output": 32768
+          }
         }
       }
     },
@@ -116,6 +144,44 @@
           "limit": {
             "context": 128000,
             "output": 16384
+          }
+        },
+        "@cf/zai-org/glm-4.7-flash": {
+          "name": "GLM-4.7 Flash via Cloudflare Workers AI (Free Neurons)",
+          "limit": {
+            "context": 131072,
+            "output": 16384
+          }
+        },
+        "@cf/google/gemma-4-26b-a4b-it": {
+          "name": "Gemma 4 26B A4B via Cloudflare Workers AI (Free Neurons)",
+          "limit": {
+            "context": 256000,
+            "output": 16384
+          }
+        },
+        "@cf/nvidia/nemotron-3-120b-a12b": {
+          "name": "Nemotron 3 Super via Cloudflare Workers AI (Free Neurons)",
+          "limit": {
+            "context": 256000,
+            "output": 16384
+          }
+        }
+      }
+    },
+    "cohere": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Cohere (evaluation key only)",
+      "options": {
+        "baseURL": "https://api.cohere.ai/compatibility/v1",
+        "apiKey": "{env:COHERE_API_KEY}"
+      },
+      "models": {
+        "command-a-reasoning-08-2025": {
+          "name": "Command A Reasoning (Cohere free evaluation tier)",
+          "limit": {
+            "context": 256000,
+            "output": 32000
           }
         }
       }
