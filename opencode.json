@@ -2,118 +2,24 @@
   "$schema": "https://opencode.ai/config.json",
   "model": "tokenharbor/deepseek-v4.1-flash:free",
   "provider": {
-    "tokenharbor": {
+    "dahl": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "Token Harbor",
+      "name": "Dahl",
       "options": {
-        "baseURL": "https://tokenharbor.ai/v1",
-        "apiKey": "{env:TOKENHARBOR_API_KEY}"
+        "baseURL": "https://inference.dahl.global/v1",
+        "apiKey": "{env:DAHL_API_KEY}"
       },
       "models": {
-        "deepseek-v4.1-flash:free": {
-          "name": "DeepSeek V4.1 Flash (Free)",
+        "MiniMaxAI/MiniMax-M2.7": {
+          "name": "MiniMax M2.7 via Dahl",
           "limit": {
-            "context": 131072,
-            "output": 32768
+            "context": 180000
           }
         },
-        "mimo-v2.6-flash:free": {
-          "name": "MiMo V2.6 Flash (Free)",
+        "deepseek-ai/DeepSeek-V4-Flash-0731": {
+          "name": "DeepSeek V4 Flash via Dahl",
           "limit": {
-            "context": 131072,
-            "output": 32768
-          }
-        }
-      }
-    },
-    "openrouter": {
-      "models": {
-        "cohere/north-mini-code:free": {
-          "name": "Cohere North Mini Code (Free)",
-          "limit": {
-            "context": 262144,
-            "output": 65536
-          }
-        },
-        "recursive/flint-v1.0:free": {
-          "name": "Recursive Flint 1.0 (Free)",
-          "limit": {
-            "context": 262144
-          }
-        },
-        "nvidia/nemotron-3.5-lightning:free": {
-          "name": "NVIDIA Nemotron 3.5 Lightning (Free)",
-          "limit": {
-            "context": 1000000,
-            "output": 65536
-          }
-        },
-        "google/gemma-4-26b-a4b-it:free": {
-          "name": "Google Gemma 4 26B A4B (Free)",
-          "limit": {
-            "context": 262144,
-            "output": 32768
-          }
-        },
-        "free": {
-          "name": "OpenRouter Free Model Router",
-          "limit": {
-            "context": 200000
-          }
-        },
-        "nvidia/nemotron-3.5-super-vl:free": {
-          "name": "NVIDIA Nemotron 3.5 Super VL (Free)",
-          "limit": {
-            "context": 1000000,
-            "output": 131072
-          }
-        },
-        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
-          "name": "NVIDIA Nemotron 3 Nano Omni (Free)",
-          "limit": {
-            "context": 256000,
-            "output": 65536
-          }
-        },
-        "xingchen-agi/xing4.0-29b-a4b:free": {
-          "name": "XingChen Xing4.0 29B A4B (Free)",
-          "limit": {
-            "context": 262144,
-            "output": 65536
-          }
-        },
-        "google/gemma-4-31b-it:free": {
-          "name": "Google Gemma 4 31B (Free)",
-          "limit": {
-            "context": 262144,
-            "output": 32768
-          }
-        },
-        "nvidia/nemotron-3-ultra-550b-a55b:free": {
-          "name": "NVIDIA Nemotron 3 Ultra 550B A55B (Free)",
-          "limit": {
-            "context": 1000000,
-            "output": 65536
-          }
-        },
-        "dots-studio/dots-3-note-preview:free": {
-          "name": "Dots3-Note Preview (Free; retires 2026-12-31)",
-          "limit": {
-            "context": 512000,
-            "output": 32768
-          }
-        },
-        "stealth/crouton-alpha": {
-          "name": "Crouton Alpha (Free; anonymous provider preview)",
-          "limit": {
-            "context": 1048576
-          }
-        },
-        "liquid/lfm-2.5-2.6b:free": {
-          "name": "Liquid LFM2.5 2.6B (Free; lightweight helper, not coding specialist)",
-          "limit": {
-            "context": 65536,
-            "output": 8192
+            "context": 400000
           }
         }
       }
@@ -121,56 +27,14 @@
     "google": {
       "models": {
         "gemini-3.8-flash": {
-          "name": "Gemini 3.8 Flash (Free Tier)",
+          "name": "Gemini 3.8 Flash",
           "limit": {
             "context": 1048576,
             "output": 65536
-          }
-        },
-        "gemini-3.5-flash-lite": {
-          "name": "Gemini 3.5 Flash-Lite (Free Tier)",
-          "limit": {
-            "context": 1048576,
-            "output": 65536
-          }
-        },
-        "gemma-4-31b-it": {
-          "name": "Gemma 4 31B IT (Free Tier)",
-          "limit": {
-            "context": 256000,
-            "output": 32768
-          }
-        },
-        "gemma-4-26b-a4b-it": {
-          "name": "Gemma 4 26B A4B IT (Free Tier)",
-          "limit": {
-            "context": 256000,
-            "output": 32768
           }
         },
         "gemini-3.7-flash": {
-          "name": "Gemini 3.7 Flash (Free Tier)",
-          "limit": {
-            "context": 1048576,
-            "output": 65536
-          }
-        },
-        "gemini-3.6-flash": {
-          "name": "Gemini 3.6 Flash (Free Tier)",
-          "limit": {
-            "context": 1048576,
-            "output": 65536
-          }
-        },
-        "gemini-3.5-flash": {
-          "name": "Gemini 3.5 Flash (Free Tier)",
-          "limit": {
-            "context": 1048576,
-            "output": 65536
-          }
-        },
-        "gemini-3.1-flash-lite": {
-          "name": "Gemini 3.1 Flash-Lite (Free Tier)",
+          "name": "Gemini 3.7 Flash",
           "limit": {
             "context": 1048576,
             "output": 65536
@@ -187,15 +51,8 @@
             "output": 65536
           }
         },
-        "qwen/qwen3.8-27b": {
-          "name": "Qwen 3.8 27B via Groq",
-          "limit": {
-            "context": 131072,
-            "output": 16384
-          }
-        },
         "openai/gpt-oss-20b": {
-          "name": "GPT-OSS 20B via Groq Free Plan",
+          "name": "GPT-OSS 20B via Groq",
           "limit": {
             "context": 131072,
             "output": 65536
@@ -203,160 +60,64 @@
         }
       }
     },
-    "nvidia": {
+    "openrouter": {
       "models": {
-        "nemotron-3-super-120b-a12b": {
-          "name": "NVIDIA Nemotron 3 Super 120B A12B (Developer Free Endpoint)",
+        "nvidia/nemotron-3-ultra-550b-a55b:free": {
+          "name": "NVIDIA Nemotron 3 Ultra (OpenRouter Free)",
           "limit": {
             "context": 1000000,
-            "output": 16384
+            "output": 65536
           }
         },
-        "deepseek-ai/deepseek-v4.1-flash": {
-          "name": "DeepSeek V4.1 Flash via NVIDIA NIM Free Endpoint",
+        "nvidia/nemotron-3.5-lightning:free": {
+          "name": "NVIDIA Nemotron 3.5 Lightning (OpenRouter Free)",
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          }
+        }
+      }
+    },
+    "tokenharbor": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Token Harbor",
+      "options": {
+        "baseURL": "https://tokenharbor.ai/v1",
+        "apiKey": "{env:TOKENHARBOR_API_KEY}"
+      },
+      "models": {
+        "deepseek-v4.1-flash:free": {
+          "name": "DeepSeek V4.1 Flash (Token Harbor Free)",
           "limit": {
             "context": 1048576,
             "output": 131072
           }
         },
-        "nemotron-3.5-lightning-30b-a3b": {
-          "name": "Nemotron 3.5 Lightning 30B A3B via NVIDIA NIM Free Endpoint",
+        "mimo-v2.6-flash:free": {
+          "name": "MiMo V2.6 Flash (Token Harbor Free)",
           "limit": {
             "context": 1048576,
-            "output": 16384
-          }
-        },
-        "nemotron-3.5-super-vl-120b-a12b": {
-          "name": "Nemotron 3.5 Super VL 120B A12B via NVIDIA NIM Free Endpoint",
-          "limit": {
-            "context": 262144,
-            "output": 16384
-          }
-        }
-      }
-    },
-    "cloudflare-workers-ai": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Cloudflare Workers AI",
-      "options": {
-        "baseURL": "https://api.cloudflare.com/client/v4/accounts/{env:CLOUDFLARE_ACCOUNT_ID}/ai/v1",
-        "apiKey": "{env:CLOUDFLARE_API_TOKEN}"
-      },
-      "models": {
-        "@cf/openai/gpt-oss-20b": {
-          "name": "GPT-OSS 20B via Cloudflare Workers AI (Free Neurons)",
-          "limit": {
-            "context": 128000,
-            "output": 16384
-          }
-        },
-        "@cf/zai-org/glm-4.7-flash": {
-          "name": "GLM-4.7 Flash via Cloudflare Workers AI (Free Neurons)",
-          "limit": {
-            "context": 131072,
-            "output": 16384
-          }
-        },
-        "@cf/google/gemma-4-26b-a4b-it": {
-          "name": "Gemma 4 26B A4B via Cloudflare Workers AI (Free Neurons)",
-          "limit": {
-            "context": 256000,
-            "output": 16384
-          }
-        },
-        "@cf/qwen/qwen3.8-27b": {
-          "name": "Qwen 3.8 27B via Cloudflare Workers AI (Free Neurons)",
-          "limit": {
-            "context": 262144,
-            "output": 16384
-          }
-        }
-      }
-    },
-    "cohere": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Cohere (evaluation key only)",
-      "options": {
-        "baseURL": "https://api.cohere.ai/compatibility/v1",
-        "apiKey": "{env:COHERE_API_KEY}"
-      },
-      "models": {
-        "command-a-reasoning-08-2025": {
-          "name": "Command A Reasoning (Cohere free evaluation tier)",
-          "limit": {
-            "context": 256000,
-            "output": 32000
-          }
-        }
-      }
-    },
-    "orcarouter": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "OrcaRouter — free-only route",
-      "options": {
-        "baseURL": "https://api.orcarouter.ai/v1",
-        "apiKey": "{env:ORCAROUTER_API_KEY}"
-      },
-      "models": {
-        "orcarouter/free": {
-          "name": "OrcaRouter Free Router (DeepSeek V4 Flash / V4 Pro; $0)",
-          "limit": {
-            "context": 1048576,
-            "output": 384000
-          }
-        },
-        "deepseek/deepseek-v4-flash-free": {
-          "name": "DeepSeek V4 Flash Free via OrcaRouter ($0; HTTP 429 on limit)",
-          "limit": {
-            "context": 1048576,
-            "output": 384000
-          }
-        }
-      }
-    },
-    "kilo": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Kilo Gateway — free-only Auto Free route",
-      "options": {
-        "baseURL": "https://ai-gateway.kilo.ai/api/v1",
-        "apiKey": "{env:KILO_API_KEY}"
-      },
-      "models": {
-        "kilo-auto/free": {
-          "name": "Kilo Auto Free (dynamic curated free coding-model pool)",
-          "limit": {
-            "context": 262144,
-            "output": 32768
+            "output": 131072
           }
         }
       }
     },
     "zai": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "Z.AI / GLM free Flash API",
+      "name": "Z.AI",
       "options": {
         "baseURL": "https://api.z.ai/api/paas/v4",
         "apiKey": "{env:ZAI_API_KEY}"
       },
       "models": {
         "glm-4.7-flash": {
-          "name": "GLM-4.7 Flash (Free API tier)",
+          "name": "GLM-4.7 Flash (Free)",
           "limit": {
-            "context": 200000,
-            "output": 128000
+            "context": 200000
           }
         },
         "glm-4.5-flash": {
-          "name": "GLM-4.5 Flash (Free API tier)",
-          "limit": {
-            "context": 131072
-          }
-        },
-        "glm-4.6v-flash": {
-          "name": "GLM-4.6V Flash (Free API tier; vision)",
-          "limit": {
-            "context": 131072
-          }
+          "name": "GLM-4.5 Flash (Free)"
         }
       }
     }
