@@ -43,3 +43,9 @@
 **Decision:** Implement bounded static Safetensors inspection alongside GGUF before preparing an inference adapter.
 
 **Reason:** Both formats share the same read-only, no-payload trust boundary and satisfy the "inspect oversized models without loading them" requirement. This widens Model Atlas coverage without adding runtime dependencies.
+
+## D-009 — Treat a Hugging Face folder as a bounded set of control files
+
+**Decision:** Inspect a local Hugging Face model folder by reading only its small control files (`config.json`, `model.safetensors.index.json`) up to configured byte limits, enumerating file sizes, cross-checking the index shard map, and never following symbolic links or reading shard payloads.
+
+**Reason:** Multi-shard checkpoints are the common Hugging Face layout, and reconciling the index with the files on disk catches incomplete downloads without loading weights. The controls keep the same read-only trust boundary and introduce no third-party dependencies; tokenizer and remote metadata parsing are deliberately deferred.

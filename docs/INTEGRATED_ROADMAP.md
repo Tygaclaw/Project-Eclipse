@@ -16,6 +16,6 @@ Everyday chat and model selection → history/files/project context → shared C
 
 ## Current gate
 
-Static GGUF and Safetensors inspection are present as source code with synthetic tests. GGUF tensor storage bytes are derived from a versioned GGML type registry, and Safetensors storage bytes are observed from declared header offsets. The next evidence gate is a verified GitHub Actions run plus a read-only real-file run on Windows. Work can then continue into Hugging Face model-folder and shard-index discovery and the evidence-labelled Model Atlas while the desktop framework is evaluated separately.
+Static GGUF, Safetensors and Hugging Face folder inspection are present as source code with synthetic tests. GGUF tensor storage bytes are derived from a versioned GGML type registry, Safetensors storage bytes are observed from declared header offsets, and the folder inspector cross-checks a `model.safetensors.index.json` shard map against files on disk. The next evidence gate is a verified GitHub Actions run plus a read-only real-file run on Windows. Work can then continue into tokenizer/chat-template inspection and the evidence-labelled Model Atlas while the desktop framework is evaluated separately.
 
 See [`ORIGINAL_PHASE_MAP.md`](ORIGINAL_PHASE_MAP.md) for both canonical phase sequences and the five internal subsystems.

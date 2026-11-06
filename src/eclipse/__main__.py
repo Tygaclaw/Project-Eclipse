@@ -8,10 +8,13 @@ import sys
 
 from eclipse.model_intelligence import (
     GGUFError,
+    HFFolderError,
+    HFFolderLimits,
     InspectionLimits,
     SafetensorsError,
     SafetensorsLimits,
     inspect_gguf,
+    inspect_hf_folder,
     inspect_safetensors,
 )
 
@@ -44,6 +47,17 @@ def build_parser() -> argparse.ArgumentParser:
     safetensors.add_argument("--max-tensors", type=int, default=200_000)
     safetensors.add_argument("--max-metadata-entries", type=int, default=200_000)
     safetensors.add_argument("--compact", action="store_true", help="emit compact JSON")
+
+    folder = commands.add_parser(
+        "inspect-hf-folder",
+        help="read Hugging Face folder control files and Safetensors shard index without loading weights",
+    )
+    folder.add_argument("folder", help="path to a local Hugging Face model folder")
+    folder.add_argument("--max-config-mib", type=int, default=8)
+    folder.add_argument("--max-index-mib", type=int, default=256)
+    folder.add_argument("--max-entries", type=int, default=100_000)
+    folder.add_argument("--max-weight-map-entries", type=int, default=1_000_000)
+    folder.add_argument("--compact", action="store_true", help="emit compact JSON")
 
     return parser
 
@@ -90,6 +104,28 @@ def _run_safetensors(args: argparse.Namespace, parser: argparse.ArgumentParser) 
     return 0
 
 
+def _run_hf_folder(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    for option in ("max_config_mib", "max_index_mib"):
+        if getattr(args, option) <= 0:
+            parser.error(f"--{option.replace('_', '-')} must be greater than zero")
+    for option in ("max_entries", "max_weight_map_entries"):
+        if getattr(args, option) < 0:
+            parser.error(f"--{option.replace('_', '-')} cannot be negative")
+    limits = HFFolderLimits(
+        max_entries=args.max_entries,
+        max_config_bytes=args.max_config_mib * 1024 * 1024,
+        max_index_bytes=args.max_index_mib * 1024 * 1024,
+        max_weight_map_entries=args.max_weight_map_entries,
+    )
+    try:
+        report = inspect_hf_folder(args.folder, limits)
+    except (HFFolderError, ValueError) as exc:
+        print(f"ECLIPSE: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(report, ensure_ascii=False, indent=None if args.compact else 2, allow_nan=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -97,6 +133,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_gguf(args, parser)
     if args.command == "inspect-safetensors":
         return _run_safetensors(args, parser)
+    if args.command == "inspect-hf-folder":
+        return _run_hf_folder(args, parser)
     parser.error(f"Unknown command: {args.command}")
     return 2
 

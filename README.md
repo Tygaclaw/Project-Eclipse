@@ -10,12 +10,13 @@ The five model-engineering subsystems from the original ECLIPSE v3.0 plan remain
 
 ## Current working features
 
-Two read-only, static inspectors emit JSON without loading model weights:
+Three read-only, static inspectors emit JSON without loading model weights:
 
 - **GGUF v2/v3 inspector** — reads the header, bounded metadata, tensor descriptors and per-tensor storage bytes. Storage bytes are derived from a versioned GGML type registry pinned to a reviewed upstream llama.cpp/GGML revision. Unknown tensor type IDs and rows that are not block-multiple remain explicitly unknown.
 - **Safetensors inspector** — reads the 8-byte header length, the bounded JSON header and the declared tensor byte ranges. It does not read, map or decode tensor payloads.
+- **Hugging Face folder inspector** — reads only the small control files (`config.json`, `model.safetensors.index.json`), lists shard file sizes and cross-checks the shard index against the files on disk. It does not follow symbolic links or read shard payloads.
 
-Neither inspector loads, maps, decodes or executes tensor weights.
+No inspector loads, maps, decodes or executes tensor weights.
 
 ## Requirements
 
@@ -31,6 +32,7 @@ From the repository root, point Python at the source folder and run an inspector
 $env:PYTHONPATH = "src"
 py -3 -m eclipse inspect-gguf "D:\Models\model.gguf"
 py -3 -m eclipse inspect-safetensors "D:\Models\model.safetensors"
+py -3 -m eclipse inspect-hf-folder "D:\Models\YourModelFolder"
 ```
 
 For a compact JSON report, add `--compact` to either command:

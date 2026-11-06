@@ -1,6 +1,6 @@
 # ECLIPSE Project Status
 
-**Status:** `ACTIVE — STATIC_INSPECTION_GGUF_AND_SAFETENSORS`
+**Status:** `ACTIVE — STATIC_INSPECTION_GGUF_SAFETENSORS_HF_FOLDERS`
 
 **Last updated:** 2026-11-06
 
@@ -14,21 +14,23 @@
 - [x] Added a versioned GGML type registry (`ggml_types.py`) pinned to a reviewed upstream llama.cpp/GGML revision.
 - [x] Derived exact GGUF tensor storage bytes, leaving unregistered types and non-block-multiple rows explicitly unknown.
 - [x] Added a bounded, read-only Safetensors header and tensor-index parser.
+- [x] Added bounded Hugging Face folder discovery (`config.json` summary and `model.safetensors.index.json` shard-index cross-check) without following symlinks or reading shard payloads.
 - [x] Added JSON CLI output and standard-library synthetic tests.
 
 ## What works now
 
 - `py -3 -m eclipse inspect-gguf <file.gguf>` parses GGUF header, metadata, tensor index and per-tensor derived storage bytes without loading weights.
 - `py -3 -m eclipse inspect-safetensors <file.safetensors>` parses the header length, bounded JSON header and declared tensor byte ranges without loading weights.
-- Parser limits cap header/index bytes, tensor count, metadata entry count, strings, array elements, dimensions and header size.
+- `py -3 -m eclipse inspect-hf-folder <folder>` summarizes `config.json`, enumerates shard sizes, and cross-checks the shard index against the files on disk.
+- Parser limits cap header/index bytes, tensor count, metadata entry count, strings, array elements, dimensions, header size and folder entries.
 - Malformed or unsupported inputs fail with a clear error instead of being guessed.
 - Unknown tensor types are retained as explicit unknown IDs with unknown storage size.
 
 ## Local verification evidence
 
-- Python 3.14.4: `PYTHONPATH=src python -m unittest discover -s tests -v` — **60 tests passed**.
+- Python 3.14.4: `PYTHONPATH=src python -m unittest discover -s tests -v` — **74 tests passed**.
 - Python 3.14.4: `python -m compileall -q src tests .github/scripts` — passed.
-- Python 3.14.4: `inspect-safetensors --compact` CLI smoke test — exit 0 with valid JSON.
+- Python 3.14.4: `inspect-safetensors --compact` and `inspect-hf-folder --compact` CLI smoke tests — exit 0 with valid JSON.
 
 ## CI verification evidence
 
@@ -39,8 +41,8 @@
 ## Not completed / not claimed
 
 - [ ] This increment's GitHub Actions run verified (baseline `main` CI is green).
-- [ ] Real user GGUF/Safetensors file validated on Windows.
-- [ ] Hugging Face model-folder and shard-index discovery.
+- [ ] Real user GGUF/Safetensors/folder validated on Windows.
+- [ ] Tokenizer/chat-template inspection and remote model-card metadata.
 - [ ] Derived GGUF sizes reconciled against a trusted full checkpoint.
 - [ ] Model Atlas UI or feasibility planner.
 - [ ] Model preparation/transformation, runtime adapters or inference.
@@ -55,6 +57,7 @@ From the repository root in normal PowerShell:
 $env:PYTHONPATH = "src"
 py -3 -m eclipse inspect-gguf "D:\Models\model.gguf"
 py -3 -m eclipse inspect-safetensors "D:\Models\model.safetensors"
+py -3 -m eclipse inspect-hf-folder "D:\Models\YourModelFolder"
 py -3 -m unittest discover -s tests -v
 ```
 
@@ -62,8 +65,8 @@ No administrator privileges, model runtime, API key or GPU are required for thes
 
 ## Known limitations
 
-- GGUF v2/v3 and Safetensors are supported; Hugging Face model folders are not yet discovered.
-- Tensor payloads are not decoded. GGUF sizes are derived from a pinned GGML registry; Safetensors sizes are observed header offsets.
+- GGUF v2/v3, Safetensors and Hugging Face model folders are supported; tokenizer files and remote metadata are not read.
+- Tensor payloads are not decoded. GGUF sizes are derived from a pinned GGML registry; Safetensors and folder shard sizes are observed.
 - Derived GGUF sizes are not yet reconciled against a trusted full checkpoint.
 - Architecture-specific interpretation is still limited to metadata directly present in the checkpoint.
 - Desktop/backend technology comparison remains open.

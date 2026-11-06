@@ -15,6 +15,13 @@ from .gguf import (
     InspectionLimits,
     inspect_gguf,
 )
+from .hf_folder import (
+    HFFolderError,
+    HFFolderFormatError,
+    HFFolderLimits,
+    HFFolderResourceLimitError,
+    inspect_hf_folder,
+)
 from .safetensors import (
     SafetensorsError,
     SafetensorsFormatError,
@@ -30,6 +37,10 @@ __all__ = [
     "GGUFError",
     "GGUFFormatError",
     "GGUFResourceLimitError",
+    "HFFolderError",
+    "HFFolderFormatError",
+    "HFFolderLimits",
+    "HFFolderResourceLimitError",
     "InspectionLimits",
     "SafetensorsError",
     "SafetensorsFormatError",
@@ -37,6 +48,7 @@ __all__ = [
     "SafetensorsResourceLimitError",
     "get_ggml_type",
     "inspect_gguf",
+    "inspect_hf_folder",
     "inspect_safetensors",
     "tensor_storage_bytes",
     "type_name",
