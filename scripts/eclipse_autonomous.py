@@ -106,6 +106,11 @@ def classify_failure(output: str, timed_out: bool = False) -> Failure:
     )):
         return Failure("authentication", True, False, "provider credential/authorization failure")
     if any(token in text for token in (
+        "context_length_exceeded", "maximum context length", "context window exceeded",
+        "prompt is too long", "input is too long", "too many tokens",
+    )):
+        return Failure("context_length", False, False, "context limit exceeded")
+    if any(token in text for token in (
         "model not found", "unknown model", "model_not_found", "model is unavailable",
         "model unavailable", "404 model",
     )):
@@ -218,6 +223,22 @@ When done, leave a concise summary of changed files, tests actually run, test re
 
 def build_repair_prompt(failure_output: str) -> str:
     clipped = failure_output[-12_000:]
+    lowered = failure_output.lower()
+    if any(token in lowered for token in (
+        "context_length_exceeded", "maximum context length", "context window exceeded",
+        "prompt is too long", "input is too long", "too many tokens",
+    )):
+        return f"""Continue the SAME ECLIPSE task in this SAME OpenCode session. The provider rejected the current context length.
+Before retrying, compact the conversation:
+- Re-read the current Git diff, working tree, backlog and durable handoff.
+- Retain the original goal, acceptance criteria, project constraints, decisions, completed work and current error.
+- Drop duplicated logs, repeated discussion and unrelated history.
+- Do not restart the milestone, discard code, remove requirements or weaken tests.
+Then continue from the existing working tree.
+
+Context-limit response:
+{clipped}
+"""
     return f"""Continue the SAME ECLIPSE task in this SAME OpenCode session. Do not restart or discard successful work.
 The independent validation step failed. Diagnose the concrete failure, fix the underlying issue, add/update regression coverage, and rerun the relevant test plus the full portable suite. Do not weaken tests or claim success without output.
 
@@ -467,6 +488,7 @@ def run_agent_with_failover(
             last_failure = f"{route.provider}: missing configured secret {route.secret_name}"
             continue
 
+        context_compacted = False
         for attempt in range(max_calls_per_model):
             if deadline is not None:
                 remaining_for_model = int(deadline - time.monotonic() - 45 * 60)
@@ -494,6 +516,12 @@ def run_agent_with_failover(
                     skipped_providers.add(route.provider)
                     break
                 if failure.kind == "model_unavailable":
+                    break
+                if failure.kind == "context_length":
+                    if not context_compacted:
+                        context_compacted = True
+                        attempt -= 1  # context compaction does not consume a retry
+                        continue
                     break
                 if failure.retryable and attempt + 1 < max_calls_per_model:
                     sleep(min(MAX_BACKOFF, (2 ** attempt) + rng() * 3))
