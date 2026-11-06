@@ -7,7 +7,7 @@ Published results from different hardware are research clues, not forecasts for 
 ## Current research anchors
 
 - The upstream GGUF format specification defines the file header, metadata key/value types, tensor descriptors, alignment and tensor-data offsets. The parser is deliberately limited to these structures and does not read tensor payload bytes.
-- The GGML type traits implementation is the authority for quantized block sizes and storage sizes. ECLIPSE will not calculate exact tensor byte sizes until a reviewed, versioned mapping and fixtures are implemented.
+- The GGML type traits implementation is the authority for quantized block sizes and storage sizes. ECLIPSE derives exact GGUF tensor byte sizes from a single registry pinned to a reviewed upstream revision (`src/eclipse/model_intelligence/ggml_types.py`); re-review the upstream table before changing it.
 - llama.cpp is a candidate proven inference engine because it supports multiple execution backends and quantization formats; support must be checked per architecture, operator, format and GPU path before integration.
 - Colibri's hierarchical hot/warm/cold residency design and SSD-native MoE research are relevant comparisons. Their benchmark numbers are not transfer predictions for different GPUs, SSDs, CPUs or models.
 - Neural Error-Correction Sidecars (NECS) are an experimental hypothesis. They must remain optional and need held-out evidence of quality gain and acceptable overhead before integration.

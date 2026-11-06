@@ -1,8 +1,8 @@
 # ECLIPSE Project Status
 
-**Status:** `ACTIVE — FIRST_STATIC_INSPECTION_INCREMENT`
+**Status:** `ACTIVE — STATIC_INSPECTION_AND_MODEL_ATLAS_CORE`
 
-**Last updated:** 2026-11-05
+**Last updated:** 2026-11-06
 
 ## Completed in this repository increment
 
@@ -11,29 +11,43 @@
 - [x] Created/used an isolated feature branch for implementation.
 - [x] Recorded the user-directed decision to continue in this existing repository.
 - [x] Added a bounded, read-only GGUF v2/v3 parser for metadata and tensor descriptors.
+- [x] Added a versioned GGML type registry (`ggml_types.py`) pinned to a reviewed upstream llama.cpp/GGML revision.
+- [x] Derived exact GGUF tensor storage bytes, leaving unregistered types and non-block-multiple rows explicitly unknown.
+- [x] Added a bounded, read-only Safetensors header and tensor-index parser.
+- [x] Added bounded Hugging Face folder discovery (`config.json` summary and `model.safetensors.index.json` shard-index cross-check) without following symlinks or reading shard payloads.
+- [x] Kept folder enumeration and bounded control-file reads within configured memory limits.
+- [x] Added an evidence-labelled Model Atlas core that composes the three inspectors into one summary (parameters, storage bytes, type/dtype distribution).
+- [x] Made Atlas completeness depend on the referenced shard set; unrelated shards are excluded and index `total_size` is reconciled against tensor-data bytes, not whole-file sizes.
 - [x] Added JSON CLI output and standard-library synthetic tests.
-- [x] Kept exact tensor storage-byte calculations unknown pending a verified GGML type-layout table.
 
 ## What works now
 
-- `py -3 -m eclipse inspect-gguf <file.gguf>` parses GGUF header, metadata and tensor index without loading weights.
-- Parser limits cap header/index bytes, tensor count, metadata entry count, strings, array elements and dimensions.
+- `py -3 -m eclipse inspect-gguf <file.gguf>` parses GGUF header, metadata, tensor index and per-tensor derived storage bytes without loading weights.
+- `py -3 -m eclipse inspect-safetensors <file.safetensors>` parses the header length, bounded JSON header and declared tensor byte ranges without loading weights.
+- `py -3 -m eclipse inspect-hf-folder <folder>` summarizes `config.json`, enumerates shard sizes, and cross-checks the shard index against the files on disk.
+- `py -3 -m eclipse build-atlas <path>` dispatches by input type and emits one evidence-labelled JSON atlas.
+- Parser limits cap header/index bytes, tensor count, metadata entry count, strings, array elements, dimensions, header size, folder entries and shard count.
 - Malformed or unsupported inputs fail with a clear error instead of being guessed.
-- Unknown tensor types are retained as explicit unknown IDs.
+- Unknown tensor types are retained as explicit unknown IDs with unknown storage size.
 
 ## Local verification evidence
 
-- Python 3.13.5: `PYTHONPATH=src python -m unittest discover -s tests -v` — **23 tests passed**.
-- Python 3.13.5: `python -m compileall -q src tests` — passed.
-- GitHub Actions and real Windows/model-file validation have not yet run.
+- Python 3.14.4: `PYTHONPATH=src python -m unittest discover -s tests -v` — **82 tests passed**.
+- Python 3.14.4: `python -m compileall -q src tests .github/scripts` — passed.
+- Python 3.14.4: `inspect-safetensors --compact`, `inspect-hf-folder --compact` and `build-atlas --compact` CLI smoke tests — exit 0 with valid JSON.
+
+## CI verification evidence
+
+- Baseline CI on `main` (parent commit `122fc56`) is **success**: workflow "Python checks" run [#17](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42157195462) on `windows-latest`, Python 3.11, 3.12, 3.13 and 3.14, all four jobs passed "Run unit tests".
+- This increment's latest pull-request CI run is **success**: PR #3 run [#42164928747](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42164928747), all four Windows jobs passed on Python 3.11, 3.12, 3.13 and 3.14; the latest suite contains **86 tests**.
+- Real Windows/model-file validation has not run.
 
 ## Not completed / not claimed
 
-- [ ] GitHub Actions run verified.
-- [ ] Real user GGUF file validated on Windows.
-- [ ] Safetensors and Hugging Face folder inspection.
-- [ ] Exact tensor storage byte calculation.
-- [ ] Model Atlas UI or feasibility planner.
+- [ ] Real user GGUF/Safetensors/folder validated on Windows.
+- [ ] Tokenizer/chat-template inspection and remote model-card metadata.
+- [ ] Derived GGUF sizes reconciled against a trusted full checkpoint.
+- [ ] Model Atlas desktop UI and memory/VRAM feasibility planner (atlas core only today).
 - [ ] Model preparation/transformation, runtime adapters or inference.
 - [ ] Capability Amplification system, Obsidian integration, or ECLIPSE Agent.
 - [ ] Windows desktop application.
@@ -45,6 +59,9 @@ From the repository root in normal PowerShell:
 ```powershell
 $env:PYTHONPATH = "src"
 py -3 -m eclipse inspect-gguf "D:\Models\model.gguf"
+py -3 -m eclipse inspect-safetensors "D:\Models\model.safetensors"
+py -3 -m eclipse inspect-hf-folder "D:\Models\YourModelFolder"
+py -3 -m eclipse build-atlas "D:\Models\YourModelFolder"
 py -3 -m unittest discover -s tests -v
 ```
 
@@ -52,14 +69,15 @@ No administrator privileges, model runtime, API key or GPU are required for thes
 
 ## Known limitations
 
-- GGUF v2 and v3 parsing is implemented; other formats are not supported yet.
-- Tensor payloads are not decoded and exact payload sizes are not calculated.
+- GGUF v2/v3, Safetensors and Hugging Face model folders are supported; tokenizer files and remote metadata are not read.
+- Tensor payloads are not decoded. GGUF sizes are derived from a pinned GGML registry; Safetensors and folder shard sizes are observed.
+- Derived GGUF sizes are not yet reconciled against a trusted full checkpoint.
 - Architecture-specific interpretation is still limited to metadata directly present in the checkpoint.
 - Desktop/backend technology comparison remains open.
 
 ## Free & Safe Checklist
 
-- [x] Current parser has no third-party runtime dependencies.
+- [x] Current parsers have no third-party runtime dependencies.
 - [x] No paid API or cloud inference is required.
 - [x] Source checkpoint opened read-only; payload bytes are not loaded.
 - [x] No credentials, private prompts, or model weights in the repository.

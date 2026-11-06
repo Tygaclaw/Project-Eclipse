@@ -16,6 +16,6 @@ Everyday chat and model selection → history/files/project context → shared C
 
 ## Current gate
 
-The first static GGUF implementation is present as source code and synthetic tests. The next evidence gate is a verified GitHub Actions run plus a read-only real-file run on Windows. Work can then continue into Safetensors and model-folder support while the desktop framework is evaluated separately.
+Static GGUF, Safetensors and Hugging Face folder inspection are present as source code with synthetic tests. The evidence-labelled Model Atlas core composes them into one JSON document. The pull-request CI run passed on Windows with Python 3.11–3.14. The remaining real-file acceptance gate is a read-only Windows run against actual checkpoints; it does not block independent engineering. Next, add tokenizer/chat-template inspection and begin the Windows desktop framework spike and navigable three-workspace shell, bringing the Model Atlas into the first real workspace screen.
 
 See [`ORIGINAL_PHASE_MAP.md`](ORIGINAL_PHASE_MAP.md) for both canonical phase sequences and the five internal subsystems.
