@@ -1364,7 +1364,7 @@ def summarize_gguf_tokenizer(
 
     chat_templates = _chat_templates_summary(chat_sources)
 
-    available = bool(fields) or bool(chat_templates["count"])
+    available = bool(fields) or bool(chat_templates["parsed_count"])
     if not available:
         warnings.append("No tokenizer.* metadata was present in the GGUF file")
 
