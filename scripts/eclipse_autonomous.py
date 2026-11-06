@@ -426,9 +426,36 @@ def gh(
     if not token:
         raise RuntimeError("GITHUB_TOKEN is unavailable to the parent controller.")
     env["GH_TOKEN"] = token
-    return subprocess.run(
-        ["gh", *args], cwd=ROOT, env=env, text=True, capture_output=True, check=check,
-    )
+    try:
+        return subprocess.run(
+            ["gh", *args], cwd=ROOT, env=env, text=True, capture_output=True, check=check,
+        )
+    except subprocess.CalledProcessError as exc:
+        # Surface gh's own (redacted) message; a bare CalledProcessError hides the cause.
+        detail = redact((exc.stderr or "") + "\n" + (exc.stdout or ""), source_env).strip()[-2_000:]
+        raise RuntimeError(f"gh {' '.join(args[:2])} failed (exit {exc.returncode}): {detail}") from None
+
+
+def find_orphan_autonomous_branches(
+    source_env: dict[str, str],
+    *,
+    gh_fn: Callable[..., subprocess.CompletedProcess[str]] = gh,
+) -> list[str]:
+    """Pushed autonomous branches that have no pull request (open, closed or merged).
+
+    Such a branch holds finished work whose PR could not be created. A new run must not
+    start duplicate work beside it.
+    """
+    repo = source_env.get("GITHUB_REPOSITORY", "")
+    listing = gh_fn(["api", f"repos/{repo}/branches?per_page=100", "--jq", ".[].name"], source_env=source_env)
+    orphans = []
+    for name in listing.stdout.split():
+        if not name.startswith("feature/eclipse-autonomous-"):
+            continue
+        prs = gh_fn(["pr", "list", "--head", name, "--state", "all", "--json", "number"], source_env=source_env)
+        if not json.loads(prs.stdout or "[]"):
+            orphans.append(name)
+    return orphans
 
 
 def git_with_write_token(
@@ -879,6 +906,13 @@ def main() -> int:
     if existing_pr:
         return resume_existing_pr(existing_pr, source_env, run_title, deadline)
 
+    orphans = find_orphan_autonomous_branches(source_env)
+    if orphans:
+        print("ORPHAN_AUTONOMOUS_BRANCH_WITHOUT_PR: " + ", ".join(orphans))
+        print("Finished work exists on a pushed branch with no pull request. Not starting new work.")
+        print("Open a PR for that branch (or delete it) to let the autonomous runs continue.")
+        return 8
+
     controller_env = validation_environment(source_env)
     subprocess.run(["git", "fetch", "origin", base_branch], cwd=ROOT, env=controller_env, check=True)
     subprocess.run(["git", "switch", "--detach", f"origin/{base_branch}"], cwd=ROOT, env=controller_env, check=True)
@@ -934,7 +968,15 @@ def main() -> int:
     ]
     if protected:
         create_args.append("--draft")
-    created = gh(create_args, source_env=source_env)
+    try:
+        created = gh(create_args, source_env=source_env)
+    except RuntimeError as exc:
+        print(f"PR_CREATE_FAILED (work is safe on branch {branch}): {exc}")
+        print(
+            "If this says Actions may not create pull requests: Settings > Actions > General > "
+            "Workflow permissions > tick 'Allow GitHub Actions to create and approve pull requests'."
+        )
+        return 7
     pr_url = created.stdout.strip().splitlines()[-1]
     print(f"Created {'draft ' if protected else ''}PR: {pr_url}")
     print(f"Selected model: {selected_model}")
