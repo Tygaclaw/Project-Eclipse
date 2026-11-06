@@ -6,9 +6,9 @@
 
 ## At a glance
 
-The current branch configures **eight free-provider connections**: Token Harbor, OpenRouter, Google AI Studio/Gemini, Groq, NVIDIA NIM/API Catalog, Cloudflare Workers AI, OrcaRouter and Kilo Gateway. Cohere is an additional optional **evaluation-only** connection and is not counted as a dependable recurring free provider.
+The current branch configures **nine free-provider connections**: Token Harbor, OpenRouter, Google AI Studio/Gemini, Groq, NVIDIA NIM/API Catalog, Cloudflare Workers AI, OrcaRouter, Kilo Gateway and Z.AI. Cohere is an additional optional **evaluation-only** connection and is not counted as a dependable recurring free provider.
 
-The current configuration contains **37 free-tier model/router selections** across those eight providers, plus one Cohere evaluation selection. The two new gateway providers add three routes: OrcaRouter's free-only router and explicit DeepSeek V4 Flash free model; Kilo's Auto Free dynamic model tier. Model count is not the same as provider redundancy: each gateway has its own shared account/route limits and may itself depend on a shared upstream pool.
+The current configuration contains **40 free-tier model/router selections** across those nine providers, plus one Cohere evaluation selection. The gateway additions include OrcaRouter's free-only router and explicit DeepSeek V4 Flash free model, Kilo's Auto Free dynamic model tier, and Z.AI's three free GLM Flash models. Model count is not the same as provider redundancy: each gateway has its own shared account/route limits and may itself depend on a shared upstream pool.
 
 The workflow checks the selected provider's credential, passes only that provider's credential to OpenCode, and keeps the existing 350-minute job timeout. All new selections remain feature-branch-only until PR #9 and its base PR #7 are merged.
 
@@ -124,6 +124,18 @@ Kilo's Auto Free tier requires no credits and is priced at $0. The current offic
 
 **Privacy warning:** Kilo says Auto Free may route requests to upstream providers that log prompts/outputs and use them to improve services; NVIDIA free endpoints are explicitly trial-only and may be logged for model improvement. Do not send confidential, private or credential-bearing content through this route. Use it for public-repository work and experiments only. Only `kilo-auto/free` is configured; paid Auto Frontier, Auto Efficient, normal paid models and credit-backed routes are excluded.
 
+### Z.AI / GLM free Flash API
+
+| Comment command | OpenCode model | Context (configured) | Notes |
+|---|---|---:|---|
+| `/oc-zai` | `zai/glm-4.7-flash` | 200K | GLM-4.7 Flash; free text/code API model. |
+| `/oc-zai-45` | `zai/glm-4.5-flash` | 128K | Earlier free Flash model. |
+| `/oc-zai-vision` | `zai/glm-4.6v-flash` | 128K | Free vision Flash model; use only when the task needs image input. |
+
+Z.AI's official pricing page lists GLM-4.7-Flash, GLM-4.5-Flash and GLM-4.6V-Flash with $0 input, cached-input and output pricing. The official page does not publish a numerical RPM/TPM or daily allowance for these free models; check the account console for concurrency/usage restrictions. The API uses the OpenAI-compatible `https://api.z.ai/api/paas/v4` endpoint and requires a Z.AI API key. The selected key is read from the GitHub Actions secret `ZAI_GLM_API_KEY`.
+
+Do not accidentally select similarly named paid models such as GLM-5.3-Flash, GLM-4.7-FlashX, or GLM-4.7 itself. Only the three explicit free Flash model IDs above are configured. Tool-call compatibility for GLM-4.7 Flash must be verified in a controlled smoke test before marking this as an agent-capable route.
+
 ### Cohere — evaluation only
 
 | Comment command | OpenCode model | Limit / restriction |
@@ -146,6 +158,7 @@ Save keys only under **Repository → Settings → Secrets and variables → Act
 | `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` | Cloudflare Workers AI | Not yet reported saved; account must remain Workers Free |
 | `ORCAROUTER_API_KEY` | OrcaRouter | Free Hacker account key; only its $0 free routes are configured |
 | `KILO_API_KEY` | Kilo Gateway | Optional free account API key; Auto Free only |
+| `ZAI_GLM_API_KEY` | Z.AI | Free GLM Flash models only; confirm console limits |
 | `COHERE_API_KEY` | Cohere | Optional evaluation-only lane |
 
 The workflow checks the selected key's presence without printing it. It passes only the selected provider's credential into the OpenCode action. No API key value is stored in this repository.
@@ -238,4 +251,7 @@ Keep **model capability** separate from **provider reliability** (availability, 
 - [Kilo Gateway authentication](https://kilo.ai/docs/gateway/authentication)
 - [Kilo Gateway usage and billing](https://kilo.ai/docs/gateway/usage-and-billing)
 - [Kilo Auto Free privacy warning](https://kilo.ai/docs/getting-started/using-kilo-for-free)
+- [Z.AI official model pricing](https://docs.z.ai/guides/overview/pricing)
+- [Z.AI official API tool-calling example](https://docs.z.ai/guides/capabilities/mcp-call)
+
 - [OpenCode provider configuration](https://docs.opencode.ai/docs/providers/)
