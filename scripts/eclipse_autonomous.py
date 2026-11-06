@@ -46,12 +46,15 @@ PROTECTED_PREFIXES = (
     ".github/workflows/",
     ".github/scripts/",
     "scripts/eclipse_autonomous.py",
-    "tests/test_autonomous_runner.py",
+    "tests/test_autonomous_",
+    "scripts/eclipse_review.py",
+    "tests/test_review.py",
     "opencode.json",
     "DEEPSEEK_START_HERE.md",
     "SECURITY.md",
     "docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md",
 )
+MAX_PARKED_OWNER_PRS = 3  # owner-review PRs allowed to wait before new runs pause
 SECRET_PATTERNS = (
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}\b"),
@@ -207,8 +210,8 @@ def safe_child_environment(route: Route, source: dict[str, str]) -> dict[str, st
     return env
 
 
-def build_run_prompt(run_title: str) -> str:
-    return f"""You are the implementation model inside the autonomous ECLIPSE engineering system.
+def build_run_prompt(run_title: str, parked_note: str = "") -> str:
+    return f"""{parked_note}You are the implementation model inside the autonomous ECLIPSE engineering system.
 Run title: {run_title}
 
 Read these files first:
@@ -437,9 +440,36 @@ def gh(
     if not token:
         raise RuntimeError("GITHUB_TOKEN is unavailable to the parent controller.")
     env["GH_TOKEN"] = token
-    return subprocess.run(
-        ["gh", *args], cwd=ROOT, env=env, text=True, capture_output=True, check=check,
-    )
+    try:
+        return subprocess.run(
+            ["gh", *args], cwd=ROOT, env=env, text=True, capture_output=True, check=check,
+        )
+    except subprocess.CalledProcessError as exc:
+        # Surface gh's own (redacted) message; a bare CalledProcessError hides the cause.
+        detail = redact((exc.stderr or "") + "\n" + (exc.stdout or ""), source_env).strip()[-2_000:]
+        raise RuntimeError(f"gh {' '.join(args[:2])} failed (exit {exc.returncode}): {detail}") from None
+
+
+def find_orphan_autonomous_branches(
+    source_env: dict[str, str],
+    *,
+    gh_fn: Callable[..., subprocess.CompletedProcess[str]] = gh,
+) -> list[str]:
+    """Pushed autonomous branches that have no pull request (open, closed or merged).
+
+    Such a branch holds finished work whose PR could not be created. A new run must not
+    start duplicate work beside it.
+    """
+    repo = source_env.get("GITHUB_REPOSITORY", "")
+    listing = gh_fn(["api", f"repos/{repo}/branches?per_page=100", "--jq", ".[].name"], source_env=source_env)
+    orphans = []
+    for name in listing.stdout.split():
+        if not name.startswith("feature/eclipse-autonomous-"):
+            continue
+        prs = gh_fn(["pr", "list", "--head", name, "--state", "all", "--json", "number"], source_env=source_env)
+        if not json.loads(prs.stdout or "[]"):
+            orphans.append(name)
+    return orphans
 
 
 def git_with_write_token(
@@ -703,20 +733,34 @@ def create_draft_checkpoint(
     return created.stdout.strip().splitlines()[-1]
 
 
-def find_open_autonomous_pr(source_env: dict[str, str]) -> dict[str, object] | None:
-    result = gh(
+def is_parked_owner_pr(item: dict[str, object]) -> bool:
+    """A finished protected-path draft that only waits for the owner; nothing to resume."""
+    return bool(item.get("isDraft")) and not str(item.get("title", "")).startswith("Checkpoint: ECLIPSE autonomous run")
+
+
+def list_open_autonomous_prs(
+    source_env: dict[str, str],
+    *,
+    gh_fn: Callable[..., subprocess.CompletedProcess[str]] = gh,
+) -> list[dict[str, object]]:
+    result = gh_fn(
         ["pr", "list", "--state", "open", "--base", "main",
          "--json", "number,title,body,headRefName,isDraft,url,headRefOid"],
         source_env=source_env,
     )
-    entries = json.loads(result.stdout or "[]")
-    return next(
-        (
-            item for item in entries
-            if str(item.get("headRefName", "")).startswith("feature/eclipse-autonomous-")
-        ),
-        None,
-    )
+    return [
+        item for item in json.loads(result.stdout or "[]")
+        if str(item.get("headRefName", "")).startswith("feature/eclipse-autonomous-")
+    ]
+
+
+def find_open_autonomous_pr(source_env: dict[str, str]) -> dict[str, object] | None:
+    """The open autonomous PR the loop must resume; owner-review PRs are parked, not resumed."""
+    return next((item for item in list_open_autonomous_prs(source_env) if not is_parked_owner_pr(item)), None)
+
+
+def find_parked_owner_prs(source_env: dict[str, str]) -> list[dict[str, object]]:
+    return [item for item in list_open_autonomous_prs(source_env) if is_parked_owner_pr(item)]
 
 
 def resume_existing_pr(
@@ -890,6 +934,27 @@ def main() -> int:
     if existing_pr:
         return resume_existing_pr(existing_pr, source_env, run_title, deadline)
 
+    parked = find_parked_owner_prs(source_env)
+    if len(parked) >= MAX_PARKED_OWNER_PRS:
+        print(f"WAITING_FOR_OWNER_REVIEW: {len(parked)} owner-review PRs are waiting: "
+              + ", ".join(str(item.get("url")) for item in parked))
+        print("Merge or close some of them to let autonomous work continue.")
+        return 9
+    parked_note = ""
+    if parked:
+        parked_note = (
+            "NOTE: these finished PRs wait for owner review and are NOT on main yet: "
+            + ", ".join(f"#{item.get('number')}" for item in parked)
+            + ". Do not redo their work, do not depend on it, and avoid editing the same files.\n\n"
+        )
+
+    orphans = find_orphan_autonomous_branches(source_env)
+    if orphans:
+        print("ORPHAN_AUTONOMOUS_BRANCH_WITHOUT_PR: " + ", ".join(orphans))
+        print("Finished work exists on a pushed branch with no pull request. Not starting new work.")
+        print("Open a PR for that branch (or delete it) to let the autonomous runs continue.")
+        return 8
+
     controller_env = validation_environment(source_env)
     subprocess.run(["git", "fetch", "origin", base_branch], cwd=ROOT, env=controller_env, check=True)
     subprocess.run(["git", "switch", "--detach", f"origin/{base_branch}"], cwd=ROOT, env=controller_env, check=True)
@@ -897,7 +962,7 @@ def main() -> int:
     subprocess.run(["git", "switch", "-c", branch], cwd=ROOT, env=controller_env, check=True)
 
     success, session_id, selected_model, failure = run_agent_with_failover(
-        build_run_prompt(run_title),
+        build_run_prompt(run_title, parked_note),
         run_title,
         source_env,
         turn_timeout=DEFAULT_TURN_TIMEOUT,
@@ -945,7 +1010,15 @@ def main() -> int:
     ]
     if protected:
         create_args.append("--draft")
-    created = gh(create_args, source_env=source_env)
+    try:
+        created = gh(create_args, source_env=source_env)
+    except RuntimeError as exc:
+        print(f"PR_CREATE_FAILED (work is safe on branch {branch}): {exc}")
+        print(
+            "If this says Actions may not create pull requests: Settings > Actions > General > "
+            "Workflow permissions > tick 'Allow GitHub Actions to create and approve pull requests'."
+        )
+        return 7
     pr_url = created.stdout.strip().splitlines()[-1]
     print(f"Created {'draft ' if protected else ''}PR: {pr_url}")
     print(f"Selected model: {selected_model}")
