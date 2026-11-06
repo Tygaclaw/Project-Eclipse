@@ -13,6 +13,7 @@
 - Both parsers open the source file read-only and read zero tensor payload bytes.
 - GGUF tensor storage bytes are derived from `ggml_types.py`, pinned to llama.cpp revision `67107ac34f62882d8b53ea41ad68010ea635b9be`; unknown types and non-block-multiple rows are left explicitly unknown.
 - Safetensors storage bytes are observed from declared header `data_offsets`; malformed offsets, overlapping ranges and invalid JSON fail with a clear error.
+- Baseline CI on `main` (parent commit `122fc56`) is green: "Python checks" run #17 on `windows-latest` passed all four Python 3.11–3.14 jobs. This increment's own PR CI run is pending.
 - No real user model file or Windows/GPU runtime was tested in this environment.
 
 ## Next engineering actions

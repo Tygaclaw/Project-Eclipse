@@ -29,11 +29,16 @@
 - Python 3.14.4: `PYTHONPATH=src python -m unittest discover -s tests -v` — **60 tests passed**.
 - Python 3.14.4: `python -m compileall -q src tests .github/scripts` — passed.
 - Python 3.14.4: `inspect-safetensors --compact` CLI smoke test — exit 0 with valid JSON.
-- GitHub Actions and real Windows/model-file validation have not yet run.
+
+## CI verification evidence
+
+- Baseline CI on `main` (parent commit `122fc56`) is **success**: workflow "Python checks" run [#17](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42157195462) on `windows-latest`, Python 3.11, 3.12, 3.13 and 3.14, all four jobs passed "Run unit tests".
+- The increment's own CI run is created by the pull request and is pending; it has not been inspected in this environment.
+- Real Windows/model-file validation has not run.
 
 ## Not completed / not claimed
 
-- [ ] GitHub Actions run verified.
+- [ ] This increment's GitHub Actions run verified (baseline `main` CI is green).
 - [ ] Real user GGUF/Safetensors file validated on Windows.
 - [ ] Hugging Face model-folder and shard-index discovery.
 - [ ] Derived GGUF sizes reconciled against a trusted full checkpoint.
