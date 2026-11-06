@@ -5,7 +5,8 @@ Read this file before doing any work.
 ## Repository and operating mode
 - Work in the existing repository `Tygaclaw/Project-Eclipse`. Do not create a second repository. The user's later explicit instruction supersedes older handoff text proposing a separate greenfield repository.
 - GitHub is the permanent source of truth. The user wants cloud-based work in this repository and to download/test the finished project from GitHub. Do not require a separate local checkout on the user's PC for normal development.
-- You run as OpenCode in GitHub Actions through Token Harbor's OpenAI-compatible API. The default model is tokenharbor/deepseek-v4.1-flash:free; the manual free fallback is tokenharbor/mimo-v2.6-flash:free via /oc-mimo. The API key is supplied only as the TOKENHARBOR_API_KEY GitHub Actions secret. Never use a paid model ID or fall back to a paid route.
+- You run as OpenCode in GitHub Actions. The default model is `tokenharbor/deepseek-v4.1-flash:free`; manual free alternatives are `tokenharbor/mimo-v2.6-flash:free` via `/oc-mimo`, `openrouter/cohere/north-mini-code:free` via `/oc-openrouter`, and `openrouter/recursive/flint-v1.0:free` via `/oc-openrouter-flint`. The credentials are supplied only through the `TOKENHARBOR_API_KEY` and `OPENROUTER_API_KEY` GitHub Actions secrets. Never use a paid model ID or fall back to a paid route.
+- The OpenRouter routes are manual provider selections at this stage. Do not claim cross-provider automatic failover exists until a tested coordinator is implemented.
 - Work on feature branches and use pull requests for meaningful milestones. Preserve existing history. Never force-push or overwrite unrelated work.
 - Never claim work, tests, file changes or CI passed unless tool/output evidence confirms it.
 
@@ -13,7 +14,7 @@ Read this file before doing any work.
 1. The user's latest explicit instructions.
 2. This `DEEPSEEK_START_HERE.md`.
 3. Current repository records: `STATUS.md`, `CONTINUATION.md`, `REQUIREMENTS.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `TESTING.md`, `SECURITY.md` and `README.md`.
-4. Current product/roadmap documents in `docs/`.
+4. Current product/roadmap documents in `docs/`, including `docs/FREE_MODEL_PROVIDER_POOL.md`.
 5. Archived starter-kit materials under `docs/source_material/ECLIPSE_COMPLETE_STARTER_KIT/`.
 The archived kit contains conflicting repository instructions: its old `START_HERE.md`, `MASTER_EXECUTION_PROMPT.md` and `GITHUB_OPERATING_PROTOCOL.md` may propose a new repository. Preserve these as historical material; do not follow that obsolete direction. See `REPOSITORY_OVERRIDE_README.md`.
 
@@ -37,13 +38,16 @@ Preserve both separate maps: original Master Plan Phase 0, Phases 1–9, Phase 1
 - UX should be colourful, spacious, beginner-friendly and uncluttered. No dense dashboard, fake metrics or fake buttons.
 
 ## Existing implementation baseline and next gates
-The root project source includes a bounded read-only GGUF v2/v3 inspector, JSON CLI and standard-library synthetic tests. The imported status reports 23 synthetic tests and compileall passing in the preparation environment; GitHub Actions and real Windows/model-file validation were pending. Re-run tests and inspect actual CI before claiming success.
-Next recorded gates: verify CI; hand off a safe real-file Windows validation without uploading checkpoints; verify GGML type layouts before exact tensor-byte calculation; add bounded Safetensors and Hugging Face folder discovery; build evidence-labelled Model Atlas and feasibility estimator; continue Capability Amplification and ECLIPSE Agent work without repeating Qwen setup or the completed A* evaluation.
+The repository contains a working Windows desktop shell, bounded model inspectors, an evidence-labelled Model Atlas, tokenizer/chat-template inspection in PR #5, and static hardware/RAM/VRAM feasibility work in PR #8. Verify each PR's current state and CI before treating unmerged work as shipped. Continue through small reviewable milestones; do not repeat completed Qwen setup or A* evaluation.
 
 ## Provider allowance, privacy and recovery
-- Use only Token Harbor model IDs ending in :free. The free route has a value-based rolling seven-day allowance and free-account request limits; it is not unlimited. Never substitute the paid model ID, use wallet credits, top up, or enable a paid fallback.
-- Token Harbor free-route prompts and responses may be retained and reviewed under its free-route policy and upstream provider terms. Never send secrets, private credentials, personal data, or confidential material.
+- **Token Harbor:** use only model IDs ending in `:free`. Its free route has a value-based rolling seven-day allowance and free-account request limits. Never use wallet credits, top up, select paid model IDs or enable paid fallbacks.
+- **OpenRouter:** use only model IDs ending in `:free`. Current free-variant limits are 20 requests/minute and 50 requests/day for accounts below the lifetime-credit threshold; failed attempts count toward the daily request cap. Do not buy credits to increase the limit. Verify current terms before expanding routes.
+- OpenRouter currently exposes these configured coding routes: `cohere/north-mini-code:free` (256K context, 64K output; supports tool calling) and `recursive/flint-v1.0:free` (262K context; supports tools). Keep model IDs and limits consistent with the provider's current catalogue.
+- Provider free-tier prompts and responses may be retained or reviewed under the provider's and upstream model host's terms. Never send API keys, secrets, private credentials, personal data or confidential material.
 - The GitHub status monitor is GitHub-only and must not make test inference calls or consume provider allowance.
+- The current workflow selects a provider from the comment command: `/oc`, `/oc-mimo`, `/oc-openrouter`, or `/oc-openrouter-flint`. It checks that the selected provider's secret exists without printing the secret.
+- This selection is **manual**. OpenCode does not currently provide a tested native cross-model fallback chain for this workflow. The next pool milestone must implement bounded retries, cross-provider failover, cooldown/quota memory and progress-safe recovery outside the model's prompt, then prove it with failure simulations. Never pretend a second model was attempted unless workflow evidence confirms it.
 - Work in small, independently testable milestones. Update STATUS.md and CONTINUATION.md and preserve verified progress in a reviewable pull request before the Actions timeout. If the free allowance is exhausted or the provider fails, stop safely and leave a clear continuation record.
 
 ## Autonomous engineering expectations
