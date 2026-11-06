@@ -49,3 +49,24 @@ User-reported manual Windows 11 real-file validation (packaged application):
 - The already completed A* challenge.
 
 Never ask for, print or commit API-key values. The existing model and working 256K context baseline are historical known-good state; do not alter them without a narrowly justified test and rollback plan.
+
+
+## Provider-pool continuation (PR #9; feature branch only)
+
+Branch: `feature/openrouter-free-models-20261106`, stacked on PR #7. These changes are not on `main`.
+
+The current branch supports manual selections across Token Harbor, OpenRouter free models, Google Gemini/Gemma free-tier models, Groq Free-plan models, NVIDIA API Catalog/NIM, Cloudflare Workers AI free-plan models, and an optional Cohere evaluation-only route. The canonical command/model/limit list is `docs/FREE_MODEL_PROVIDER_POOL.md`.
+
+The GitHub Actions workflow preserves `timeout-minutes: 350`, the headless external-directory deny rule, selected-provider connection checks and selected-credential-only environment passing. The owner reports that a Gemini key was added; the selected Gemini workflow check has not yet confirmed the actual secret-name match. OpenRouter is already saved. Groq, NVIDIA, Cloudflare and optional Cohere connections remain unconfirmed.
+
+No live smoke tests were sent as part of this configuration change. Automatic cross-provider failover, cooldown memory and progress-safe retries are **not implemented yet**.
+
+### Next steps
+
+1. Inspect CI for the latest PR #9 head and read actual logs/test counts.
+2. Run one deliberate Gemini smoke test to confirm the saved key alias.
+3. Add only the additional provider credentials the owner wishes to use. Confirm Cloudflare remains on Workers Free before using its route. Cohere stays evaluation-only.
+4. Build and failure-test the external free-only failover coordinator before enabling automatic switching.
+5. Complete the ECLIPSE-specific model leaderboard using independent public benchmark evidence plus identical controlled ECLIPSE repository tasks. Do not invent a final ranking from provider marketing or usage popularity.
+
+Do not repeat Qwen installation, the general Windows hardware audit, Gemini/OpenRouter setup or the completed A* evaluation. Never request or print secret values.
