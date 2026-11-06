@@ -31,24 +31,25 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m unittest discover -s tests -v
 
 ## Verified GitHub Actions evidence
 
-- Latest dedicated Windows desktop run [#42170364882](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364882): all **110 tests passed** with PySide6 installed, including all 8 offscreen UI tests; PyInstaller created the Windows x64 app; the packaged `ECLIPSE.exe --atlas-backend --help` smoke test passed; the ZIP was uploaded as `ECLIPSE-windows-x64` (50,929,677 bytes).
-- Latest core CI matrix [#42170364898](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364898): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in this matrix because PySide6 is optional there; they ran without skips in the dedicated desktop job.
+- Latest dedicated Windows desktop run [#42173214699](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699): all **110 tests passed** with PySide6 installed, including all 8 offscreen UI tests; PyInstaller created the Windows x64 app; the packaged `ECLIPSE.exe --atlas-backend --help` smoke test passed; the ZIP was uploaded as `ECLIPSE-windows-x64` (50,929,741 bytes).
+- Latest core CI matrix [#42173214668](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214668): all four Windows jobs passed Python 3.11–3.14. The 8 Qt UI tests were skipped in this matrix because PySide6 is optional there; they ran without skips in the dedicated desktop job.
 
 ## Manual Windows 11 smoke test
 
 - User-confirmed: the packaged application launched on Windows 11 and all three workspace pages were clickable and displayed successfully.
-- Not yet confirmed: selecting and inspecting a real local model file from the desktop UI.
+- User-confirmed: selected `Qwen3.5-9B-Q4_K_M.gguf` in the Model Intelligence workspace and ran Inspect model. The Atlas displayed GGUF v3, architecture `qwen35`, model name `Qwen3.5-9B`, 427 tensors, 8,953,803,264 parameters, 5,669,554,176 bytes (5.28 GiB) registry-derived tensor storage and a 5.29 GiB file size; storage coverage was complete.
+- The UI safety panel reported 0 tensor payload bytes read, payloads not loaded and source not modified. The displayed warning correctly notes the GGUF storage calculation has not yet been reconciled against a trusted full-checkpoint loader.
+- This validates the packaged UI-to-Atlas integration with one real GGUF on Windows 11. It does not validate inference, GPU feasibility, Safetensors files or multi-shard Hugging Face folders.
 
 ## Test evidence boundaries
 
-Synthetic tests prove parser behavior for the cases represented by their fixtures. They do not establish compatibility with every real-world GGUF variant or multi-shard folder layout. A real-file Windows test is a separate acceptance gate. GitHub Actions results must be inspected before claiming CI has passed.
+Synthetic tests prove parser behavior for the cases represented by their fixtures. They do not establish compatibility with every real-world GGUF variant or multi-shard folder layout. A real-file Windows test is a separate acceptance gate. One GGUF now passes that manual gate; further format/architecture coverage and an independent storage cross-check remain necessary. GitHub Actions results must be inspected before claiming CI has passed.
 
 ## Next tests
 
-1. Real GGUF files from multiple architectures and quantization types.
+1. Real GGUF files from additional architectures and quantization types.
 2. Large metadata arrays and resource-limit behavior on Windows.
-3. Real multi-shard Safetensors folders and shard-index fixtures.
+3. Real Safetensors files and multi-shard Hugging Face folders on Windows.
 4. Compare metadata/tensor descriptor output and derived sizes with a trusted upstream loader.
-5. Tokenizer/chat-template file inspection and remote model-card metadata (not yet in scope).
-6. Windows desktop build: run `packaging/eclipse-desktop.spec` on `windows-latest`, assert `dist\ECLIPSE\ECLIPSE.exe --atlas-backend --help` and the `ECLIPSE-windows-x64` artifact.
-7. Later: static memory estimator, preparation integrity, runtime correctness and capability evaluation.
+5. Add static tokenizer/chat-template file inspection and bounded metadata handling.
+6. Add the static memory/VRAM feasibility estimator, then separately validate runtime correctness and preparation integrity.
