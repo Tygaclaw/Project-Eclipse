@@ -238,7 +238,7 @@ def run_opencode(
     env_source = source_env if source_env is not None else dict(os.environ)
     child_env = safe_child_environment(route, env_source)
     command = [
-        "opencode", "run", "--format", "json", "--agent", "eclipse-autonomous",
+        "opencode", "run", "--standalone", "--format", "json", "--agent", "eclipse-autonomous",
         "--model", route.open_code_id, "--title", run_title, "--auto",
     ]
     if session_id:
@@ -685,7 +685,7 @@ def resume_existing_pr(
 
 You are continuing work on existing PR {pr_url}, branch {branch}, against main.
 This PR is a partial-work checkpoint: {is_checkpoint}. Read the current diff, AUTONOMOUS_BACKLOG.md,
-.eclipsE/AUTONOMOUS_SESSION_HANDOFF.md, STATUS.md, CONTINUATION.md and relevant tests.
+.eclipse/AUTONOMOUS_SESSION_HANDOFF.md, STATUS.md, CONTINUATION.md and relevant tests.
 Preserve all correct work already in this branch. If it is a partial checkpoint, continue the
 same highest-priority unfinished milestone to completion. If it is a failed non-draft PR,
 fix the actual failing checks. Add regression coverage and record evidence. Do not create another
