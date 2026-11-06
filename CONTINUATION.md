@@ -4,7 +4,7 @@
 
 - Repository: `Tygaclaw/Project-Eclipse`.
 - Working branch: `opencode/issue2-20261106051627` (feature branch for this increment).
-- Increment: PySide6 Windows-first desktop shell with the three primary workspaces; Model Intelligence workspace connected to the existing Model Atlas through a bounded, cancellable subprocess boundary; PyInstaller packaging and a proposed Windows workflow.
+- Increment: PySide6 Windows-first desktop shell with the three primary workspaces; Model Intelligence workspace connected to the existing Model Atlas through a bounded, cancellable subprocess boundary; PyInstaller packaging and an active Windows workflow.
 - Primary workspaces: Model Intelligence & Inference Platform; Capability Amplification & Knowledge System; ECLIPSE Agent.
 
 ## What was actually verified in this increment
@@ -23,6 +23,7 @@
 - Hugging Face folder scans are lazy and stop at the configured entry limit; control-file reads are capped even if a file changes during inspection. Index `metadata.total_size` is compared with observed tensor-data bytes, not whole Safetensors file sizes.
 - Baseline CI on `main` (parent commit `122fc56`) is green: "Python checks" run #17 on `windows-latest` passed all four Python 3.11–3.14 jobs.
 - The current core PR matrix [#42173214668](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214668) is green on Windows Python 3.11–3.14. The eight desktop tests skip in that matrix because it intentionally omits PySide6; all eight ran and passed in the dedicated desktop job [#42173214699](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42173214699).
+
 User-reported manual Windows 11 real-file validation (packaged application):
 - Selected `Qwen3.5-9B-Q4_K_M.gguf` from the Model Intelligence workspace and pressed Inspect model.
 - Atlas rendered successfully: GGUF v3, architecture `qwen35`, model name `Qwen3.5-9B`, 427 tensors and 8,953,803,264 parameters.
