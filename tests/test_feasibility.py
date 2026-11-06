@@ -272,8 +272,11 @@ class FeasibilityPlannerTests(unittest.TestCase):
         self.assertIsNone(execution["tokens_per_second_prediction"])
         self.assertEqual(
             execution["performance_target_category"],
-            "not_assigned_until_backend_validation",
+            "no_fixed_floor_for_within_capacity_candidate",
         )
+        policy = execution["performance_goal_policy"]
+        self.assertIs(policy["applies_to_this_profile"], False)
+        self.assertIn("No fixed throughput floor", policy["native_fit_policy"])
 
     def test_invalid_atlas_and_request_are_rejected(self) -> None:
         with self.assertRaises(FeasibilityError):
