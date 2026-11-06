@@ -50,15 +50,15 @@ For this repository: use only the signup grant, do not top up, and expect an exh
 
 ### Google Gemini API
 
-Use the Google AI Studio free tier only. Gemini free quotas vary by model, project and current Google policy. Do not enable billing or move the project to a paid tier for this agent. When free quota is exhausted, the route should stop until the quota resets.
+The selected models are `gemini-3.8-flash` and `gemini-3.7-flash`. These are not paid-only models: Google's current official pricing page explicitly lists both at $0 input/output on the Gemini API Free tier. Google positions 3.8 Flash for long-horizon software engineering and autonomous agents, and 3.7 Flash for coding, agentic tool use and reliable multi-step execution. That makes them a more appropriate pair for ECLIPSE than picking a random lightweight model solely because it has a Flash-Lite label.
 
-Google's free-tier data handling differs from its paid tier. Do not include secrets, credentials or confidential information in prompts.
+Use the Google AI Studio free tier only. Free access is limited to eligible models and quotas vary by model and project. Do not enable billing or move this project to a paid tier. When free quota is exhausted, the route should stop until the quota resets. Google states that free-tier content may be used to improve its products, so do not include secrets, credentials or confidential information in prompts.
 
 ### Groq
 
 The selected pair is deliberately `openai/gpt-oss-120b` plus `qwen/qwen3.8-27b`, not GPT-OSS 20B. Groq's official Free-plan table lists both at 30 RPM, 1,000 RPD, 8K TPM and 200K TPD. Groq's tool-use documentation confirms Qwen 3.8 27B supports parallel tool calls; GPT-OSS supports tool use but not parallel tool calls. This is a more useful pair for a coding agent that may need to call several repository tools. The account Limits page is authoritative and quotas can change.
 
-Keep the account on Groq's Free plan. The configured GPT-OSS models support tool use. Free-plan rate limits are model-specific and may change; the Groq console's Limits page is authoritative. Do not upgrade to a paid Developer plan or enable paid usage. When the free allowance is exhausted, treat a rate-limit response as a provider cooldown, not permission to spend money.
+Keep the account on Groq's Free plan. Both selected model IDs appear in Groq's published Free-plan rate-limit table. Limits may change; the Groq console's Limits page is authoritative. Do not upgrade to a paid Developer plan or enable paid usage. When the free allowance is exhausted, treat a rate-limit response as a provider cooldown, not permission to spend money.
 
 ### OpenRouter
 
@@ -66,7 +66,7 @@ The selected pair is `cohere/north-mini-code:free` plus `nvidia/nemotron-3-ultra
 
 Both configured models use explicit `:free` model IDs. They are zero-price endpoints but rate-limited; availability can change. Free-model request limits are shared account-level limits, not multiplied by having two models. Do not remove `:free`, select a paid variant, or configure a paid fallback.
 
-The two selected free endpoints are operated upstream by NVIDIA. OpenRouter's model pages disclose that NVIDIA may log free-endpoint sessions for product improvement. Do not send credentials, personal data or confidential source material through these routes.
+The Nemotron Ultra free endpoint is operated upstream by NVIDIA. OpenRouter's model page discloses that NVIDIA may log free-endpoint sessions for product improvement. The Cohere North Mini Code route is a separate upstream model. Do not send credentials, personal data or confidential source material through the OpenRouter free pool.
 
 ### Token Harbor
 
