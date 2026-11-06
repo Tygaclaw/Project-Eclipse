@@ -259,8 +259,12 @@ def plan_model_feasibility(
     ram = _available_ram(snapshot, request.system_ram_reserve_bytes)
     gpu = _selected_gpu(snapshot, request.gpu_vram_reserve_bytes)
 
+    # An incomplete report can still give a useful lower bound: the bytes
+    # already measured are known to exist. A lower bound below the budget,
+    # however, cannot prove the full model will fit.
+    weight_lower_bound_bytes = weights["bytes"]
     weight_bytes = (
-        weights["bytes"]
+        weight_lower_bound_bytes
         if weights["usable_for_full_model_estimate"]
         else None
     )
@@ -279,10 +283,11 @@ def plan_model_feasibility(
     ram_usable = ram["usable_bytes"]
     gpu_usable = gpu["usable_bytes"]
     weights_only = {
-        "required_bytes": weight_bytes,
-        "ram_only": _fit_status(weight_bytes, ram_usable),
-        "gpu_only": _fit_status(weight_bytes, gpu_usable),
-        "combined_ram_and_single_gpu": _fit_status(weight_bytes, total_available),
+        "required_bytes": weight_lower_bound_bytes,
+        "is_lower_bound_only": not weights["usable_for_full_model_estimate"],
+        "ram_only": _fit_status(weight_lower_bound_bytes, ram_usable),
+        "gpu_only": _fit_status(weight_lower_bound_bytes, gpu_usable),
+        "combined_ram_and_single_gpu": _fit_status(weight_lower_bound_bytes, total_available),
     }
     full_resident = {
         "required_bytes": total_required,
@@ -292,21 +297,62 @@ def plan_model_feasibility(
         "evidence": "estimated" if total_required is not None else "unknown",
     }
 
-    if not weights["usable_for_full_model_estimate"]:
+    # Known weight bytes that already exceed the combined resident envelope
+    # are a decisive lower bound, even if some tensor types or shards remain
+    # unknown. An incomplete report below budget cannot prove a fit.
+    weights_exceed_envelope = (
+        _fit_status(weight_lower_bound_bytes, total_available) == "exceeds_known_budget"
+    )
+    if weights_exceed_envelope:
+        memory_class = "exceeds_resident_capacity_even_before_kv_cache"
+    elif not weights["usable_for_full_model_estimate"]:
         memory_class = "unknown_incomplete_weight_storage"
     elif kv_bytes is None:
-        # If even the weights alone exceed a known combined capacity, the
-        # model cannot fit there regardless of how large the KV cache is.
-        if _fit_status(weight_bytes, total_available) == "exceeds_known_budget":
-            memory_class = "exceeds_resident_capacity_even_before_kv_cache"
-        else:
-            memory_class = "unknown_kv_cache_cost"
+        memory_class = "unknown_kv_cache_cost"
     elif full_resident["combined_ram_and_single_gpu"] == "fits_within_known_budget":
         memory_class = "estimated_resident_memory_fit"
     elif full_resident["combined_ram_and_single_gpu"] == "exceeds_known_budget":
         memory_class = "exceeds_available_resident_ram_and_vram"
     else:
         memory_class = "unknown_available_memory"
+
+    # The 10+ and 15–20+ goals are exclusively for oversized models. Use
+    # weight residency as the conservative first discriminator: an excessive
+    # requested KV context alone must not turn a natively runnable model into
+    # an oversized-model performance target.
+    if weights_exceed_envelope:
+        native_memory_candidate = "oversized_candidate"
+        target_applies: bool | None = True
+    elif (
+        weights["usable_for_full_model_estimate"]
+        and weights_only["combined_ram_and_single_gpu"] == "fits_within_known_budget"
+    ):
+        native_memory_candidate = "within_resident_capacity_candidate"
+        target_applies = False
+    else:
+        native_memory_candidate = "unknown"
+        target_applies = None
+
+    performance_goal_policy = {
+        "scope": "large_models_that_cannot_run_natively_only",
+        "applies_to_this_profile": target_applies,
+        "primary_acceptance_goal": (
+            "10+ sustained tokens/second" if target_applies is True else None
+        ),
+        "preferred_stretch_goal": (
+            "15–20+ sustained tokens/second" if target_applies is True else None
+        ),
+        "native_fit_policy": (
+            "No fixed throughput floor. Preserve quality and optimize the best verified native performance."
+            if target_applies is False
+            else None
+        ),
+        "evidence": "estimated" if target_applies is not None else "unknown",
+        "note": (
+            "This is a static memory-capacity candidate only. It does not prove backend support, "
+            "native runnability or speed, and it is never a tokens/second prediction."
+        ),
+    }
 
     storage = snapshot.get("storage")
     storage = storage if isinstance(storage, Mapping) else {}
@@ -315,6 +361,7 @@ def plan_model_feasibility(
         "Runtime workspaces, allocator overhead, temporary buffers and backend-specific alignment are not included as measured values.",
         "Separate GPU VRAM pools are not combined. The estimate uses the single GPU with the largest observed free-VRAM reading.",
         "SSD capacity is reported separately; cold storage is not counted as resident memory and per-token SSD streaming is not assumed to be practical.",
+        "The 10+ primary and 15–20+ preferred throughput goals are only for large models classified as oversized candidates; models within the known resident-memory envelope have no fixed throughput floor.",
     ]
     if not weights["usable_for_full_model_estimate"]:
         warnings.append("Complete model tensor storage is not available, so full-model weight residency cannot be estimated.")
@@ -380,6 +427,7 @@ def plan_model_feasibility(
             "weights_only": weights_only,
             "weights_plus_kv_cache": full_resident,
             "memory_classification": memory_class,
+            "native_memory_candidate": native_memory_candidate,
             "evidence": "estimated" if memory_class.startswith("estimated") or memory_class.startswith("exceeds") else "unknown",
         },
         "placement_envelope": {
@@ -400,7 +448,14 @@ def plan_model_feasibility(
             "backend_compatibility": "unknown",
             "model_load_tested": False,
             "inference_tested": False,
-            "performance_target_category": "not_assigned_until_backend_validation",
+            "performance_target_category": (
+                "oversized_model_candidate_only"
+                if target_applies is True
+                else "no_fixed_floor_for_within_capacity_candidate"
+                if target_applies is False
+                else "not_assigned_unknown_capacity"
+            ),
+            "performance_goal_policy": performance_goal_policy,
             "tokens_per_second_prediction": None,
         },
         "warnings": warnings,

@@ -141,6 +141,51 @@ class ModelAtlasTests(unittest.TestCase):
         self.assertEqual(details["expert_count"]["value"], 8)
         self.assertEqual(details["experts_per_token"]["value"], 2)
         self.assertEqual(details["layer_count"]["source"], "config.json:text_config:num_hidden_layers")
+        self.assertEqual(details["layer_count"]["evidence"], "declared")
+
+    def test_hf_architecture_aliases_are_read_as_declared_facts(self) -> None:
+        config = {
+            "model_type": "legacy-config",
+            "n_layer": 24,
+            "n_embd": 3072,
+            "n_head": 24,
+            "n_head_kv": 8,
+            "head_dim": 128,
+            "max_seq_len": 16384,
+            "n_inner": 8192,
+        }
+        self.write("config.json", json.dumps(config).encode("utf-8"))
+        self.write("model.safetensors", build_safetensors(SINGLE, bytes(16)))
+        atlas = build_model_atlas(self.root)
+        details = atlas["architecture"]["details"]
+        self.assertEqual(details["layer_count"]["value"], 24)
+        self.assertEqual(details["hidden_size"]["value"], 3072)
+        self.assertEqual(details["attention_heads"]["value"], 24)
+        self.assertEqual(details["kv_heads"]["value"], 8)
+        self.assertEqual(details["key_head_dimension"]["value"], 128)
+        self.assertEqual(details["value_head_dimension"]["value"], 128)
+        self.assertEqual(details["context_length"]["value"], 16384)
+        self.assertEqual(details["intermediate_size"]["value"], 8192)
+        self.assertEqual(details["layer_count"]["evidence"], "declared")
+        self.assertEqual(details["layer_count"]["source"], "config.json:n_layer")
+
+    def test_conflicting_hf_architecture_aliases_remain_unknown(self) -> None:
+        config = {
+            "model_type": "conflicting-config",
+            "num_hidden_layers": 32,
+            "n_layer": 24,
+            "hidden_size": 4096,
+            "num_attention_heads": 32,
+        }
+        self.write("config.json", json.dumps(config).encode("utf-8"))
+        self.write("model.safetensors", build_safetensors(SINGLE, bytes(16)))
+        atlas = build_model_atlas(self.root)
+        fact = atlas["architecture"]["details"]["layer_count"]
+        self.assertIsNone(fact["value"])
+        self.assertEqual(fact["evidence"], "unknown")
+        self.assertIn("Conflicting architecture declarations", fact["reason"])
+        self.assertIn("num_hidden_layers=32", fact["reason"])
+        self.assertIn("n_layer=24", fact["reason"])
 
     def test_builds_atlas_from_safetensors(self) -> None:
         path = self.write("model.safetensors", build_safetensors(SINGLE, bytes(16)))

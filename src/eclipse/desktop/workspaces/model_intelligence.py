@@ -344,7 +344,7 @@ class ModelIntelligenceWorkspace(QWidget):
         self._ram_reserve_spin.setDecimals(2)
         self._ram_reserve_spin.setSingleStep(0.5)
         self._ram_reserve_spin.setValue(8.0)
-        self._ram_reserve_spin.setSuffix(" GB")
+        self._ram_reserve_spin.setSuffix(" GiB")
         self._ram_reserve_spin.setAccessibleName("System RAM to keep available for Windows and other apps")
 
         self._vram_reserve_spin = QDoubleSpinBox()
@@ -352,7 +352,7 @@ class ModelIntelligenceWorkspace(QWidget):
         self._vram_reserve_spin.setDecimals(2)
         self._vram_reserve_spin.setSingleStep(0.25)
         self._vram_reserve_spin.setValue(0.75)
-        self._vram_reserve_spin.setSuffix(" GB")
+        self._vram_reserve_spin.setSuffix(" GiB")
         self._vram_reserve_spin.setAccessibleName("GPU memory reserve")
 
         for row, (label_text, widget) in enumerate(
@@ -631,7 +631,7 @@ class ModelIntelligenceWorkspace(QWidget):
         plan = result.get("plan") if isinstance(result.get("plan"), dict) else None
         memory = host.get("system_memory") if isinstance(host.get("system_memory"), dict) else {}
         gpus = host.get("gpus") if isinstance(host.get("gpus"), list) else []
-        gpu = next((item for item in gpus if isinstance(item, dict)), None)
+        gpus = [item for item in gpus if isinstance(item, dict)]
         storage = host.get("storage") if isinstance(host.get("storage"), dict) else {}
 
         hardware_card, hardware_layout = make_card(
@@ -672,20 +672,26 @@ class ModelIntelligenceWorkspace(QWidget):
             human_bytes(memory.get("available_bytes")),
             memory.get("evidence") or "unknown",
         )
-        if gpu is not None:
-            add_fact(hardware_layout, "GPU", str(gpu.get("name") or "Unknown GPU"), "observed")
-            add_fact(
-                hardware_layout,
-                "GPU VRAM total",
-                human_bytes(gpu.get("memory_total_bytes")),
-                gpu.get("evidence") or "unknown",
-            )
-            add_fact(
-                hardware_layout,
-                "GPU VRAM currently free",
-                human_bytes(gpu.get("memory_free_bytes")),
-                gpu.get("evidence") or "unknown",
-            )
+        if gpus:
+            for index, device in enumerate(gpus, start=1):
+                add_fact(
+                    hardware_layout,
+                    f"GPU {index}",
+                    str(device.get("name") or "Unknown GPU"),
+                    device.get("evidence") or "unknown",
+                )
+                add_fact(
+                    hardware_layout,
+                    f"GPU {index} VRAM total",
+                    human_bytes(device.get("memory_total_bytes")),
+                    device.get("evidence") or "unknown",
+                )
+                add_fact(
+                    hardware_layout,
+                    f"GPU {index} VRAM currently free",
+                    human_bytes(device.get("memory_free_bytes")),
+                    device.get("evidence") or "unknown",
+                )
         else:
             discovery = host.get("gpu_discovery")
             status = discovery.get("status") if isinstance(discovery, dict) else "unknown"
@@ -763,7 +769,26 @@ class ModelIntelligenceWorkspace(QWidget):
             human_bytes(budgets.get("combined_system_ram_and_single_gpu_bytes")),
             "derived" if budgets.get("combined_system_ram_and_single_gpu_bytes") is not None else "unknown",
         )
+        selected_gpu = (
+            plan.get("host", {}).get("selected_gpu")
+            if isinstance(plan.get("host"), dict)
+            and isinstance(plan.get("host", {}).get("selected_gpu"), dict)
+            else {}
+        )
+        add_fact(
+            fit_layout,
+            "GPU used for single-device estimate",
+            str(selected_gpu.get("device_name") or "Unknown"),
+            selected_gpu.get("evidence") or "unknown",
+        )
         add_fact(fit_layout, "Backend compatibility", "Not validated", "unknown")
+        candidate = capacity.get("native_memory_candidate")
+        add_fact(
+            fit_layout,
+            "Weight-capacity classification",
+            str(candidate or "unknown").replace("_", " "),
+            "estimated" if candidate in {"oversized_candidate", "within_resident_capacity_candidate"} else "unknown",
+        )
         add_text(
             fit_layout,
             "No exact layer split, model load, inference speed or quality result is implied. "
@@ -771,6 +796,54 @@ class ModelIntelligenceWorkspace(QWidget):
             "Faint",
         )
         self._results_layout.addWidget(fit_card)
+
+        policy = (
+            plan.get("execution_feasibility", {}).get("performance_goal_policy")
+            if isinstance(plan.get("execution_feasibility"), dict)
+            and isinstance(plan.get("execution_feasibility", {}).get("performance_goal_policy"), dict)
+            else {}
+        )
+        policy_card, policy_layout = make_card(
+            "Performance goal scope",
+            "These are acceptance goals, not speed predictions. Actual throughput is measured only after a compatible backend runs the model.",
+        )
+        applies = policy.get("applies_to_this_profile")
+        if applies is True:
+            add_fact(policy_layout, "Classification", "Oversized model candidate", "estimated")
+            add_fact(
+                policy_layout,
+                "Primary acceptance goal",
+                str(policy.get("primary_acceptance_goal") or "10+ sustained tokens/second"),
+                "target",
+            )
+            add_fact(
+                policy_layout,
+                "Preferred stretch goal",
+                str(policy.get("preferred_stretch_goal") or "15–20+ sustained tokens/second"),
+                "target",
+            )
+            add_text(
+                policy_layout,
+                "The known weight-storage lower bound exceeds the currently available resident-memory envelope. "
+                "The target is still a research goal, not a predicted or measured result.",
+                "WarningText",
+            )
+        elif applies is False:
+            add_fact(policy_layout, "Classification", "Within known weight-capacity envelope", "estimated")
+            add_text(
+                policy_layout,
+                "No fixed throughput floor applies to this memory-fit candidate. Preserve quality and optimize its best verified native performance. "
+                "Backend compatibility and actual runnability are still unvalidated.",
+                "Muted",
+            )
+        else:
+            add_fact(policy_layout, "Classification", "Unknown", "unknown")
+            add_text(
+                policy_layout,
+                "No throughput target is assigned. The available evidence cannot yet determine whether this model is oversized for the current resident-memory budget.",
+                "Muted",
+            )
+        self._results_layout.addWidget(policy_card)
 
         plan_warnings = plan.get("warnings")
         if isinstance(plan_warnings, list) and plan_warnings:
@@ -883,8 +956,8 @@ class ModelIntelligenceWorkspace(QWidget):
             )
         add_text(
             size_layout,
-            "These values describe the checkpoint only. This build does not claim VRAM feasibility, "
-            "inference speed, supported runtime behaviour or quality.",
+            "These values describe the checkpoint only. The separate hardware card estimates memory capacity; "
+            "it does not validate backend support, inference speed or output quality.",
             "Faint",
         )
         self._results_layout.addWidget(size_card)

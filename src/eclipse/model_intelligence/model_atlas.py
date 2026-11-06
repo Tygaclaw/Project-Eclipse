@@ -82,10 +82,55 @@ _ARCHITECTURE_DETAIL_KEYS = (
 )
 
 
-def _architecture_fact(value: Any, source: str | None) -> dict[str, Any]:
+def _architecture_fact(
+    value: Any,
+    source: str | None,
+    *,
+    evidence: str = "observed",
+) -> dict[str, Any]:
     if isinstance(value, int) and not isinstance(value, bool) and value > 0:
-        return {"value": value, "evidence": "observed", "source": source}
+        return {"value": value, "evidence": evidence, "source": source}
     return {"value": None, "evidence": "unknown", "source": None}
+
+
+def _hf_declared_fact(
+    config: dict[str, Any],
+    aliases: tuple[str, ...],
+    source_prefix: str,
+) -> dict[str, Any]:
+    """Resolve bounded, explicitly declared architecture integers.
+
+    Multiple aliases with conflicting values remain unknown; no key silently
+    wins just because it appears earlier in a preference list.
+    """
+    present = [
+        (key, config[key])
+        for key in aliases
+        if key in config
+        and isinstance(config[key], int)
+        and not isinstance(config[key], bool)
+        and config[key] > 0
+    ]
+    if not present:
+        return _architecture_fact(None, None)
+
+    if len({value for _, value in present}) > 1:
+        declarations = ", ".join(
+            f"{source_prefix}:{key}={value}" for key, value in present
+        )
+        return {
+            "value": None,
+            "evidence": "unknown",
+            "source": None,
+            "reason": "Conflicting architecture declarations: " + declarations,
+        }
+
+    key, value = present[0]
+    return _architecture_fact(
+        value,
+        f"{source_prefix}:{key}",
+        evidence="declared",
+    )
 
 
 def _empty_architecture_details() -> dict[str, dict[str, Any]]:
@@ -131,31 +176,29 @@ def _hf_architecture_details(config: dict[str, Any]) -> dict[str, dict[str, Any]
         source_config = nested
         source_prefix = "config.json:text_config"
 
-    mapping = {
-        "layer_count": "num_hidden_layers",
-        "hidden_size": "hidden_size",
-        "attention_heads": "num_attention_heads",
-        "kv_heads": "num_key_value_heads",
-        "key_head_dimension": "head_dim",
-        "value_head_dimension": "head_dim",
-        "context_length": "max_position_embeddings",
-        "intermediate_size": "intermediate_size",
-        "expert_count": "num_local_experts",
-        "experts_per_token": "num_experts_per_tok",
-        "shared_expert_count": "num_shared_experts",
+    aliases = {
+        "layer_count": ("num_hidden_layers", "n_layer", "n_layers"),
+        "hidden_size": ("hidden_size", "n_embd", "d_model"),
+        "attention_heads": ("num_attention_heads", "n_head", "num_heads"),
+        "kv_heads": ("num_key_value_heads", "num_kv_heads", "n_head_kv"),
+        "key_head_dimension": ("head_dim", "key_head_dim"),
+        "value_head_dimension": ("head_dim", "value_head_dim"),
+        "context_length": (
+            "max_position_embeddings",
+            "max_sequence_length",
+            "max_seq_len",
+            "n_positions",
+            "seq_length",
+        ),
+        "intermediate_size": ("intermediate_size", "n_inner", "d_ff"),
+        "expert_count": ("num_local_experts", "num_experts", "n_expert"),
+        "experts_per_token": ("num_experts_per_tok", "num_experts_per_token"),
+        "shared_expert_count": ("num_shared_experts",),
     }
-    result: dict[str, dict[str, Any]] = {}
-    for label, config_key in mapping.items():
-        value = source_config.get(config_key)
-        source = f"{source_prefix}:{config_key}"
-        if label == "expert_count" and value is None:
-            value = source_config.get("num_experts")
-            source = f"{source_prefix}:num_experts"
-        if label == "experts_per_token" and value is None:
-            value = source_config.get("num_experts_per_token")
-            source = f"{source_prefix}:num_experts_per_token"
-        result[label] = _architecture_fact(value, source)
-    return result
+    return {
+        label: _hf_declared_fact(source_config, keys, source_prefix)
+        for label, keys in aliases.items()
+    }
 
 
 def _detect_kind(path: Path) -> str:

@@ -161,7 +161,8 @@ class FeasibilityPlannerTests(unittest.TestCase):
         )
         self.assertIsNone(result["requirements"]["kv_cache"]["bytes"])
         self.assertEqual(result["capacity_assessment"]["memory_classification"], "unknown_kv_cache_cost")
-        self.assertIn("head dimension", result["requirements"]["kv_cache"]["missing_architecture_facts"])
+        self.assertIn("key head dimension", result["requirements"]["kv_cache"]["missing_architecture_facts"])
+        self.assertIn("value head dimension", result["requirements"]["kv_cache"]["missing_architecture_facts"])
 
     def test_incomplete_weight_storage_prevents_full_fit_claim(self) -> None:
         result = plan_model_feasibility(
@@ -190,6 +191,57 @@ class FeasibilityPlannerTests(unittest.TestCase):
             result["capacity_assessment"]["memory_classification"],
             "exceeds_resident_capacity_even_before_kv_cache",
         )
+        policy = result["execution_feasibility"]["performance_goal_policy"]
+        self.assertIs(policy["applies_to_this_profile"], True)
+        self.assertEqual(policy["primary_acceptance_goal"], "10+ sustained tokens/second")
+        self.assertEqual(policy["preferred_stretch_goal"], "15–20+ sustained tokens/second")
+        self.assertIsNone(result["execution_feasibility"]["tokens_per_second_prediction"])
+
+    def test_partial_weight_lower_bound_can_prove_oversized_but_not_prove_fit(self) -> None:
+        result = plan_model_feasibility(
+            atlas(weight_bytes=40 * GiB, complete=False),
+            host(ram_available=8 * GiB, gpu_free=2 * GiB),
+            FeasibilityRequest(
+                context_tokens=4096,
+                system_ram_reserve_bytes=0,
+                gpu_vram_reserve_bytes=0,
+            ),
+        )
+        assessment = result["capacity_assessment"]
+        self.assertEqual(
+            assessment["memory_classification"],
+            "exceeds_resident_capacity_even_before_kv_cache",
+        )
+        self.assertTrue(assessment["weights_only"]["is_lower_bound_only"])
+        self.assertEqual(assessment["native_memory_candidate"], "oversized_candidate")
+
+    def test_within_weight_capacity_has_no_oversized_model_speed_floor(self) -> None:
+        result = plan_model_feasibility(
+            atlas(weight_bytes=4 * GiB),
+            host(ram_available=48 * GiB, gpu_free=8 * GiB),
+            FeasibilityRequest(
+                context_tokens=4096,
+                system_ram_reserve_bytes=4 * GiB,
+                gpu_vram_reserve_bytes=512 * MiB,
+            ),
+        )
+        policy = result["execution_feasibility"]["performance_goal_policy"]
+        self.assertIs(policy["applies_to_this_profile"], False)
+        self.assertIsNone(policy["primary_acceptance_goal"])
+        self.assertIn("No fixed throughput floor", policy["native_fit_policy"])
+        self.assertEqual(
+            result["capacity_assessment"]["native_memory_candidate"],
+            "within_resident_capacity_candidate",
+        )
+
+    def test_incomplete_weight_storage_below_capacity_leaves_target_scope_unknown(self) -> None:
+        result = plan_model_feasibility(
+            atlas(weight_bytes=2 * GiB, complete=False),
+            host(ram_available=48 * GiB, gpu_free=8 * GiB),
+        )
+        policy = result["execution_feasibility"]["performance_goal_policy"]
+        self.assertIsNone(policy["applies_to_this_profile"])
+        self.assertEqual(policy["evidence"], "unknown")
 
     def test_memory_reserves_are_removed_from_available_budgets(self) -> None:
         result = plan_model_feasibility(
