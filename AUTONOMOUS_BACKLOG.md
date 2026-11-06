@@ -23,9 +23,9 @@ The above does not establish that inference, the Capability System or Agent are 
 
 | ID | Milestone | Acceptance evidence | Status |
 |---|---|---|---|
-| AUTO-01 | Safe autonomous run workflow, branch/PR controller, one-open-PR guard and scheduled/manual resume | Unit tests; Windows Python matrix; owner review of workflow permissions; one confirmed end-to-end run | IN_PROGRESS |
-| AUTO-02 | Ranked free-only failover with initial attempt + five retries, same-session model switching, error classification and durable handoff | Mocked failure tests; live non-confidential route and tool-call smoke tests | READY |
-| AUTO-03 | PR repair/resume from CI failures without duplicate branches or lost work | Simulated failed PR checks and recovery tests; real CI run | READY |
+| AUTO-01 | Safe autonomous run workflow, branch/PR controller, one-open-PR guard and scheduled/manual resume | Controller tests pass; Python 3.11–3.14 CI passes; Qt/PyInstaller packaging and packaged backend smoke test pass; still requires owner review/merge and one confirmed live Actions run | IN_PROGRESS |
+| AUTO-02 | Ranked free-only failover with initial attempt + five retries, same-session model switching, context compaction, error classification and durable handoff | Mocked retry/quota/context/session tests pass on current PR head; live non-confidential route and tool-call smoke tests remain | IN_PROGRESS |
+| AUTO-03 | PR repair/resume from CI failures without duplicate branches or lost work | CI-log collection, same-session repair and checkpoint-recovery code implemented; deliberate end-to-end failed-PR recovery scenario remains | IN_PROGRESS |
 | AUTO-04 | Model-independent review stage and evidence-based backlog completion checks | Reviewer rejects seeded regression and false completion claim | READY |
 
 ## Priority 1 — Real model runtime and resource management
