@@ -11,8 +11,11 @@ from eclipse.model_intelligence import (
     HFFolderError,
     HFFolderLimits,
     InspectionLimits,
+    ModelAtlasError,
+    ModelAtlasLimits,
     SafetensorsError,
     SafetensorsLimits,
+    build_model_atlas,
     inspect_gguf,
     inspect_hf_folder,
     inspect_safetensors,
@@ -58,6 +61,14 @@ def build_parser() -> argparse.ArgumentParser:
     folder.add_argument("--max-entries", type=int, default=100_000)
     folder.add_argument("--max-weight-map-entries", type=int, default=1_000_000)
     folder.add_argument("--compact", action="store_true", help="emit compact JSON")
+
+    atlas = commands.add_parser(
+        "build-atlas",
+        help="compose an evidence-labelled atlas for a GGUF file, Safetensors file or model folder",
+    )
+    atlas.add_argument("path", help="path to a .gguf file, a .safetensors file or a model folder")
+    atlas.add_argument("--max-shards", type=int, default=4096)
+    atlas.add_argument("--compact", action="store_true", help="emit compact JSON")
 
     return parser
 
@@ -126,6 +137,19 @@ def _run_hf_folder(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
     return 0
 
 
+def _run_build_atlas(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if args.max_shards < 0:
+        parser.error("--max-shards cannot be negative")
+    limits = ModelAtlasLimits(max_shards=args.max_shards)
+    try:
+        report = build_model_atlas(args.path, limits)
+    except (ModelAtlasError, ValueError) as exc:
+        print(f"ECLIPSE: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(report, ensure_ascii=False, indent=None if args.compact else 2, allow_nan=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -135,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_safetensors(args, parser)
     if args.command == "inspect-hf-folder":
         return _run_hf_folder(args, parser)
+    if args.command == "build-atlas":
+        return _run_build_atlas(args, parser)
     parser.error(f"Unknown command: {args.command}")
     return 2
 

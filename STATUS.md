@@ -1,6 +1,6 @@
 # ECLIPSE Project Status
 
-**Status:** `ACTIVE — STATIC_INSPECTION_GGUF_SAFETENSORS_HF_FOLDERS`
+**Status:** `ACTIVE — STATIC_INSPECTION_AND_MODEL_ATLAS_CORE`
 
 **Last updated:** 2026-11-06
 
@@ -15,6 +15,7 @@
 - [x] Derived exact GGUF tensor storage bytes, leaving unregistered types and non-block-multiple rows explicitly unknown.
 - [x] Added a bounded, read-only Safetensors header and tensor-index parser.
 - [x] Added bounded Hugging Face folder discovery (`config.json` summary and `model.safetensors.index.json` shard-index cross-check) without following symlinks or reading shard payloads.
+- [x] Added an evidence-labelled Model Atlas core that composes the three inspectors into one summary (parameters, storage bytes, type/dtype distribution).
 - [x] Added JSON CLI output and standard-library synthetic tests.
 
 ## What works now
@@ -22,15 +23,16 @@
 - `py -3 -m eclipse inspect-gguf <file.gguf>` parses GGUF header, metadata, tensor index and per-tensor derived storage bytes without loading weights.
 - `py -3 -m eclipse inspect-safetensors <file.safetensors>` parses the header length, bounded JSON header and declared tensor byte ranges without loading weights.
 - `py -3 -m eclipse inspect-hf-folder <folder>` summarizes `config.json`, enumerates shard sizes, and cross-checks the shard index against the files on disk.
-- Parser limits cap header/index bytes, tensor count, metadata entry count, strings, array elements, dimensions, header size and folder entries.
+- `py -3 -m eclipse build-atlas <path>` dispatches by input type and emits one evidence-labelled JSON atlas.
+- Parser limits cap header/index bytes, tensor count, metadata entry count, strings, array elements, dimensions, header size, folder entries and shard count.
 - Malformed or unsupported inputs fail with a clear error instead of being guessed.
 - Unknown tensor types are retained as explicit unknown IDs with unknown storage size.
 
 ## Local verification evidence
 
-- Python 3.14.4: `PYTHONPATH=src python -m unittest discover -s tests -v` — **74 tests passed**.
+- Python 3.14.4: `PYTHONPATH=src python -m unittest discover -s tests -v` — **82 tests passed**.
 - Python 3.14.4: `python -m compileall -q src tests .github/scripts` — passed.
-- Python 3.14.4: `inspect-safetensors --compact` and `inspect-hf-folder --compact` CLI smoke tests — exit 0 with valid JSON.
+- Python 3.14.4: `inspect-safetensors --compact`, `inspect-hf-folder --compact` and `build-atlas --compact` CLI smoke tests — exit 0 with valid JSON.
 
 ## CI verification evidence
 
@@ -44,7 +46,7 @@
 - [ ] Real user GGUF/Safetensors/folder validated on Windows.
 - [ ] Tokenizer/chat-template inspection and remote model-card metadata.
 - [ ] Derived GGUF sizes reconciled against a trusted full checkpoint.
-- [ ] Model Atlas UI or feasibility planner.
+- [ ] Model Atlas desktop UI and memory/VRAM feasibility planner (atlas core only today).
 - [ ] Model preparation/transformation, runtime adapters or inference.
 - [ ] Capability Amplification system, Obsidian integration, or ECLIPSE Agent.
 - [ ] Windows desktop application.
@@ -58,6 +60,7 @@ $env:PYTHONPATH = "src"
 py -3 -m eclipse inspect-gguf "D:\Models\model.gguf"
 py -3 -m eclipse inspect-safetensors "D:\Models\model.safetensors"
 py -3 -m eclipse inspect-hf-folder "D:\Models\YourModelFolder"
+py -3 -m eclipse build-atlas "D:\Models\YourModelFolder"
 py -3 -m unittest discover -s tests -v
 ```
 

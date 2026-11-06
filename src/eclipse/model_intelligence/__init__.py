@@ -29,6 +29,12 @@ from .safetensors import (
     SafetensorsResourceLimitError,
     inspect_safetensors,
 )
+from .model_atlas import (
+    ModelAtlasError,
+    ModelAtlasFormatError,
+    ModelAtlasLimits,
+    build_model_atlas,
+)
 
 __all__ = [
     "GGMLType",
@@ -42,10 +48,14 @@ __all__ = [
     "HFFolderLimits",
     "HFFolderResourceLimitError",
     "InspectionLimits",
+    "ModelAtlasError",
+    "ModelAtlasFormatError",
+    "ModelAtlasLimits",
     "SafetensorsError",
     "SafetensorsFormatError",
     "SafetensorsLimits",
     "SafetensorsResourceLimitError",
+    "build_model_atlas",
     "get_ggml_type",
     "inspect_gguf",
     "inspect_hf_folder",

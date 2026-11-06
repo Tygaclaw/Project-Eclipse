@@ -24,3 +24,5 @@ Static metadata cannot prove workload routing frequency, semantic expert special
 Unknown tensor type IDs remain unknown, and their storage sizes are not guessed. The GGML block-size/type-size registry is pinned to a reviewed upstream revision; re-review it before changing it. Derived GGUF sizes have not yet been reconciled against a full real checkpoint on Windows, which remains a separate acceptance gate.
 
 Hugging Face shard-index coverage is observed from the index file: missing referenced shards and shards not referenced by the index are reported, and the observed shard byte total is compared with the index `metadata.total_size`. Tokenizer files and remote repository metadata are not read.
+
+The Model Atlas core (`src/eclipse/model_intelligence/model_atlas.py`) composes these parsers. Parameter counts come from observed tensor shapes, GGUF storage bytes are labelled `derived`, Safetensors/folder storage bytes are labelled `observed`, and an uninspectable shard makes the aggregate explicitly incomplete rather than silently partial.

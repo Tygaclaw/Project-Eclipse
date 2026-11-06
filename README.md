@@ -16,6 +16,8 @@ Three read-only, static inspectors emit JSON without loading model weights:
 - **Safetensors inspector** — reads the 8-byte header length, the bounded JSON header and the declared tensor byte ranges. It does not read, map or decode tensor payloads.
 - **Hugging Face folder inspector** — reads only the small control files (`config.json`, `model.safetensors.index.json`), lists shard file sizes and cross-checks the shard index against the files on disk. It does not follow symbolic links or read shard payloads.
 
+On top of these, `build-atlas` composes the relevant inspector into one evidence-labelled JSON atlas (parameters, storage bytes and type/dtype distribution) chosen automatically from the input.
+
 No inspector loads, maps, decodes or executes tensor weights.
 
 ## Requirements
@@ -33,6 +35,7 @@ $env:PYTHONPATH = "src"
 py -3 -m eclipse inspect-gguf "D:\Models\model.gguf"
 py -3 -m eclipse inspect-safetensors "D:\Models\model.safetensors"
 py -3 -m eclipse inspect-hf-folder "D:\Models\YourModelFolder"
+py -3 -m eclipse build-atlas "D:\Models\YourModelFolder"
 ```
 
 For a compact JSON report, add `--compact` to either command:

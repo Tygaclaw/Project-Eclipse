@@ -2,7 +2,7 @@
 
 ## Current automated suite
 
-The static-inspection suite uses only Python's standard library and synthetic binary fixtures. It currently contains 74 tests and covers:
+The static-inspection suite uses only Python's standard library and synthetic binary fixtures. It currently contains 82 tests and covers:
 
 - GGUF v2/v3 and big-endian v3 header handling.
 - Metadata and tensor descriptor parsing.
@@ -14,6 +14,7 @@ The static-inspection suite uses only Python's standard library and synthetic bi
 - GGML type registry block/type sizes, derived exact GGUF storage bytes, non-block-multiple rows and truncated-file warnings.
 - Safetensors header parsing, metadata, unknown dtypes, shape/range mismatch warnings, overlapping/out-of-range/negative offsets, invalid JSON, header limits and read-only behavior.
 - Hugging Face folder discovery: `config.json` summaries, shard-index weight-map parsing, missing/unreferenced shard warnings, declared-total mismatch warnings, path-separator rejection, entry limits, symlink skipping and read-only behavior.
+- Model Atlas core: GGUF/Safetensors/folder dispatch, parameter and storage aggregation, evidence labels, corrupt-shard incompleteness, unsupported input and shard limits.
 
 Run:
 

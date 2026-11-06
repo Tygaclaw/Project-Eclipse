@@ -49,3 +49,9 @@
 **Decision:** Inspect a local Hugging Face model folder by reading only its small control files (`config.json`, `model.safetensors.index.json`) up to configured byte limits, enumerating file sizes, cross-checking the index shard map, and never following symbolic links or reading shard payloads.
 
 **Reason:** Multi-shard checkpoints are the common Hugging Face layout, and reconciling the index with the files on disk catches incomplete downloads without loading weights. The controls keep the same read-only trust boundary and introduce no third-party dependencies; tokenizer and remote metadata parsing are deliberately deferred.
+
+## D-010 — Model Atlas is an evidence-labelled aggregate, not a renderer
+
+**Decision:** Build the Model Atlas core as a pure, standard-library composition of the existing inspectors that emits one machine-readable JSON document with explicit `observed`/`derived`/`unknown` labels. A desktop/UI renderer is a separate layer over this contract.
+
+**Reason:** Keeping the atlas as data lets it be tested with synthetic fixtures, reused by the future feasibility estimator and CLI, and rendered later without re-deriving model facts. It preserves the single read-only no-payload trust boundary and avoids coupling model facts to a still-undecided UI framework.

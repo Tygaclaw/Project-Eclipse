@@ -10,7 +10,7 @@
 | R-006 | Preserve five Master Plan technical subsystems | Recorded in `ARCHITECTURE.md` and `docs/ORIGINAL_PHASE_MAP.md` |
 | R-007 | Inspect models without executing/loading full weights | Synthetic tests verify 0 tensor payload bytes read for GGUF, Safetensors and Hugging Face folders; real-file test pending |
 | R-008 | Bounded parser and explicit unknowns | Parser limits, unknown tensor IDs, derived GGUF sizes, Safetensors offsets and HF shard-index cross-checks implemented; synthetic tests present |
-| R-009 | Model Atlas with evidence labels and source offsets | Machine-readable tensor index with evidence labels (`observed`/`derived`/`unknown`) plus HF folder evidence map present; full Atlas UI pending |
+| R-009 | Model Atlas with evidence labels and source offsets | Evidence-labelled Atlas core (`build-atlas`) aggregates parameters, storage bytes and type/dtype distribution; desktop Atlas UI pending |
 | R-010 | Feasibility and compatibility planner | Pending; exact GGUF storage bytes now available as an input |
 | R-011 | Reversible preparation and transformation lineage | Pending |
 | R-012 | Proven local inference adapter and resource manager | Pending; preserve existing Qwen/llama.cpp configuration |
