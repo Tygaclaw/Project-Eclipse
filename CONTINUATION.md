@@ -14,9 +14,10 @@
 - GGUF tensor storage bytes are derived from `ggml_types.py`, pinned to llama.cpp revision `67107ac34f62882d8b53ea41ad68010ea635b9be`; unknown types and non-block-multiple rows are left explicitly unknown.
 - Safetensors storage bytes are observed from declared header `data_offsets`; malformed offsets, overlapping ranges and invalid JSON fail with a clear error.
 - Hugging Face folder inspection reads only `config.json` and `model.safetensors.index.json`, cross-checks the shard map against files on disk, and does not follow symlinks.
-- The Model Atlas core composes the three inspectors, counts parameters from observed tensor shapes, aggregates storage bytes with evidence labels, and degrades to an incomplete summary (with warnings) when a shard cannot be inspected.
+- The Model Atlas core composes the three inspectors, counts tensor elements from observed shapes, aggregates storage bytes with evidence labels, and reports incomplete coverage when referenced shards are missing or cannot be inspected. Unreferenced files are not counted as model weights.
+- Hugging Face folder scans are lazy and stop at the configured entry limit; control-file reads are capped even if a file changes during inspection. Index `metadata.total_size` is compared with observed tensor-data bytes, not whole Safetensors file sizes.
 - Baseline CI on `main` (parent commit `122fc56`) is green: "Python checks" run #17 on `windows-latest` passed all four Python 3.11–3.14 jobs.
-- This increment's own PR CI run #42162821780 is green: all four Windows jobs passed Python 3.11–3.14.
+- This increment's latest PR CI run #42164928747 is green: all four Windows jobs passed Python 3.11–3.14, with 86 tests on the latest branch head.
 - No real user model file or Windows/GPU runtime was tested in this environment.
 
 ## Next engineering actions
