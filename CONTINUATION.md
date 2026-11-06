@@ -90,3 +90,15 @@ The workflow preserves the 350-minute timeout and the `external_directory: deny`
 - [ ] Complete the ranked ECLIPSE model report using independent public benchmarks and identical controlled ECLIPSE repository tasks.
 
 **Current boundary:** The comment selector is manual. Automatic cross-provider failover, cooldown memory and progress-safe retry/resume are not implemented.
+
+## Coding-agent model research and priority order — 6 November 2026
+
+- Research report: `docs/ECLIPSE_AGENT_MODEL_RANKING_2026-11-06.md`.
+- Global route order and comment commands: `docs/FREE_MODEL_PROVIDER_POOL.md`.
+- Rank-1 default remains Token Harbor `deepseek-v4.1-flash:free` via `/oc`.
+- OpenCode provider groups and model declarations are ordered best-first; the validator now checks that order.
+- The workflow preserves suffix-specific selector matches before broader aliases, with rank comments on every alternate route.
+- The full list ranks DeepSeek V4.1 Flash, Gemini 3.8 Flash, MiMo V2.6 Flash, Gemini 3.7 Flash, DeepSeek V4 Flash, Qwen 3.8 27B, Cohere North Mini Code, GLM-4.7 Flash, MiniMax M2.7, Nemotron 3 Ultra, GPT-OSS 120B and GLM-4.5 Flash.
+- This is a provisional benchmark-based order, not an ECLIPSE live-task result. Provider endpoints and actual tool-call flows still require smoke tests and controlled comparisons.
+- No paid fallback, automatic provider failover, cooldown memory or progress-safe resume was introduced.
+
