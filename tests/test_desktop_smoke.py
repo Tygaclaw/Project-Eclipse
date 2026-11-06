@@ -7,6 +7,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import unittest
 
 try:
+    import PySide6  # noqa: F401
+except ModuleNotFoundError as exc:
+    if exc.name != "PySide6":
+        raise
+    HAVE_QT = False
+else:
+    # Once PySide6 is installed, import or UI construction errors must fail the
+    # test suite instead of silently converting every desktop test to a skip.
     from PySide6.QtWidgets import (
         QApplication,
         QLineEdit,
@@ -19,8 +27,6 @@ try:
     from eclipse.desktop.main_window import NAV_ITEMS, MainWindow
 
     HAVE_QT = True
-except Exception:
-    HAVE_QT = False
 
 
 def sample_atlas() -> dict[str, object]:
