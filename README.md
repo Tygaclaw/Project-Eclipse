@@ -21,11 +21,13 @@ On top of these, `build-atlas` composes the relevant inspectors into one evidenc
 
 No inspector loads, maps, decodes or executes tensor weights, and no inspector imports, compiles or renders a chat template.
 
+Two further read-only commands support memory planning: `inspect-host` reports currently observable host facts (OS/CPU, RAM, NVIDIA VRAM via `nvidia-smi` when available, storage capacity), and `plan-feasibility` combines that snapshot with the atlas to estimate weight and KV-cache memory against usable RAM and the largest single GPU. The result is a static capacity envelope, not an executable layer placement and not a speed prediction; unavailable values are reported as unknown, and the KV estimate assumes full attention on every layer. See [`STATUS.md`](STATUS.md) for which pull request currently carries these commands.
+
 ## Desktop application
 
 A PySide6 `6.12.0` Windows-first shell (`eclipse-desktop`) hosts the three primary workspaces. The Model Intelligence workspace lets you pick a GGUF, Safetensors file or Hugging Face folder and renders the same evidence-labelled atlas, with progress, cancellation and read-only safety reporting. It talks to the core through a bounded, cancellable subprocess boundary, so no parsing is duplicated in the UI. The Capability and Agent workspaces are honest placeholders; the Agent screen has no chat input and reports that no model adapter is connected.
 
-See [`docs/ADR-001-desktop-framework.md`](docs/ADR-001-desktop-framework.md) for the framework decision. The active Windows desktop build workflow is [`.github/workflows/desktop.yml`](.github/workflows/desktop.yml); its readable reference copy is [`docs/desktop-build-workflow.yml`](docs/desktop-build-workflow.yml). The workflow runs on pull requests to `main`, tests the Qt UI, builds a portable Windows x64 package and uploads the `ECLIPSE-windows-x64` artifact. Latest PR #5 corrected Windows desktop validation: [#42198092066](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198092066) (145 tests including Qt, PyInstaller build and packaged backend smoke test passed). The packaged UI has also been manually exercised on Windows 11 with a real GGUF: its Atlas reported zero tensor payload bytes read and no source modification. This is static inspection only, not inference or a GPU-feasibility claim.
+See [`docs/ADR-001-desktop-framework.md`](docs/ADR-001-desktop-framework.md) for the framework decision. The active Windows desktop build workflow is [`.github/workflows/desktop.yml`](.github/workflows/desktop.yml); its readable reference copy is [`docs/desktop-build-workflow.yml`](docs/desktop-build-workflow.yml). The workflow runs on pull requests to `main` (or when started manually), tests the Qt UI, builds a portable Windows x64 package and uploads the `ECLIPSE-windows-x64` artifact. Latest PR #5 corrected Windows desktop validation: [#42198092066](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198092066) (145 tests including Qt, PyInstaller build and packaged backend smoke test passed). The packaged UI has also been manually exercised on Windows 11 with a real GGUF: its Atlas reported zero tensor payload bytes read and no source modification. This is static inspection only, not inference or a GPU-feasibility claim.
 
 ## Requirements
 
@@ -45,6 +47,8 @@ py -3 -m eclipse inspect-safetensors "D:\Models\model.safetensors"
 py -3 -m eclipse inspect-hf-folder "D:\Models\YourModelFolder"
 py -3 -m eclipse inspect-tokenizer "D:\Models\YourModelFolder"
 py -3 -m eclipse build-atlas "D:\Models\YourModelFolder"
+py -3 -m eclipse inspect-host --storage-path "D:\Models"
+py -3 -m eclipse plan-feasibility "D:\Models\model.gguf" --context-tokens 8192
 ```
 
 For a compact JSON report, add `--compact` to either command:

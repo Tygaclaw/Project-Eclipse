@@ -32,12 +32,14 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m unittest discover -s tests -v
 
 ## Local verification evidence
 
+- Hardware-feasibility close-out, local sandbox (Linux, Python 3.13.18, PySide6 not installed): `python -m unittest discover -s tests` ran **190 tests, OK, 11 skipped** (the optional Qt desktop smoke tests); `python -m compileall -q src tests .github/scripts` passed. 6 of the 190 are new (4 `nvidia-smi` lookup cases, 2 KV-assumption cases). Synthetic fixtures on a non-Windows host only.
 - Historical pre-review local result: **131 tests passed** on Python 3.14.4 with PySide6 `6.12.0`; historical only.
 - Corrected PR #5 code head `ce8fcb679373129365a4fb067a50b4777570330f`: Python checks [#42198091790](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198091790) passed Python 3.11, 3.12, 3.13 and 3.14, **145 tests per job**, with 8 Qt tests skipped in this core-only matrix.
 - The same corrected code head's Windows desktop run [#42198092066](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198092066) passed **145 tests including Qt**, PyInstaller build, packaged backend smoke test, ZIP creation and artifact upload. Artifact ID `13493741785`, 50,965,917 bytes, SHA-256 `3d6220bbf9736d39fd840fc65b3b9c82eb99f6d779af4632b0ef49aa603f1a49`.
 
 ## Verified GitHub Actions evidence
 
+- Hardware branch head `4385fb6` (before the close-out commit): Python checks [#42204589092](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42204589092) passed Windows Python 3.11–3.14, **184 tests per job, 11 skipped**. No Windows desktop (Qt/PyInstaller) run existed for that head: `desktop.yml` triggers only on PRs to `main` or manual dispatch, so a stacked PR into PR #5's branch needs a manual dispatch. The result for the close-out head is reported on the stacked PR.
 - Latest PR #5 corrected Windows desktop run [#42198092066](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198092066): all **145 tests passed** with PySide6 installed; PyInstaller created the Windows x64 app; packaged `ECLIPSE.exe --atlas-backend --help` passed; ZIP and artifact upload succeeded (ID `13493741785`, 50,965,917 bytes).
 - Latest PR #5 corrected Python matrix [#42198091790](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198091790): all four Windows jobs passed Python 3.11–3.14, with **145 tests per job**; 8 Qt tests skip in this matrix because PySide6 is intentionally optional, and run in the dedicated desktop job.
 
@@ -59,4 +61,4 @@ Synthetic tests prove parser behavior for the cases represented by their fixture
 3. Real Safetensors files and multi-shard Hugging Face folders on Windows.
 4. Compare metadata/tensor descriptor output and derived sizes with a trusted upstream loader.
 5. Run the tokenizer/chat-format card against a real multi-file Hugging Face folder (including `additional_chat_templates/*.jinja`) and a real GGUF with embedded `tokenizer.chat_template`.
-6. Add the static memory/VRAM feasibility estimator, then separately validate runtime correctness and preparation integrity.
+6. Owner Windows 11 validation of `inspect-host`, `plan-feasibility` and the Model Intelligence memory-fit controls against the known-good model; check the KV estimate against backend-reported allocation (the estimate assumes full attention on every layer). Then separately validate runtime correctness and preparation integrity.

@@ -36,8 +36,8 @@ Status labels mean:
 | Hugging Face folder discovery | Bounded control-file reads, shard-index cross-check, bounded directory enumeration, no symlink following | Implemented, partial scope | Real multi-shard folder validation; more architecture/config variants |
 | Model Atlas | Existing pure JSON aggregate composed from inspectors; evidence labels; desktop rendering | Implemented, evolving contract | Extend architecture facts only where source evidence exists; preserve backward compatibility |
 | Tokenizer/chat-template intelligence | Static metadata inspection; embedded and standalone templates; shared limits, bounded previews, HF compatibility caveat; UI card | Implemented on PR #5 branch, awaiting owner merge | Owner review; real model-folder validation; no template execution or tokenizer runtime validation is claimed |
-| Host hardware discovery | Current Windows/OS/CPU/RAM snapshot; NVIDIA VRAM if `nvidia-smi` responds; storage capacity; unknowns stay unknown | Initial implementation in this milestone | Validate on owner PC; broaden vendor/sensor coverage without claiming unavailable metrics |
-| RAM/VRAM/KV feasibility | Architecture-based KV estimate, configurable context/cache dtype/sequence slots/reserves, one-GPU VRAM envelope, full weight-storage completeness check | Initial capacity estimate in this milestone | Validate formula/layouts per architecture and backend; account for runtime overhead, actual allocation and compatibility; no layer split yet |
+| Host hardware discovery | Current Windows/OS/CPU/RAM snapshot; NVIDIA VRAM if `nvidia-smi` responds; storage capacity; unknowns stay unknown | Implemented on `feature/hardware-feasibility-v1` (stacked on PR #5), awaiting owner review; owner Windows validation pending | Validate on owner PC; broaden vendor/sensor coverage without claiming unavailable metrics |
+| RAM/VRAM/KV feasibility | Architecture-based KV estimate, configurable context/cache dtype/sequence slots/reserves, one-GPU VRAM envelope, full weight-storage completeness check | Implemented as a static capacity estimate on `feature/hardware-feasibility-v1`, awaiting owner review; owner Windows validation pending | Validate formula/layouts per architecture and backend (the estimate assumes full-attention KV on every layer); account for runtime overhead, actual allocation and compatibility; no layer split yet |
 | Reversible preparation | No prepared-variant lifecycle, manifest store or rollback UI | Not implemented | Implement traceable output variants, checksums, provenance, validation and rollback |
 | Inference backend integration | No backend adapter or ECLIPSE-managed model process in repository | Not implemented | Reuse a proven maintained backend; integrate the user's known-good llama.cpp/Vulkan setup without reinstalling or changing it |
 | Runtime model lifecycle | No real in-app model start/load/generate/stop/unload/restart service | Not implemented | Add process ownership, safe shutdown, lifecycle states, restart-required changes and reliable stop behaviour |
@@ -86,7 +86,8 @@ Important boundaries:
 - Serialized tensor storage is only a starting weight-storage estimate. Runtime layout changes, allocator overhead, temporary buffers and backend workspaces are not yet measured.
 - SSD space is reported separately; cold storage is not counted as resident memory and repeated SSD reads in the per-token path are not assumed to be viable.
 - No exact layer/expert assignment, live movement, backend compatibility, model load, inference or tokens/second prediction is performed.
-- The planner does not yet classify a model into the oversized-model throughput target category.
+- The KV-cache estimate assumes every layer stores full-attention key/value state for the whole context; hybrid, sliding-window or latent-attention models can need less, so it can overstate. This assumption is stated in the result and its warnings.
+- The planner classifies a candidate for the **requested working-set profile** as oversized (weights plus KV cache, or a decisive weight lower bound, exceed the resident envelope), within capacity, or unknown. This is a memory classification only; it is not a speed prediction and does not prove backend support or that every placement fails.
 
 ## 4. Performance goals — corrected owner interpretation
 
@@ -94,7 +95,7 @@ The **10+ sustained tokens/second primary target** and **15–20+ sustained toke
 
 Models that already run natively have no fixed throughput floor. ECLIPSE should preserve their quality and pursue their best verified native performance. It must not degrade or slow down a well-running smaller model to satisfy a target meant for oversized models.
 
-The classification requires a hardware/backend assessment, not parameter count or marketing labels alone. The current static feasibility planner deliberately leaves `performance_target_category` unassigned until a backend can validate actual execution.
+The classification requires a hardware/backend assessment, not parameter count or marketing labels alone. The static feasibility planner assigns `performance_target_category` only as a memory-capacity candidate label for the requested profile (`oversized_model_requested_profile_candidate_only`, `no_fixed_floor_for_within_capacity_candidate` or `not_assigned_unknown_capacity`) and never predicts tokens/second; only measured runs on a validated backend can show whether a goal is met.
 
 ## 5. The five internal subsystems
 
@@ -114,7 +115,7 @@ The classification requires a hardware/backend assessment, not parameter count o
 |---|---|---|
 | 0 | Foundation and repository control | Foundation and Windows shell exist |
 | 1 | Static Model Intelligence Laboratory | Initial inspectors, Atlas and tokenizer work exist |
-| 2 | Hardware feasibility and compatibility | Initial RAM/VRAM/KV capacity estimate is being implemented |
+| 2 | Hardware feasibility and compatibility | Initial static RAM/VRAM/KV capacity estimate implemented on `feature/hardware-feasibility-v1`; owner validation pending |
 | 3 | Lossless preparation | Not implemented |
 | 4 | First inference foundation | Not implemented |
 | 5 | Fast-path optimization | Not implemented |
@@ -132,7 +133,7 @@ The classification requires a hardware/backend assessment, not parameter count o
 | 1 | Project control plane and repository | Basic control/docs exist; contributor readiness incomplete |
 | 2 | Requirements, architecture and experience shell | Three-workspace shell exists; shared services incomplete |
 | 3 | Static Model Intelligence Laboratory | Initial implementation exists |
-| 4 | Feasibility, compatibility and lossless preparation | Feasibility estimate in progress; preparation not implemented |
+| 4 | Feasibility, compatibility and lossless preparation | Static feasibility estimate implemented on the feature branch (awaiting review); preparation not implemented |
 | 5 | First model runtime and registry | Not implemented |
 | 6 | Capability Amplification core | Not implemented |
 | 7 | Obsidian, memory and skills | Not implemented |
@@ -145,7 +146,7 @@ These maps describe different views of the plan and must remain distinct.
 
 ## 7. Ordered implementation gates
 
-1. **Complete and verify the static feasibility foundation.** Run the new Python and Windows Qt/PyInstaller CI, correct defects, and inspect real Windows host telemetry and a real model folder locally when the owner chooses to validate. Keep unknowns visible.
+1. **Complete and verify the static feasibility foundation.** Python CI passes on the feature branch; the Windows Qt/PyInstaller build does not trigger for a PR that does not target `main`, so it is dispatched manually. The owner inspects real Windows host telemetry and a real model folder when they choose to validate. Keep unknowns visible.
 2. **Lossless preparation.** Create separate derived packages/manifests/checksums with the original checkpoint immutable. Add validation and rollback before introducing compression.
 3. **First real inference adapter.** Reuse a maintained Windows-compatible backend. Start with the user's already-working llama.cpp/Vulkan setup; do not reinstall or change its known-good profile. Prove process lifecycle, output correctness, graceful stop and resource reporting.
 4. **Measured memory placement.** Implement only backend-supported CPU/GPU/layer/tensor placement, KV-cache location/precision and budget controls. Compare requested placement with backend-reported/observed placement. Do not label a hybrid capacity estimate as an executable layer split.

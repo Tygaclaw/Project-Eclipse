@@ -4,12 +4,19 @@
 
 - Repository: `Tygaclaw/Project-Eclipse`.
 - `main` baseline at synchronization: `04e46ce08284388c79a7fad91590c5258d1b162d`.
-- Working branch: `opencode/issue2-20261106071400` (PR #5 feature branch). It preserves the original tokenizer implementation, merges current `main` at `04e46ce08284388c79a7fad91590c5258d1b162d` as a second parent (no force-push), and contains the review corrections. Final corrected code head verified by CI: `ce8fcb679373129365a4fb067a50b4777570330f`.
-- Increment: bounded, read-only tokenizer and chat-template intelligence, integrated into the evidence-labelled Model Atlas and the Model Intelligence desktop workspace, plus the `inspect-tokenizer` CLI command.
+- Working branch: `feature/hardware-feasibility-v1`, stacked on PR #5's branch `opencode/issue2-20261106071400` (which preserves the tokenizer work and its review corrections; corrected PR #5 code head verified by CI: `ce8fcb679373129365a4fb067a50b4777570330f`).
+- Increment: read-only host hardware discovery and static RAM/VRAM/KV-cache memory-feasibility planning (`inspect-host`, `plan-feasibility` and Model Intelligence UI controls), on top of PR #5's tokenizer/chat-template work.
 - Primary workspaces: Model Intelligence & Inference Platform; Capability Amplification & Knowledge System; ECLIPSE Agent.
 - The prior increment delivered the PySide6 Windows-first desktop shell, the Model Atlas subprocess boundary, PyInstaller packaging and the active Windows workflow; that work is unchanged.
 
-## What was actually verified in this increment
+## Hardware-feasibility close-out (this branch)
+
+- The branch is 13 hardware commits on top of PR #5's branch plus the close-out commits. It is opened as a stacked PR targeting `opencode/issue2-20261106071400` and must not be turned into a 45-commit PR against `main`. After PR #5 is merged by the owner, retarget it to `main` and re-run all PR checks including the Windows desktop workflow.
+- Close-out changes: `nvidia-smi` location fallback in `hardware.py`; explicit full-attention-on-every-layer KV assumption in `feasibility.py` output and warnings; 6 new tests; documentation reconciled with the code (STATUS, CONTINUATION, README, REQUIREMENTS, TESTING, roadmap and alignment audit).
+- Evidence: local sandbox 190 tests OK with 11 skipped (Qt, PySide6 absent); CI on the pre-close-out head `4385fb6` passed Python 3.11–3.14 with 184 tests per job ([run #42204589092](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42204589092)). No Windows desktop run is recorded in these files: `desktop.yml` does not trigger for PRs that do not target `main` and was left untouched, so it is dispatched manually and reported on the PR.
+- Still pending: owner Windows 11 validation of `inspect-host`, `plan-feasibility` and the UI controls; owner review of PRs #5, #6 and #7.
+
+## Inherited verification evidence (PR #5 tokenizer increment, unchanged on this branch)
 
 - Historical pre-review local tokenizer result: Python 3.14.4 with PySide6 `6.12.0`, **131 tests passed**. This is retained as historical evidence only; acceptance of the corrected implementation is based on the PR-head GitHub Actions runs below.
 - `tokenizer.py` reads only small control files and bounded UTF-8 templates, never imports or renders Jinja, never follows symlinks, and reports `templates_rendered == False`, `jinja_imported == False` and `tensor_payload_bytes_read == 0`.
@@ -46,7 +53,7 @@ User-reported manual Windows 11 real-file validation (packaged application):
 
 1. PR #5 review corrections are complete and verified. Keep PR #5 open for the owner's fresh review; do not merge it automatically.
 2. Complete a repository-wide product/code alignment audit against `docs/COMPLETE_PRODUCT_RUNTIME_VISION.md` on the separate PR #6 specification branch. Identify missing, incomplete, disconnected, duplicated or inconsistent systems; repair existing code rather than creating parallel scaffolds. Keep PR #6 open for owner review.
-3. Implement the evidence-labelled hardware feasibility planner: VRAM/RAM/SSD budgets and reserves, architecture-aware weight storage, context/KV-cache cost, backend/runtime overhead, compatibility and honest fit classifications. This is a planning/measurement milestone, not live inference yet.
+3. The static hardware feasibility planner (RAM/VRAM/SSD budgets and reserves, weight storage, context/KV-cache estimate, honest fit classification) is implemented on this branch and awaits owner review as a stacked PR into PR #5's branch, plus owner Windows 11 validation. Backend/runtime-overhead estimates, compatibility and executable placement remain future work. Do not merge before PR #5.
 4. Add reversible preparation and then a proven Windows-compatible inference adapter that can connect to the user's known-good llama.cpp configuration without reinstalling or changing it. Measure actual sustained throughput/resource use; apply the 10+ and 15–20+ tokens/s targets only to large models classified as not natively runnable.
 5. Continue shared Core, Capability Amplification, Obsidian and Agent work in separate tested milestones. Do not repeat completed Qwen/API setup or the A* evaluation.
 6. Review and include PySide6/Qt LGPL notices, relinking instructions and a corresponding-source offer before broader redistribution.

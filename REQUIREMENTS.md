@@ -11,7 +11,7 @@
 | R-007 | Inspect models without executing/loading full weights | Synthetic tests cover all inspectors; one real GGUF inspection on Windows 11 reported 0 tensor payload bytes read and no source modification; further format validation pending |
 | R-008 | Bounded parser and explicit unknowns | Parser limits, unknown tensor IDs, derived GGUF sizes, Safetensors offsets and HF shard-index cross-checks implemented; synthetic tests present |
 | R-009 | Model Atlas with evidence labels and source offsets | Evidence-labelled Atlas core and connected desktop UI render the report; one real GGUF UI inspection completed on Windows 11 with observed/derived labels and read-only safety invariants |
-| R-010 | Feasibility and compatibility planner | Pending; exact GGUF storage bytes now available as an input |
+| R-010 | Feasibility and compatibility planner | Partial: static RAM/VRAM/KV capacity estimate, host snapshot, `inspect-host`/`plan-feasibility` CLI and UI controls implemented on `feature/hardware-feasibility-v1` (stacked on PR #5; synthetic tests, CI on Python 3.11–3.14); owner Windows 11 validation pending. Backend/operator compatibility, runtime-overhead estimates, hybrid-attention KV layouts and executable placement not implemented |
 | R-011 | Reversible preparation and transformation lineage | Pending |
 | R-012 | Proven local inference adapter and resource manager | Pending; preserve existing Qwen/llama.cpp configuration |
 | R-013 | Predictive prefetch with true router authority | Research/implementation pending |
