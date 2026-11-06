@@ -198,6 +198,23 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(template["preview"], "")
         self.assertTrue(any("not valid UTF-8" in warning for warning in report["warnings"]))
 
+    def test_legacy_chat_template_json_named_list_is_preserved(self) -> None:
+        self.write_json(
+            "chat_template.json",
+            {
+                "chat_template": [
+                    {"name": "default", "template": "legacy default"},
+                    {"name": "tool_use", "template": "legacy tool template"},
+                ]
+            },
+        )
+        report = inspect_tokenizer(self.root)
+        self.assertEqual(
+            {item["name"] for item in report["chat_templates"]["sources"]},
+            {"default", "tool_use"},
+        )
+        self.assertEqual(report["chat_templates"]["parsed_count"], 2)
+
     def test_legacy_processor_template_mixed_with_modern_jinja_has_no_default(self) -> None:
         self.write_json("chat_template.json", {"chat_template": "legacy"})
         self.write_text("chat_template.jinja", "modern")
@@ -452,6 +469,17 @@ class GgufTokenizerSummaryTests(unittest.TestCase):
         keys = {field["key"] for field in summary["fields"]}
         self.assertIn("tokenizer.ggml.tokens", keys)
         self.assertNotIn("tokenizer.chat_template", keys)
+
+    def test_gguf_chat_template_respects_per_template_limit(self) -> None:
+        summary = summarize_gguf_tokenizer(
+            {"tokenizer.chat_template": "{{" + ("x" * 40) + "}}"},
+            TokenizerLimits(max_template_bytes=8),
+        )
+        self.assertEqual(summary["chat_templates"]["count"], 1)
+        self.assertEqual(summary["chat_templates"]["parsed_count"], 0)
+        self.assertEqual(summary["chat_templates"]["skipped_count"], 1)
+        self.assertIsNone(summary["chat_templates"]["default"])
+        self.assertTrue(any("Skipped GGUF chat template" in warning for warning in summary["warnings"]))
 
     def test_empty_metadata_reports_unavailable(self) -> None:
         summary = summarize_gguf_tokenizer({})
