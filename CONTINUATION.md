@@ -9,11 +9,11 @@
 
 ## What was actually verified in this increment
 
-- Windows desktop workflow [run #42169639645](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639645), Python 3.12 + PySide6 `6.12.0`: 110 tests passed, including all 8 offscreen desktop UI tests with no skips. PyInstaller built the Windows x64 package; the packaged backend smoke test, ZIP creation and artifact upload all passed.
-- Core CI matrix [run #42169639803](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639803) passed Python 3.11–3.14. Its eight UI tests were skipped because PySide6 is intentionally optional in that dependency-free matrix. The desktop tests skip cleanly when PySide6 is absent.
+- Latest Windows desktop workflow [run #42170364882](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364882), Python 3.12 + PySide6 `6.12.0`: 110 tests passed, including all 8 offscreen desktop UI tests with no skips. PyInstaller built the Windows x64 package; the packaged backend smoke test, ZIP creation and artifact upload all passed. Artifact `ECLIPSE-windows-x64` is 50,929,677 bytes.
+- Latest core CI matrix [run #42170364898](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364898) passed Python 3.11–3.14. Its eight UI tests were skipped because PySide6 is intentionally optional in that dependency-free matrix.
 - The desktop Atlas path runs the unchanged `build-atlas` command via `subprocess.Popen` with an argument list, a timeout, cancellation and bounded output, and validates the `eclipse_model_atlas`/`atlas_version == 1` contract and read-only invariants before rendering.
 - `packaging/eclipse-desktop.spec` and `packaging/launcher.py` built a windowed onedir `ECLIPSE.exe` on a GitHub-hosted Windows runner; `ECLIPSE.exe --atlas-backend --help` passed.
-- `docs/desktop-build-workflow.yml` is a proposed workflow only; it is deliberately outside `.github/workflows/`, which the OpenCode GitHub App cannot write. No Windows desktop artifact exists yet.
+- The active workflow is installed at `.github/workflows/desktop.yml`; `docs/desktop-build-workflow.yml` is its reference copy. Latest run #42170364882 uploaded the successful Windows x64 artifact.
 - The desktop framework comparison and decision are recorded in `docs/ADR-001-desktop-framework.md` and `DECISIONS.md` D-011.
 - All inspectors and the atlas open inputs read-only and read zero tensor payload bytes.
 - GGUF tensor storage bytes are derived from `ggml_types.py`, pinned to llama.cpp revision `67107ac34f62882d8b53ea41ad68010ea635b9be`; unknown types and non-block-multiple rows are left explicitly unknown.
@@ -22,7 +22,7 @@
 - The Model Atlas core composes the three inspectors, counts tensor elements from observed shapes, aggregates storage bytes with evidence labels, and reports incomplete coverage when referenced shards are missing or cannot be inspected. Unreferenced files are not counted as model weights.
 - Hugging Face folder scans are lazy and stop at the configured entry limit; control-file reads are capped even if a file changes during inspection. Index `metadata.total_size` is compared with observed tensor-data bytes, not whole Safetensors file sizes.
 - Baseline CI on `main` (parent commit `122fc56`) is green: "Python checks" run #17 on `windows-latest` passed all four Python 3.11–3.14 jobs.
-- The current core PR matrix [#42169639803](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639803) is green on Windows Python 3.11–3.14. The eight desktop tests skip in that matrix because it intentionally omits PySide6; all eight ran and passed in the dedicated desktop job [#42169639645](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42169639645).
+- The current core PR matrix [#42170364898](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364898) is green on Windows Python 3.11–3.14. The eight desktop tests skip in that matrix because it intentionally omits PySide6; all eight ran and passed in the dedicated desktop job [#42170364882](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364882).
 - No real user model file or GPU runtime was tested. The packaged Windows build and smoke test ran on GitHub-hosted Windows; a manual interactive launch on the user's own Windows 11 PC remains pending.
 
 ## Next engineering actions
