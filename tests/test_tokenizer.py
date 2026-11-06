@@ -345,7 +345,7 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(report["chat_templates"]["skipped_count"], 1)
         self.assertEqual(report["chat_templates"]["sources"][0]["status"], "skipped")
         self.assertIsNone(report["chat_templates"]["default"])
-        self.assertTrue(any("exceeds the" in warning for warning in report["warnings"]))
+        self.assertTrue(any("per-template limit" in warning for warning in report["warnings"]))
 
     def test_template_preview_is_bounded(self) -> None:
         self.write_text("chat_template.jinja", "a" * 100)
