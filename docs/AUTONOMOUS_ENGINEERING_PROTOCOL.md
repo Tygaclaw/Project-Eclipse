@@ -29,6 +29,8 @@ Each autonomous run performs one bounded, reviewable milestone:
 9. The controller waits for the Windows Python matrix and the Windows Qt/PyInstaller desktop workflow. Safe product PRs may be squash-merged only when all required checks pass and the changed-file policy allows it.
 10. After a successful merge, dispatch the next run. A six-hour schedule is a recovery mechanism if the chained dispatch is missed.
 
+If GitHub Actions checks fail after a milestone PR is opened, the controller retrieves failed Windows job logs and gives them to the same OpenCode session for repair. It may perform up to five CI repair rounds, each with deterministic validation and a new controller-owned commit/push. If the repair limit or free-model budget is exhausted, the PR remains open and unmerged. A later scheduled run resumes that branch from its committed diff, PR description and sanitized handoff. A partial-work checkpoint draft is eligible for that recovery; protected bootstrap/security drafts remain paused for owner review.
+
 Only one autonomous milestone PR may be open at a time. An existing open autonomous PR blocks another run, preventing duplicate work.
 
 ## 3. Model routing, retries and same-session recovery
@@ -51,7 +53,7 @@ Fail over immediately, without wasting five retries, for:
 
 For context-length errors, first compact the task using repository files, the durable handoff and the existing session; do not burn the retry budget. A test failure is an engineering failure, not a provider outage: ask the same session to diagnose and repair it, with the same six-call per-model bound. Fail over after the bound is exhausted.
 
-The same OpenCode session is continued using `opencode run --session <id> --model <provider/model>`. The official CLI supports both session continuation and model selection. A runner restart may not preserve the native in-memory session; in that case it must restore the sanitized durable handoff, Git history and working-tree checkpoint and state clearly that it is a recovered session, not the same process.
+The same OpenCode session is continued using `opencode run --standalone --session <id> --model <provider/model>`. The official CLI supports session continuation, model selection, non-interactive JSON events and standalone execution for CI. A runner restart may not preserve the native in-memory session; in that case it must restore the sanitized durable handoff, Git history and working-tree checkpoint and state clearly that it is a recovered session, not the same process.
 
 If every approved free route is unavailable, write `BLOCKED_NO_FREE_MODEL`, preserve the worktree/handoff, publish the reason in the job summary and stop safely. Never use a paid model, paid fallback, account rotation, top-up or unapproved provider.
 
@@ -70,7 +72,7 @@ The `eclipse-autonomous` OpenCode agent may inspect and edit the checked-out wor
 - access outside the repository worktree;
 - destructive cleanup/reset commands that could erase the runner checkpoint.
 
-The controller, not the model, creates the commit and push after checks pass. Checkout credentials are not persisted to the working tree and are never inherited by the model subprocess.
+The controller, not the model, creates the commit and push after checks pass. Checkout credentials are not persisted to the working tree and are never inherited by the model subprocess. The OpenCode subprocess receives the selected provider API key as an environment variable because its provider adapter requires it; its shell/tool permissions and minimal environment reduce accidental access, but this is not a hardware security sandbox against a malicious model/provider. Use only non-confidential public-repository content in these hosted free models.
 
 Before publishing, the controller must:
 - run `git diff --check`;
