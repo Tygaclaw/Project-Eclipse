@@ -49,6 +49,18 @@ jobs:
 
           # Match the most specific command first.
           case "$COMMENT_BODY" in
+            *"/oc-openrouter-ultra"*)
+              provider="openrouter"
+              model="openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
+              ;;
+            *"/oc-openrouter-crouton"*)
+              provider="openrouter"
+              model="openrouter/stealth/crouton-alpha"
+              ;;
+            *"/oc-openrouter-dots"*)
+              provider="openrouter"
+              model="openrouter/dots-studio/dots-3-note-preview:free"
+              ;;
             *"/oc-openrouter-supervl"*)
               provider="openrouter"
               model="openrouter/nvidia/nemotron-3.5-super-vl:free"
@@ -101,6 +113,18 @@ jobs:
               provider="cloudflare"
               model="cloudflare-workers-ai/@cf/openai/gpt-oss-20b"
               ;;
+            *"/oc-gemini-lite"*)
+              provider="google"
+              model="google/gemini-3.5-flash-lite"
+              ;;
+            *"/oc-gemini-gemma31"*)
+              provider="google"
+              model="google/gemma-4-31b-it"
+              ;;
+            *"/oc-gemini-gemma26"*)
+              provider="google"
+              model="google/gemma-4-26b-a4b-it"
+              ;;
             *"/oc-gemini"*)
               provider="google"
               model="google/gemini-3.8-flash"
@@ -109,6 +133,10 @@ jobs:
               provider="groq"
               model="groq/qwen/qwen3.8-27b"
               ;;
+            *"/oc-groq-small"*)
+              provider="groq"
+              model="groq/openai/gpt-oss-20b"
+              ;;
             *"/oc-groq"*)
               provider="groq"
               model="groq/openai/gpt-oss-120b"
@@ -116,6 +144,10 @@ jobs:
             *"/oc-nvidia"*)
               provider="nvidia"
               model="nvidia/nemotron-3-super-120b-a12b"
+              ;;
+            *"/oc-cohere-eval"*)
+              provider="cohere"
+              model="cohere/command-a-reasoning-08-2025"
               ;;
             *"/oc-cohere"*)
               provider="cohere"
