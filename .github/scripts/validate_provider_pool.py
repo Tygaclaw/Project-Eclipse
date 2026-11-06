@@ -26,6 +26,7 @@ PROVIDER_CONFIG_IDS = {
     "cloudflare": "cloudflare-workers-ai",
     "cohere": "cohere",
     "orcarouter": "orcarouter",
+    "kilo": "kilo",
 }
 
 PROVIDER_SECRET_NAMES = {
@@ -41,6 +42,7 @@ PROVIDER_SECRET_NAMES = {
     "cloudflare": ("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"),
     "cohere": ("COHERE_API_KEY",),
     "orcarouter": ("ORCAROUTER_API_KEY",),
+    "kilo": ("KILO_API_KEY",),
 }
 
 
@@ -139,6 +141,9 @@ def main() -> int:
             "deepseek/deepseek-v4-flash-free",
         }:
             fail(f"{command}: OrcaRouter route is not explicitly free: {model!r}")
+
+        if workflow_provider == "kilo" and model_id != "kilo-auto/free":
+            fail(f"{command}: Kilo route is not explicitly Auto Free: {model!r}")
 
     # The agent step must conditionally pass provider credentials rather than
     # giving every key to every model.
