@@ -138,7 +138,7 @@ def _find_session_id(value: object) -> str | None:
             if key.lower() in {"sessionid", "session_id"} and isinstance(nested, str):
                 if nested.startswith("ses_"):
                     return nested
-        for nested in value.values():
+            for nested in value.values():
             found = _find_session_id(nested)
             if found:
                 return found
@@ -177,6 +177,13 @@ def safe_child_environment(route: Route, source: dict[str, str]) -> dict[str, st
                         "git reset --hard*": "deny",
                         "git clean -f*": "deny",
                         "gh *": "deny",
+                        "env": "deny",
+                        "printenv*": "deny",
+                        "curl*": "deny",
+                        "wget*": "deny",
+                        "nc *": "deny",
+                        "socat*": "deny",
+                        "python -c*": "deny",
                         "rm -rf*": "deny",
                     },
                 },
@@ -261,7 +268,10 @@ def validate_worktree() -> tuple[bool, str]:
     )
     outputs: list[str] = []
     for title, command in commands:
-        completed = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False)
+        completed = subprocess.run(
+            command, cwd=ROOT, env=controller_environment(dict(os.environ)),
+            text=True, capture_output=True, check=False,
+        )
         combined = (completed.stdout or "") + (completed.stderr or "")
         outputs.append(f"===== {title} (exit {completed.returncode}) =====\n{combined[-8_000:]}")
         if completed.returncode != 0:
@@ -272,15 +282,18 @@ def validate_worktree() -> tuple[bool, str]:
 def changed_paths() -> list[str]:
     names = subprocess.run(
         ["git", "diff", "--name-only", "origin/main...HEAD"],
-        cwd=ROOT, text=True, capture_output=True, check=True,
+        cwd=ROOT, env=controller_environment(dict(os.environ)),
+        text=True, capture_output=True, check=True,
     ).stdout.splitlines()
     untracked = subprocess.run(
         ["git", "ls-files", "--others", "--exclude-standard"],
-        cwd=ROOT, text=True, capture_output=True, check=True,
+        cwd=ROOT, env=controller_environment(dict(os.environ)),
+        text=True, capture_output=True, check=True,
     ).stdout.splitlines()
     staged = subprocess.run(
         ["git", "diff", "--cached", "--name-only"],
-        cwd=ROOT, text=True, capture_output=True, check=True,
+        cwd=ROOT, env=controller_environment(dict(os.environ)),
+        text=True, capture_output=True, check=True,
     ).stdout.splitlines()
     return sorted(set(names + untracked + staged))
 
@@ -293,6 +306,11 @@ def safety_scan(paths: Sequence[str], *, max_bytes: int = 10 * 1024 * 1024) -> t
         if any(name.startswith(prefix) for prefix in PROTECTED_PREFIXES):
             protected = True
         if not path.exists():
+            # Deletions require explicit review; never silently auto-merge them.
+            protected = True
+            continue
+        if path.is_symlink():
+            problems.append(f"{name}: symlinks are not allowed in autonomous source PRs")
             continue
         if path.is_file():
             if path.stat().st_size > max_bytes:
@@ -322,13 +340,26 @@ def redact(text: str, source: dict[str, str]) -> str:
     return result
 
 
+def controller_environment(source_env: dict[str, str]) -> dict[str, str]:
+    """Allowlist the parent controller's environment; provider keys stay out of Git/gh/tests."""
+    allowed = (
+        "PATH", "HOME", "USER", "LANG", "LC_ALL", "TMPDIR", "TEMP", "TMP",
+        "APPDATA", "LOCALAPPDATA", "SYSTEMROOT", "WINDIR", "CI",
+    )
+    env = {key: source_env[key] for key in allowed if key in source_env}
+    for key in ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_REPOSITORY", "GITHUB_RUN_ID"):
+        if source_env.get(key):
+            env[key] = source_env[key]
+    return env
+
+
 def gh(
     args: Sequence[str],
     *,
     source_env: dict[str, str],
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
-    env = dict(source_env)
+    env = controller_environment(source_env)
     token = env.get("GITHUB_TOKEN") or env.get("GH_TOKEN")
     if not token:
         raise RuntimeError("GITHUB_TOKEN is unavailable to the parent controller.")
@@ -344,7 +375,7 @@ def git_with_write_token(
     token = source_env.get("GITHUB_TOKEN") or source_env.get("GH_TOKEN")
     if not token:
         raise RuntimeError("GITHUB_TOKEN is unavailable to the parent controller.")
-    env = dict(os.environ)
+    env = controller_environment(source_env)
     env["GIT_CONFIG_COUNT"] = "1"
     env["GIT_CONFIG_KEY_0"] = "http.https://github.com/.extraheader"
     encoded = base64.b64encode(f"x-access-token:{token}".encode()).decode()
@@ -394,7 +425,11 @@ def run_agent_with_failover(
             continue
 
         for attempt in range(max_calls_per_model):
-            current_prompt = prompt if attempt == 0 else build_repair_prompt(last_failure)
+                    current_prompt = (
+                prompt if attempt == 0 and session_id is None
+                else build_repair_prompt(last_failure) if last_failure
+                else prompt
+            )
             result, observed_session = call(
                 route, current_prompt, session_id, run_title,
                 timeout=turn_timeout, source_env=source_env,
@@ -475,10 +510,11 @@ def main() -> int:
         print("An autonomous milestone PR is already open. No duplicate work will be started.")
         return 0
 
-    subprocess.run(["git", "fetch", "origin", base_branch], cwd=ROOT, check=True)
-    subprocess.run(["git", "switch", "--detach", f"origin/{base_branch}"], cwd=ROOT, check=True)
+    controller_env = controller_environment(source_env)
+    subprocess.run(["git", "fetch", "origin", base_branch], cwd=ROOT, env=controller_env, check=True)
+    subprocess.run(["git", "switch", "--detach", f"origin/{base_branch}"], cwd=ROOT, env=controller_env, check=True)
     branch = f"feature/eclipse-autonomous-{run_id}-{attempt_id}"
-    subprocess.run(["git", "switch", "-c", branch], cwd=ROOT, check=True)
+    subprocess.run(["git", "switch", "-c", branch], cwd=ROOT, env=controller_env, check=True)
 
     prompt = build_run_prompt(run_title)
     source_env.setdefault("ECLIPSE_MAX_AGENT_MINUTES", str(args.max_agent_minutes))
@@ -506,14 +542,17 @@ def main() -> int:
         return 3
 
     # Controller owns commits. Agent credentials never contain GITHUB_TOKEN or GH_TOKEN.
-    status = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, text=True, capture_output=True, check=True).stdout
+    status = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=ROOT, env=controller_env,
+        text=True, capture_output=True, check=True,
+    ).stdout
     if status.strip():
-        subprocess.run(["git", "add", "-A"], cwd=ROOT, check=True)
-        subprocess.run(["git", "diff", "--cached", "--check"], cwd=ROOT, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=ROOT, env=controller_env, check=True)
+        subprocess.run(["git", "diff", "--cached", "--check"], cwd=ROOT, env=controller_env, check=True)
         subprocess.run(
             ["git", "-c", "user.name=github-actions[bot]", "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com",
              "commit", "-m", "feat: complete autonomous ECLIPSE milestone"],
-            cwd=ROOT, check=True,
+            cwd=ROOT, env=controller_env, check=True,
         )
 
     final_paths = changed_paths()
@@ -537,15 +576,15 @@ def main() -> int:
     print("Changed paths:")
     print("\n".join(final_paths))
 
-    if protected:
-        print("OWNER_REVIEW_REQUIRED: protected automation/security paths changed; PR intentionally left as draft.")
-        return 0
-
     checks = gh(["pr", "checks", pr_url, "--watch", "--fail-fast"], source_env=source_env, check=False)
     if checks.returncode != 0:
         print("CI_NOT_GREEN: PR remains open and will not be merged.")
         print(redact(checks.stdout + checks.stderr, source_env)[-8_000:])
         return 4
+
+    if protected:
+        print("OWNER_REVIEW_REQUIRED: protected automation/security paths changed; CI passed but PR intentionally remains draft.")
+        return 0
 
     details = json.loads(gh(["pr", "view", pr_url, "--json", "headRefOid,state,isDraft"], source_env=source_env).stdout)
     current_head = subprocess.run(
