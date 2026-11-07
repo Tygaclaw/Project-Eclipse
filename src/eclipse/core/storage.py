@@ -394,6 +394,9 @@ class Store:
         assert refreshed is not None
         return refreshed
 
+    def delete_profile(self, profile_id: str) -> None:
+        self._execute("DELETE FROM profiles WHERE id = ?", (profile_id,))
+
     # -- runs / telemetry ------------------------------------------------
 
     def record_run(
@@ -819,6 +822,7 @@ class Store:
         for table in (
             "models",
             "variants",
+            "profiles",
             "conversations",
             "messages",
             "tasks",

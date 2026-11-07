@@ -42,8 +42,10 @@ from eclipse.runtime import (
     CancellationToken,
     ChatMessage,
     RuntimeManager,
+    evaluate_model_support,
     intent_choices,
     resolve_profile,
+    run_benchmark,
     support_matrix_report,
 )
 from eclipse.core.hardware import detect_host_hardware
@@ -129,6 +131,16 @@ def register_commands(subparsers: Any) -> None:
     backends = subparsers.add_parser("backends", help="show the inference backend support matrix")
     backends.add_argument("--compact", action="store_true")
 
+    runtime_support = subparsers.add_parser(
+        "runtime-support",
+        help="compare one model against a backend's declared support matrix",
+    )
+    runtime_support.add_argument("path")
+    runtime_support.add_argument("--backend", default="llamacpp_server", choices=("llamacpp_server", "openai_compatible"))
+    runtime_support.add_argument("--placement", choices=("cpu", "gpu", "hybrid", "remote"))
+    runtime_support.add_argument("--control", action="append", default=[], help="requested control name (repeatable)")
+    runtime_support.add_argument("--compact", action="store_true")
+
     registry_add = subparsers.add_parser("registry-add", help="inspect and register a model in the shared registry")
     registry_add.add_argument("path")
     registry_add.add_argument("--name")
@@ -168,6 +180,31 @@ def register_commands(subparsers: Any) -> None:
     chat.add_argument("--server-binary")
     chat.add_argument("--no-stream", action="store_true")
     chat.add_argument("--json", action="store_true")
+
+    benchmark = subparsers.add_parser("benchmark", help="run a repeatable measured generation benchmark")
+    benchmark.add_argument("--model-id")
+    benchmark.add_argument("--gguf")
+    benchmark.add_argument("--endpoint")
+    benchmark.add_argument("--model-name")
+    benchmark.add_argument("--backend", choices=("llamacpp_server", "openai_compatible"))
+    benchmark.add_argument("--intent", default="balanced", choices=tuple(item["value"] for item in intent_choices()))
+    benchmark.add_argument("--context", type=int)
+    benchmark.add_argument("--gpu-layers", type=int)
+    benchmark.add_argument("--server-binary")
+    benchmark.add_argument("--prompt", default="Reply with one short sentence confirming you are ready.")
+    benchmark.add_argument("--runs", type=int, default=3)
+    benchmark.add_argument("--warmup", type=int, default=1)
+    benchmark.add_argument("--max-tokens", type=int, default=32)
+    benchmark.add_argument("--temperature", type=float, default=0.0)
+    benchmark.add_argument("--json", action="store_true")
+
+    profiles = subparsers.add_parser("profiles", help="inspect or remove saved execution profiles")
+    profiles_sub = profiles.add_subparsers(dest="profiles_command", required=True)
+    p_list = profiles_sub.add_parser("list")
+    p_list.add_argument("--model-id")
+    p_list.add_argument("--compact", action="store_true")
+    p_delete = profiles_sub.add_parser("delete")
+    p_delete.add_argument("profile_id")
 
     task = subparsers.add_parser("task", help="create or run a capability task")
     task_sub = task.add_subparsers(dest="task_command", required=True)
@@ -241,6 +278,9 @@ def dispatch(args: argparse.Namespace) -> int | None:
     command = args.command
     handlers = {
         "backends": _cmd_backends,
+        "runtime-support": _cmd_runtime_support,
+        "benchmark": _cmd_benchmark,
+        "profiles": _cmd_profiles,
         "registry-add": _cmd_registry_add,
         "registry-list": _cmd_registry_list,
         "prepare": _cmd_prepare,
@@ -295,6 +335,36 @@ def _register_model(app: CliApp, path: str, name: str | None = None) -> dict[str
 def _cmd_backends(args: argparse.Namespace) -> int:
     _emit(support_matrix_report(), args.compact)
     return 0
+
+
+def _cmd_runtime_support(args: argparse.Namespace) -> int:
+    atlas = build_model_atlas(args.path)
+    controls = {name: True for name in args.control}
+    report = evaluate_model_support(
+        args.backend,
+        atlas,
+        detect_host_hardware().to_dict(),
+        placement_mode=args.placement,
+        requested_controls=controls,
+    )
+    _emit(report, args.compact)
+    return 0
+
+
+def _cmd_profiles(args: argparse.Namespace) -> int:
+    app = open_app(args)
+    try:
+        if args.profiles_command == "list":
+            _emit({"profiles": app.store.list_profiles(args.model_id)}, args.compact)
+            return 0
+        profile = app.store.get_profile(args.profile_id)
+        if profile is None:
+            raise CliError("No saved profile has that id")
+        app.store.delete_profile(args.profile_id)
+        _emit({"deleted": args.profile_id}, False)
+        return 0
+    finally:
+        app.close()
 
 
 def _cmd_registry_add(args: argparse.Namespace) -> int:
@@ -410,35 +480,40 @@ def _profile_for_chat(app: CliApp, args: argparse.Namespace, model: Mapping[str,
     )
 
 
+def _resolve_runtime_model(app: CliApp, args: argparse.Namespace) -> tuple[dict[str, Any], str | None]:
+    model: dict[str, Any] | None = None
+    prepared_path = None
+    if args.model_id:
+        model = app.store.get_model(args.model_id)
+        if model is None:
+            raise CliError("No registered model has that id")
+        variants = [item for item in app.store.list_variants(model["id"]) if item["status"] == "verified"]
+        if variants:
+            from eclipse.model_intelligence.preparation import load_manifest
+
+            manifest = load_manifest(variants[0]["path"])
+            output_root = manifest["identity"].get("output_root") or ""
+            if manifest.get("method", {}).get("mode") == "copy":
+                prepared_path = str(Path(variants[0]["path"]) / output_root)
+    elif args.gguf:
+        model = _register_model(app, args.gguf)
+    elif args.endpoint:
+        model = {
+            "id": None,
+            "name": args.model_name or "external endpoint",
+            "source_path": "",
+            "source_kind": "remote",
+            "atlas": {},
+        }
+    else:
+        raise CliError("Provide --model-id, --gguf or --endpoint")
+    return model, prepared_path
+
+
 def _cmd_chat(args: argparse.Namespace) -> int:
     app = open_app(args)
     try:
-        model = None
-        prepared_path = None
-        if args.model_id:
-            model = app.store.get_model(args.model_id)
-            if model is None:
-                raise CliError("No registered model has that id")
-            variants = [item for item in app.store.list_variants(model["id"]) if item["status"] == "verified"]
-            if variants:
-                from eclipse.model_intelligence.preparation import load_manifest
-
-                manifest = load_manifest(variants[0]["path"])
-                output_root = manifest["identity"].get("output_root") or ""
-                if manifest.get("method", {}).get("mode") == "copy":
-                    prepared_path = str(Path(variants[0]["path"]) / output_root)
-        elif args.gguf:
-            model = _register_model(app, args.gguf)
-        elif args.endpoint:
-            model = {
-                "id": None,
-                "name": args.model_name or "external endpoint",
-                "source_path": "",
-                "source_kind": "remote",
-                "atlas": {},
-            }
-        else:
-            raise CliError("Provide --model-id, --gguf or --endpoint")
+        model, prepared_path = _resolve_runtime_model(app, args)
         spec = _profile_for_chat(app, args, model)
         app.runtime.start(model, spec.to_payload(), prepared_path=prepared_path)
         messages = []
@@ -477,6 +552,34 @@ def _cmd_chat(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
         return 0
+    finally:
+        app.close()
+
+
+def _cmd_benchmark(args: argparse.Namespace) -> int:
+    app = open_app(args)
+    try:
+        model, prepared_path = _resolve_runtime_model(app, args)
+        spec = _profile_for_chat(app, args, model)
+        app.runtime.start(model, spec.to_payload(), prepared_path=prepared_path)
+        result = run_benchmark(
+            app.runtime,
+            prompt=args.prompt,
+            runs=args.runs,
+            warmup=args.warmup,
+            max_tokens=args.max_tokens,
+            temperature=args.temperature,
+        )
+        if args.json:
+            _emit(result, False)
+        else:
+            summary = result["summary"]
+            print(
+                f"status={result['status']} runs={len(result['samples'])} "
+                f"ttft_median={summary['time_to_first_token_seconds']['median']}s "
+                f"tokens_per_second_median={summary['tokens_per_second']['median']}"
+            )
+        return 0 if result["status"] == "ok" else 1
     finally:
         app.close()
 

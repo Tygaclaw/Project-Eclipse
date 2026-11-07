@@ -27,6 +27,7 @@ a = Analysis(
         "eclipse.core.storage",
         "eclipse.runtime",
         "eclipse.runtime.backends",
+        "eclipse.runtime.benchmark",
         "eclipse.runtime.client",
         "eclipse.runtime.llamacpp",
         "eclipse.runtime.manager",

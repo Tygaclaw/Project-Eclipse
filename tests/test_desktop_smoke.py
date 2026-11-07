@@ -220,6 +220,9 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertEqual(panel._backend_combo.count(), 2)
         self.assertIn("Load selected model", panel._start_button.text())
         self.assertIn("Not loaded", panel._state_label.text())
+        self.assertIn("Save profile", panel._save_profile_button.text())
+        self.assertIn("Restore last good", panel._restore_profile_button.text())
+        self.assertIn("Benchmark", panel._benchmark_button.text())
 
     def test_model_workspace_renders_the_required_atlas_sections(self) -> None:
         window = self.make_window()
