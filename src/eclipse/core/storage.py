@@ -88,7 +88,8 @@ CREATE TABLE IF NOT EXISTS messages (
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     metadata_json TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    ordinal INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS messages_conversation
@@ -202,12 +203,43 @@ class Store:
             self._connection.execute("PRAGMA journal_mode=WAL")
             self._connection.execute("PRAGMA foreign_keys=ON")
             self._connection.executescript(_SCHEMA)
+            self._ensure_message_ordinal()
             self._connection.commit()
 
     # -- lifecycle -------------------------------------------------------
 
+    def _ensure_message_ordinal(self) -> None:
+        """Add explicit message ordering for stores created before ordinal."""
+        columns = {
+            row[1]
+            for row in self._connection.execute("PRAGMA table_info(messages)")
+        }
+        if "ordinal" in columns:
+            return
+        self._connection.execute(
+            "ALTER TABLE messages ADD COLUMN ordinal INTEGER NOT NULL DEFAULT 0"
+        )
+        # The old code used SQLite's implicit rowid. This deterministic
+        # backfill preserves a useful order without relying on that alias.
+        self._connection.execute(
+            """
+            UPDATE messages SET ordinal = (
+                SELECT COUNT(*) FROM messages AS earlier
+                WHERE earlier.conversation_id = messages.conversation_id
+                  AND (
+                    earlier.created_at < messages.created_at
+                    OR (earlier.created_at = messages.created_at AND earlier.id <= messages.id)
+                  )
+            )
+            """
+        )
+
     def close(self) -> None:
         with self._lock:
+            try:
+                self._connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except sqlite3.Error:
+                pass
             try:
                 self._connection.close()
             except sqlite3.Error:
@@ -534,20 +566,29 @@ class Store:
         metadata: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         identifier = new_id("msg")
-        self._execute(
-            """
-            INSERT INTO messages (id, conversation_id, role, content, metadata_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                identifier,
-                conversation_id,
-                role,
-                content,
-                _dumps(dict(metadata or {})),
-                utc_now_iso(),
-            ),
-        )
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT COALESCE(MAX(ordinal), 0) + 1 FROM messages WHERE conversation_id = ?",
+                (conversation_id,),
+            ).fetchone()
+            ordinal = int(row[0]) if row is not None else 1
+            self._connection.execute(
+                """
+                INSERT INTO messages
+                    (id, conversation_id, role, content, metadata_json, created_at, ordinal)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    identifier,
+                    conversation_id,
+                    role,
+                    content,
+                    _dumps(dict(metadata or {})),
+                    utc_now_iso(),
+                    ordinal,
+                ),
+            )
+            self._connection.commit()
         self.touch_conversation(conversation_id)
         message = self.get_message(identifier)
         assert message is not None
@@ -560,7 +601,8 @@ class Store:
     def list_messages(self, conversation_id: str, limit: int | None = None) -> list[dict[str, Any]]:
         if limit is None:
             rows = self._query(
-                "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC",
+                "SELECT * FROM messages WHERE conversation_id = ? "
+                "ORDER BY created_at ASC, ordinal ASC, id ASC",
                 (conversation_id,),
             )
             return [_decode_row(row, "messages") for row in rows]
@@ -568,8 +610,8 @@ class Store:
             """
             SELECT * FROM (
                 SELECT * FROM messages WHERE conversation_id = ?
-                ORDER BY created_at DESC, rowid DESC LIMIT ?
-            ) ORDER BY created_at ASC, rowid ASC
+                ORDER BY created_at DESC, ordinal DESC, id DESC LIMIT ?
+            ) ORDER BY created_at ASC, ordinal ASC, id ASC
             """,
             (conversation_id, max(0, int(limit))),
         )

@@ -85,7 +85,7 @@
 
 ## Local integration evidence — 7 November 2026
 
-- Full `python -m unittest discover -s tests` with `PYTHONPATH=src`, `QT_QPA_PLATFORM=offscreen` and the project PySide6 environment: **339 tests, OK**.
+- Full `python -m unittest discover -s tests` with `PYTHONPATH=src`, `QT_QPA_PLATFORM=offscreen` and the project PySide6 environment: **340 tests, OK**.
 - The runtime suite spawns the fake HTTP/SSE server as a real process, exercises managed load/stream/stop, startup failure cleanup, attach mode and measured telemetry.
 - The Capability suite executes real `compileall`/unittest verification and real argument-list commands; failing checks and denied approvals cannot produce `completed`.
 - The Agent suite exercises the same runtime/tool loop with persisted conversations and attachments.

@@ -8,7 +8,7 @@
 - Autonomous bootstrap PRs #12/#13 and later controller work are merged. Every remote side branch was checked: the only unmerged branches were duplicate autonomous-controller attempts, not product code.
 - Mainline PRs #5, #6, #7, #10 and #11 are merged. PRs #8 and #9 are obsolete, closed and superseded.
 - The product now includes the previously missing shared Core, runtime, preparation, Capability System, knowledge workflow, Agent and full three-workspace integration described below, plus saved profiles with last-known-good restore, a model-specific support report and a repeated measured benchmark harness.
-- Latest local suite: **339 tests, OK**; a real CLI benchmark against the spawned HTTP/SSE test server completed with two measured samples.
+- Latest local suite: **340 tests, OK**; a real CLI benchmark against the spawned HTTP/SSE test server completed with two measured samples.
 
 ## Product truth — 7 November 2026
 
@@ -51,7 +51,7 @@ Use `AUTONOMOUS_BACKLOG.md` as the canonical queue. The local implementation wor
 - `src/eclipse/runtime/backends.py` now exposes `evaluate_model_support(...)` and `runtime-support`, a model-specific declaration comparison covering format, architecture, tensor types, devices, placement and requested controls. It keeps `runtime_verified: false` and labels observed GPU hardware as unvalidated. This adapts the useful idea from stale PR #16 without merging its duplicate `core/runtime.py`.
 - `src/eclipse/runtime/profiles.py` and `manager.py` persist the effective profile after a successful load and mark it last-known-good after a successful generation. The desktop can apply, save and restore profiles; the CLI lists/deletes them. Restoring validates the saved profile against the current model and then starts it.
 - `src/eclipse/runtime/benchmark.py` runs configurable warm-up plus measured generations, reports min/median/mean/max/stdev and persists a `benchmark` run. The desktop has a Benchmark control; the CLI has `benchmark`.
-- Verification: full suite **339 tests, OK**; real CLI benchmark `status=ok`, 2 samples, TTFT median `0.0016 s`, throughput median `122.645 tok/s` against the fake server. The values are test-double evidence only.
+- Verification: full suite **340 tests, OK**; real CLI benchmark `status=ok`, 2 samples, TTFT median `0.0016 s`, throughput median `122.645 tok/s` against the fake server. The values are test-double evidence only.
 - PR #16 remains stale and unmerged; its unique static-contract value is now implemented against the live runtime. Its controller/recovery changes are not product requirements.
 
 ## Model order and free-only safety

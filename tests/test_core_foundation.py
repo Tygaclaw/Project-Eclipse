@@ -6,6 +6,7 @@ from tests import _bootstrap  # noqa: F401
 
 import os
 from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
 
@@ -127,8 +128,9 @@ class StorageTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.store = Store(Path(self.temp.name) / "eclipse.sqlite3")
-        self.addCleanup(self.store.close)
+        # Cleanups run LIFO: close SQLite before deleting its directory.
         self.addCleanup(self.temp.cleanup)
+        self.addCleanup(self.store.close)
 
     def test_model_registry_round_trip(self) -> None:
         model = self.store.add_model(
@@ -159,6 +161,42 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(len(self.store.list_conversations("verify")), 1)
         self.assertEqual(len(self.store.list_conversations("missing")), 0)
         self.assertEqual(self.store.list_messages(conversation["id"], limit=1)[0]["role"], "assistant")
+
+    def test_legacy_messages_gain_ordinal_during_migration(self) -> None:
+        legacy_path = Path(self.temp.name) / "legacy.sqlite3"
+        connection = sqlite3.connect(legacy_path)
+        try:
+            connection.execute(
+                """
+                CREATE TABLE messages (
+                    id TEXT PRIMARY KEY,
+                    conversation_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO messages
+                    (id, conversation_id, role, content, metadata_json, created_at)
+                VALUES ('msg_old', 'conv_legacy', 'user', 'old', '{}', '2026-01-01T00:00:00+00:00')
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        legacy = Store(legacy_path)
+        self.addCleanup(legacy.close)
+        old = legacy.list_messages("conv_legacy")
+        self.assertEqual([message["content"] for message in old], ["old"])
+        self.assertEqual(old[0]["ordinal"], 1)
+        legacy.add_message("conv_legacy", "assistant", "new")
+        messages = legacy.list_messages("conv_legacy")
+        self.assertEqual([message["content"] for message in messages], ["old", "new"])
+        self.assertEqual([message["ordinal"] for message in messages], [1, 2])
 
     def test_profiles_last_known_good_excludes_previous(self) -> None:
         first = self.store.add_profile(name="A", intent="balanced", payload={}, last_known_good=True)

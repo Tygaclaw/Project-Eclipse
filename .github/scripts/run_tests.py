@@ -26,7 +26,7 @@ class AnnotatingResult(unittest.TextTestResult):
         trace = "".join(traceback.format_exception(*err)).strip()
         detail = trace.splitlines()[-1] if trace else kind
         print(
-            f"::error title={_escape(test.id())}::{_escape(detail[:1000])}",
+            f"::error title={_escape(test.id())}::{_escape(f'{test.id()}: {detail[:900]}')}",
             flush=True,
         )
 
