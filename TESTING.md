@@ -84,7 +84,8 @@ Synthetic tests prove parser behavior for the cases represented by their fixture
 
 ## UI interaction and error diagnostics
 
-- `tests/test_diagnostics.py` verifies that the desktop recorder writes mouse press/release events and wheel-scroll deltas, identifies controls by safe widget metadata, does not store typed text from input controls, continues recording errors while ordinary interaction capture is paused, and redacts common API-key/Bearer formats.
+- `tests/test_diagnostics.py` verifies mouse press/release and wheel-scroll events, safe widget metadata, typed-text privacy, credential redaction, full-length bounded error details, and application-generated `QMessageBox` capture (severity, title, message, informative text and detailed text), including while ordinary interaction capture is paused.
 - Manual desktop check: launch ECLIPSE, confirm **Record UI activity** is checked, click between all three workspaces, use the inner tabs, scroll a page, open a menu and perform a harmless action. Select **Open diagnostics folder**. Confirm the current `eclipse-ui-*.jsonl` file contains event entries for the actions. Type a harmless test sentence into the Agent composer and confirm the sentence itself does not appear in the log.
-- To pause interaction capture, uncheck **Record UI activity**. Python/Qt error events remain logged. Re-check it to resume.
+- To pause interaction capture, uncheck **Record UI activity**. Python/Qt error events and application-generated message boxes remain logged. Re-check it to resume.
+- To validate dialog capture, trigger a harmless validation message (for example, try **Load selected model** before registering/selecting a model). The log should contain `message_box_shown` with severity, title and message text. Detailed text is captured when the dialog supplies it.
 - Logs are local only. Do not attach logs publicly without reviewing them; they may contain widget identifiers, local paths from error reports, and technical environment details even though typed text and common credentials are excluded.

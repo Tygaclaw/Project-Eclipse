@@ -128,7 +128,7 @@ The workflow entry points are manual dispatch, main-branch updates and a six-hou
 
 ## Local UI activity and error diagnostics
 
-The desktop records a structured local session log by default. It captures mouse clicks, double-clicks, scrolling, workspace/tab navigation, safe keyboard shortcuts, focus changes, context-menu use, drag/drop event types, and application/Qt/Python errors. The sidebar has a **Record UI activity** switch and an **Open diagnostics folder** button.
+The desktop records a structured local session log by default. It captures mouse clicks, double-clicks, scrolling, workspace/tab navigation, safe keyboard shortcuts, focus changes, context-menu use, drag/drop event types, and application/Qt/Python errors. Application-generated message boxes are recorded with their severity, title, visible message, informative text and detailed text. Error details and tracebacks retain up to 8,000 characters per field after credential redaction. The sidebar has a **Record UI activity** switch and an **Open diagnostics folder** button.
 
 Logs are written under the ECLIPSE application data folder in `logs/` as JSON Lines files. They stay on the computer and are not uploaded automatically. The recorder does not read text typed into input controls or the Agent composer, clipboard contents, file contents, screenshots or absolute screen coordinates. Diagnostic errors and stack traces are saved for troubleshooting; common credential formats are redacted, but review logs before sharing because error details may include local paths or other technical information. Interaction logs can be paused from the sidebar; error logging remains active so failures can still be diagnosed. Old logs are pruned and each session has a size limit.
 
