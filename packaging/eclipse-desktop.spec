@@ -23,6 +23,7 @@ a = Analysis(
         "eclipse.model_intelligence.safetensors",
         "eclipse.core.config",
         "eclipse.core.events",
+        "eclipse.core.runtime",
         "eclipse.core.security",
         "eclipse.core.storage",
         "eclipse.runtime",

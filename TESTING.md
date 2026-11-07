@@ -29,6 +29,7 @@ The core inspection suite uses only Python's standard library and synthetic bina
 - Runtime contract (`tests/test_runtime_contract.py`): the manifest-driven `BackendCapabilities`/`DeviceSupport`/`ControlSupport` contract, JSON round-trip and validation, and the evidence-labelled support matrix (supported/unsupported/unknown formats, architectures, tensor types, CPU/CUDA/Vulkan devices, placement modes and controls). Distinct from the real adapter suite in `tests/test_runtime.py`.
 - Runtime-support CLI (`tests/test_runtime_cli.py`): the `runtime-support` command emits the support matrix, validates the capability manifest, and reports invalid manifests, missing files, atlas errors and bad placement choices without a traceback.
 - Recovery (`tests/test_recovery.py`): the stale-base shape is reproduced in a temporary Git repository and the independent reviewer rejects the apparent deleted test until the base advance is incorporated, including the multi-file shape that the PR #16 resynchronisation fixed.
+- Windows packaging guard (`tests/test_packaging_spec.py`): every PyInstaller `hiddenimport` in `packaging/eclipse-desktop.spec` must resolve to a real module under `src/`, and the branch-added `eclipse.core.runtime` must be listed, so a broken packaging spec fails fast instead of failing the remote Windows desktop build.
 
 Run (desktop tests need PySide6; use an offscreen platform on headless machines):
 
@@ -85,7 +86,7 @@ Synthetic tests prove parser behavior for the cases represented by their fixture
 
 The recovered PR #16 branch was stale against the integrated `main`. The independent reviewer compares the worktree with `origin/main`, so the stale branch appeared to delete main's new test modules and fixture and was rejected. After resynchronising the worktree with `origin/main` and reconciling the branch's RUN-01 additions, the following was actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
 
-- `python -m unittest discover -s tests` — **367 tests OK, 13 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
+- `python -m unittest discover -s tests` — **370 tests OK, 13 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
 - `python -m compileall -q src tests scripts .github/scripts` — OK.
 - `python .github/scripts/validate_provider_pool.py` — OK.
 - `python scripts/eclipse_review.py --base origin/main` — accepted.
