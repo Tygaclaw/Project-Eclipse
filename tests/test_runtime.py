@@ -7,6 +7,7 @@ from tests import _bootstrap  # noqa: F401
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -25,6 +26,7 @@ from eclipse.runtime import (
     OpenAICompatibleClient,
     RuntimeManager,
     RuntimeState,
+    find_free_port,
     find_server_binary,
     resolve_profile,
     run_benchmark,
@@ -36,6 +38,24 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 def fake_server_script() -> Path:
     return FIXTURES / "fake_llama_server.py"
+
+
+def process_is_alive(pid: int) -> bool:
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        return str(pid) in completed.stdout
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
 
 
 class RuntimeTests(unittest.TestCase):
@@ -141,9 +161,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.runtime.status.state, RuntimeState.NOT_LOADED)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
-            try:
-                os.kill(pid, 0)
-            except OSError:
+            if not process_is_alive(pid):
                 break
             time.sleep(0.05)
         else:
@@ -177,9 +195,7 @@ class RuntimeTests(unittest.TestCase):
             list(stream)
 
     def test_attach_mode_does_not_own_the_external_server(self) -> None:
-        import subprocess
-
-        port = 18771
+        port = find_free_port()
         process = subprocess.Popen(
             [sys.executable, str(fake_server_script()), "--port", str(port)],
             stdout=subprocess.DEVNULL,
@@ -227,6 +243,15 @@ class RuntimeTests(unittest.TestCase):
 
     def test_binary_discovery_accepts_an_explicit_executable(self) -> None:
         self.assertEqual(find_server_binary(str(fake_server_script())), fake_server_script())
+
+    def test_python_script_launcher_uses_the_python_interpreter(self) -> None:
+        server = LlamaCppServer(
+            self.model_path,
+            executable=fake_server_script(),
+            port=find_free_port(),
+        )
+        launch = server.build_launch()
+        self.assertEqual(launch.argv[:2], [sys.executable, str(fake_server_script())])
 
     def test_successful_generation_saves_a_last_known_good_profile(self) -> None:
         self.start_managed()

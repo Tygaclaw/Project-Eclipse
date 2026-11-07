@@ -33,6 +33,7 @@ from .llamacpp import (
     LlamaCppError,
     LlamaCppServer,
     LlamaCppStartError,
+    find_free_port,
     find_server_binary,
 )
 from .manager import (
@@ -92,6 +93,7 @@ __all__ = [
     "backend_capabilities",
     "evaluate_controls",
     "evaluate_model_support",
+    "find_free_port",
     "find_matching_profile",
     "find_server_binary",
     "intent_choices",

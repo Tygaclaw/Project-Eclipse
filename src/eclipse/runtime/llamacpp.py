@@ -16,6 +16,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import threading
 import time
 from typing import Any, Iterator, Mapping, Sequence
@@ -185,8 +186,13 @@ class LlamaCppServer:
     def build_launch(self) -> ServerLaunch:
         self.validate()
         assert self.binary is not None
+        # A .py launcher is used by the development/test double. Windows cannot
+        # execute a Python script through CreateProcess without the interpreter.
+        launcher = [str(self.binary)]
+        if self.binary.suffix.lower() in {".py", ".pyw"}:
+            launcher = [sys.executable, str(self.binary)]
         argv = [
-            str(self.binary),
+            *launcher,
             "-m",
             str(self.model_path),
             "--host",
