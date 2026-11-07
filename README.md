@@ -124,3 +124,12 @@ The workflow entry points are manual dispatch, main-branch updates and a six-hou
 
 **Controller status:** the autonomous bootstrap PRs #12/#13 and the follow-up controller work are merged on `main`. The product implementation described above was built on one integration branch after checking every remote side branch; the remaining unmerged branches were duplicate controller attempts, not product code. The backlog and remaining owner/release gates are tracked in `AUTONOMOUS_BACKLOG.md` and `STATUS.md`.
 
+
+
+## Local UI activity and error diagnostics
+
+The desktop records a structured local session log by default. It captures mouse clicks, double-clicks, scrolling, workspace/tab navigation, safe keyboard shortcuts, focus changes, context-menu use, drag/drop event types, and application/Qt/Python errors. The sidebar has a **Record UI activity** switch and an **Open diagnostics folder** button.
+
+Logs are written under the ECLIPSE application data folder in `logs/` as JSON Lines files. They stay on the computer and are not uploaded automatically. The recorder intentionally does not collect typed text, chat messages, passwords, clipboard contents, file contents, screenshots or absolute screen coordinates. Common credential formats are redacted from diagnostic messages. Interaction logs can be paused from the sidebar; error logging remains active so failures can still be diagnosed. Old logs are pruned and each session has a size limit.
+
+On Windows, the default folder is `%LOCALAPPDATA%\\ECLIPSE\\logs`. See `TESTING.md` for the diagnostics test coverage.
