@@ -3,6 +3,8 @@ from __future__ import annotations
 from tests import _bootstrap  # noqa: F401
 
 import os
+from pathlib import Path
+import tempfile
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -17,15 +19,10 @@ except ModuleNotFoundError as exc:
 else:
     # Once PySide6 is installed, import or UI construction errors must fail the
     # test suite instead of silently converting every desktop test to a skip.
-    from PySide6.QtWidgets import (
-        QApplication,
-        QLineEdit,
-        QPlainTextEdit,
-        QPushButton,
-        QTextEdit,
-    )
+    from PySide6.QtWidgets import QLabel, QPlainTextEdit, QPushButton, QToolButton
 
     from eclipse.desktop.app import create_application
+    from eclipse.desktop.context import AppContext
     from eclipse.desktop.main_window import NAV_ITEMS, MainWindow
 
     HAVE_QT = True
@@ -66,16 +63,8 @@ def sample_atlas() -> dict[str, object]:
             "vocab_size_evidence": "observed",
             "vocab_size_source": "gguf:tokenizer.ggml.tokens",
             "vocab_size_candidates": [
-                {
-                    "source": "gguf:tokenizer.ggml.tokens",
-                    "count": 4,
-                    "evidence": "observed",
-                },
-                {
-                    "source": "tokenizer_config.json:vocab_size",
-                    "count": 8,
-                    "evidence": "declared",
-                },
+                {"source": "gguf:tokenizer.ggml.tokens", "count": 4, "evidence": "observed"},
+                {"source": "tokenizer_config.json:vocab_size", "count": 8, "evidence": "declared"},
             ],
             "special_tokens": {
                 "bos": {
@@ -132,11 +121,10 @@ def sample_atlas() -> dict[str, object]:
 
 
 def widget_texts(widget: object) -> list[str]:
-    from PySide6.QtWidgets import QLabel, QToolButton
-
     labels = [label.text() for label in widget.findChildren(QLabel)]
     tools = [button.text() for button in widget.findChildren(QToolButton)]
-    return labels + tools
+    push = [button.text() for button in widget.findChildren(QPushButton)]
+    return labels + tools + push
 
 
 @unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
@@ -146,7 +134,10 @@ class DesktopSmokeTests(unittest.TestCase):
         cls.app = create_application(["eclipse-desktop-tests"])
 
     def make_window(self) -> MainWindow:
-        window = MainWindow()
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        context = AppContext(root=Path(temp.name) / "home")
+        window = MainWindow(context)
         self.addCleanup(window.close)
         return window
 
@@ -163,10 +154,11 @@ class DesktopSmokeTests(unittest.TestCase):
             list(NAV_ITEMS),
         )
         self.assertEqual(window.stack.count(), 3)
+        self.assertEqual(window.model_platform.tabs.count(), 2)
 
     def test_navigation_switches_between_real_screens(self) -> None:
         window = self.make_window()
-        self.assertIs(window.stack.currentWidget(), window.model_workspace)
+        self.assertIs(window.stack.currentWidget(), window.model_platform)
         window.navigate(1)
         self.assertEqual(window.nav.currentRow(), 1)
         self.assertIs(window.stack.currentWidget(), window.capability_workspace)
@@ -174,21 +166,44 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertEqual(window.nav.currentRow(), 2)
         self.assertIs(window.stack.currentWidget(), window.agent_workspace)
 
-    def test_capability_workspace_is_honest(self) -> None:
+    def test_capability_workspace_has_real_planning_and_knowledge_controls(self) -> None:
         window = self.make_window()
-        text = " ".join(widget_texts(window.capability_workspace))
-        self.assertIn("Not yet implemented", text)
-        self.assertIn("does not simulate progress", text)
+        workspace = window.capability_workspace
+        self.assertEqual(workspace._tabs.count(), 4)
+        self.assertEqual(
+            [workspace._tabs.tabText(index) for index in range(4)],
+            ["Plan & evidence", "Verification", "Knowledge", "Corrections"],
+        )
+        self.assertIsInstance(workspace._goal, QPlainTextEdit)
+        self.assertTrue(workspace._create_button.isEnabled())
+        self.assertFalse(workspace._run_button.isEnabled())
+        text = " ".join(widget_texts(workspace))
+        self.assertIn("Create plan", text)
+        self.assertNotIn("Not yet implemented", text)
+        self.assertIn("Workspace: none selected", text)
 
-    def test_agent_workspace_has_no_chat_input_or_send_button(self) -> None:
+    def test_agent_workspace_has_a_working_composer(self) -> None:
         window = self.make_window()
         agent = window.agent_workspace
-        self.assertEqual(agent.findChildren(QLineEdit), [])
-        self.assertEqual(agent.findChildren(QTextEdit), [])
-        self.assertEqual(agent.findChildren(QPlainTextEdit), [])
-        self.assertEqual(agent.findChildren(QPushButton), [])
+        self.assertIsInstance(agent._composer, QPlainTextEdit)
+        self.assertIsInstance(agent._send_button, QPushButton)
+        self.assertTrue(agent._send_button.isEnabled())
+        self.assertFalse(agent._stop_button.isEnabled())
+        self.assertIsNotNone(agent._conversation_id)
+        self.assertGreaterEqual(agent._conversation_list.count(), 1)
         text = " ".join(widget_texts(agent))
-        self.assertIn("No model adapter connected", text)
+        self.assertIn("Send", text)
+        self.assertNotIn("No model adapter connected", text)
+        self.assertIn("No model loaded", text)
+
+    def test_theme_toggle_persists_the_choice(self) -> None:
+        window = self.make_window()
+        self.assertEqual(window.context.settings.get("theme"), "dark")
+        self.assertIn("Switch to light theme", window._theme_button.text())
+        window._theme_button.click()
+        self.assertEqual(window.context.settings.get("theme"), "light")
+        self.assertIn("Switch to dark theme", window._theme_button.text())
+        self.assertIn("#f5f9fe", window.styleSheet())
 
     def test_model_workspace_starts_with_empty_state_and_disabled_inspect(self) -> None:
         window = self.make_window()
@@ -198,6 +213,13 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertFalse(workspace._inspect_button.isEnabled())
         self.assertTrue(workspace._choose_file_button.isEnabled())
         self.assertFalse(workspace._progress.isVisible())
+
+    def test_prepare_and_run_panel_is_available_and_starts_idle(self) -> None:
+        window = self.make_window()
+        panel = window.model_platform.runtime
+        self.assertEqual(panel._backend_combo.count(), 2)
+        self.assertIn("Load selected model", panel._start_button.text())
+        self.assertIn("Not loaded", panel._state_label.text())
 
     def test_model_workspace_renders_the_required_atlas_sections(self) -> None:
         window = self.make_window()
@@ -380,6 +402,7 @@ class DesktopSmokeTests(unittest.TestCase):
         window.close()
         self.app.processEvents()
         self.assertFalse(window.isVisible())
+        window.context.shutdown()
 
 
 if __name__ == "__main__":
