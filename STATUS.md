@@ -1,8 +1,9 @@
 # ECLIPSE Project Status
 
-**Status:** `INTEGRATED_LOCAL_IMPLEMENTATION_COMPLETE — OWNER_WINDOWS_VALIDATION_PENDING`
+**Status:** `WINDOWS_CI_AND_PACKAGE_VERIFIED — OWNER_RUNTIME_AND_RELEASE_VALIDATION_PENDING`
 **Last updated:** 2026-11-07
-**Implementation base:** `84ce050` (`main`); integrated into `main` by fast-forward after local verification
+**Implementation base:** `e27fec7` (`main`); integrated into `main` by fast-forward after local verification
+**Windows verification:** Python checks [#42330519701](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519701) and Windows desktop [#42330519740](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519740) both succeeded on `e27fec7`.
 
 ## Mainline history — verified
 
@@ -51,6 +52,14 @@ The previous placeholders and pending runtime layers have been replaced by worki
 - **Measured benchmark harness** — `benchmark` performs configurable warm-up and measured generations, records every sample, and reports min/median/mean/max/stdev for TTFT, tokens/second, total time and completion tokens. It persists a `benchmark` run and labels the result as local wall-clock evidence, not a quality score.
 - **Verification** — the complete suite now runs **340 tests, OK**. A real CLI benchmark against a spawned HTTP/SSE server returned `status=ok`, 2 measured samples, median TTFT `0.0016 s` and median throughput `122.645 tok/s`; the numbers are test-double measurements, not a model benchmark.
 
+### Windows CI and package close-out — 7 November 2026
+
+- **Windows Python matrix** — [run #42330519701](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519701) succeeded for Python 3.11, 3.12, 3.13 and 3.14.
+- **Windows desktop package** — [run #42330519740](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519740) succeeded through pinned dependency installation, the full Qt/offscreen test suite, PyInstaller onedir build, packaged `ECLIPSE.exe --atlas-backend --help` smoke test, ZIP creation and artifact upload. Artifact `ECLIPSE-windows-x64` (ID `13556659342`, 52,935,974 bytes, SHA-256 `2ff2029fc52363a2ad6d399807417708f02671ee4fd8d80bcea50a811c3c40cc`) is available until 2026-11-21.
+- **Defects found and fixed** — the first push-triggered run exposed Windows-only failures in Python-script server launch, SQLite `rowid` message ordering and a temp-directory/SQLite cleanup race. They were fixed in `edc02e7`, `1aeff21` and `e27fec7`; the local suite passes 340 tests on Python 3.11.16 and 3.12 (Python 3.11 skips the 13 optional Qt tests without PySide6).
+- **Boundary** — this verifies hosted Windows CI and the portable package, not the owner's real GPU/model runtime, installed-app acceptance or Obsidian vault.
+- **Dependency audit** — `pip-audit 2.10.1` audited `requirements-desktop.txt` (PySide6 6.12.0 chain, PyInstaller 6.22.3, pyinstaller-hooks-contrib 2026.9) with **no known vulnerabilities**. The development venv's `pip` 24.0 advisories were cleared by upgrading it to 26.3 and re-scanning; `pip` is tooling, not a shipped dependency. `LICENSES.md` now records the real PySide6 LGPL/GPL choice, PyInstaller's GPL-with-exception terms and the unresolved Qt distribution obligations.
+
 A static feasibility estimate is still not an executable placement plan or proof of inference. The application-level permission boundary is not an OS container sandbox. The runtime has been exercised against a real spawned HTTP/SSE test server, but not yet against the owner's real Windows llama.cpp/Vulkan/Qwen installation.
 
 ## Autonomous engineering controller — merged to main
@@ -84,18 +93,18 @@ Because this milestone changes the protected controller, its PR remains draft fo
 
 - Real Windows llama.cpp/Vulkan/Qwen load, generation, stop and restart through the packaged app, including observed context and actual VRAM/RAM telemetry.
 - Real benchmark runs and last-known-good restore/rollback on the owner's backend; GPU/disk/cache sensors and quality evidence are not implemented.
-- Rebuilding the PyInstaller Windows package with the new Core/runtime/capability/agent/benchmark hidden imports and smoke-testing the packaged executable.
+- Owner launch/installation and acceptance of the CI-built Windows package; the package build and backend smoke test are verified in hosted CI, but an installed-app launch is not.
 - Owner walkthrough of the rebuilt three-workspace UI and the real Obsidian vault.
 - Real Safetensors and multi-shard Hugging Face folder validation on Windows.
 - Executable CPU/GPU/hybrid placement planning and allocation reconciliation (profiles exist; placement is still configuration-based).
 - Four remaining evaluations: multi-file development, runtime debugging, safe interconnected-code changes and Three.js/game development.
-- Windows installer/update/uninstall/recovery, license/Qt LGPL compliance and security/dependency scans.
+- Windows installer/update/uninstall/recovery, license/Qt LGPL compliance and the remaining binary/Qt security review (the Python dependency audit is recorded above).
 - Live provider route/tool-call smoke tests and one completed live autonomous workflow run.
 
 ## User-only release gates
 
 Do all independent development and GitHub-hosted Windows checks first. Then bundle only the remaining local checks into one clear Windows 11 validation run:
-- rebuild the package and launch the three-workspace app;
+- launch the CI-built package (rebuild locally only if desired) and exercise the three-workspace app;
 - verify the existing llama.cpp/Vulkan/Qwen connection without reinstalling or changing the known-good configuration;
 - test real model load/generate/stop/restart, observed context, actual hardware telemetry and resource recovery;
 - run one Capability task and one Agent tool task with real approvals;
@@ -121,8 +130,10 @@ Keep these gates `WAITING_FOR_OWNER_VALIDATION` until real evidence exists. Do n
 - [x] File tools are workspace-scoped and require explicit approval for writes and commands.
 - [x] A failed load, denied action or failed check is recorded as a failure, never converted into success.
 - [x] AI knowledge proposals remain in an Inbox until human approval; trusted notes are never overwritten.
-- [ ] Real Windows runtime, rebuilt package and real Obsidian walkthrough verified.
-- [ ] Security/dependency scans and release compliance complete.
+- [x] Windows Python matrix and Windows x64 desktop package build/smoke/upload verified on `e27fec7`.
+- [ ] Owner launch/installation of the CI-built package, real Windows runtime and real Obsidian walkthrough verified.
+- [x] Dependency audit of the declared desktop requirements complete (`pip-audit`, 7 November 2026): no known advisories.
+- [ ] Malware/binary and Qt CVE review plus release compliance complete.
 - [ ] License selection remains an owner decision; Qt/PySide6 LGPL packaging obligations must be addressed before redistribution.
 
 ## Autonomous bootstrap verification evidence — PR #12 (merged)

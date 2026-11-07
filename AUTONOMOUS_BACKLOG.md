@@ -15,7 +15,7 @@
 | BASE-05 | Headless OpenCode external-directory deny safeguard | PR #7; merged to main | VERIFIED_CONFIG_ONLY |
 | BASE-06 | Host hardware snapshot and static RAM/VRAM/KV feasibility planner | PR #10; merged to main | VERIFIED_STATIC_ONLY |
 | BASE-07 | Six-provider, 12-route free model catalogue and benchmark-based order | PR #11; merged to main | VERIFIED_CONFIG_ONLY |
-| BASE-08 | Windows x64 PyInstaller build and CI workflows | Main workflows and prior successful runs | VERIFIED_CI_PACKAGE |
+| BASE-08 | Windows x64 PyInstaller build and CI workflows | Main workflows; `e27fec7` Python checks #42330519701 and desktop package #42330519740 both succeeded | VERIFIED_CI_PACKAGE |
 
 ## Priority 0 — Autonomous development control plane
 
@@ -67,7 +67,7 @@
 | AGENT-02 | Conversation history, search, files/attachments and project context | `tests/test_agent.py` covers persist/reopen/search/delete, attachment copy and one-time context inclusion | IMPLEMENTED_LOCAL_TESTS |
 | AGENT-03 | Memory/context controls and model switching through the shared Core | Model selection, verified-correction context and approved-knowledge toggles implemented; shared store/runtime used by all workspaces | IMPLEMENTED_LOCAL_TESTS |
 | AGENT-04 | Multi-step Agent tool execution, approvals, progress/activity and persistent Stop | Tool execution with persisted metadata, approval bridge, streaming activity and cancellation token covered by `tests/test_agent.py` and UI smoke tests | IMPLEMENTED_LOCAL_TESTS |
-| UI-01 | Complete three-workspace visual/UX integration, light/dark, accessibility and onboarding | Functional workspaces, persisted light/dark theme and offscreen UI tests exist; rebuilt Windows package and owner walkthrough remain | IN_PROGRESS |
+| UI-01 | Complete three-workspace visual/UX integration, light/dark, accessibility and onboarding | Functional workspaces, persisted light/dark theme and offscreen UI tests exist; the hosted Windows package passed, but owner launch/installation and walkthrough remain | IN_PROGRESS |
 | INT-01 | Integrate all three workspaces through one Core and remove placeholder-only paths | One `AppContext` supplies store/runtime/knowledge/memory/agent to every workspace; offscreen smoke verifies the real controls; placeholder assertions were removed | IMPLEMENTED_LOCAL_TESTS |
 
 ## Priority 5 — Evaluation and release
@@ -80,15 +80,18 @@
 | EVAL-04 | Three.js/game development evaluation | Playable build, automated checks and recorded result | READY |
 | EVAL-05 | Controlled comparison of all available model routes | Repeat runs, identical prompts/tools/budgets, median outcomes and provider reliability | READY |
 | REL-01 | Windows installer/update/uninstall/recovery and final documentation | Clean-machine/package smoke tests and bundled owner validation | READY |
-| REL-02 | License selection, Qt LGPL notices/relinking, security/dependency scan and release hardening | Owner chooses license; compliance and scan evidence recorded | WAITING_FOR_OWNER_DECISION |
+| REL-02 | License selection, Qt LGPL notices/relinking, security/dependency scan and release hardening | Owner chooses license; Qt LGPL notices/relinking and binary/security review remain. `pip-audit` on `requirements-desktop.txt` found no known vulnerabilities (7 Nov 2026) | WAITING_FOR_OWNER_DECISION |
 | REL-03 | Final single-pass Windows 11/Vulkan/Qwen/Obsidian acceptance | Owner runbook completed with evidence; no outstanding critical defects | WAITING_FOR_OWNER_VALIDATION |
 
 ## Local integration evidence — 7 November 2026
 
 - Full `python -m unittest discover -s tests` with `PYTHONPATH=src`, `QT_QPA_PLATFORM=offscreen` and the project PySide6 environment: **340 tests, OK**.
+- Windows code head `e27fec7`: Python checks #42330519701 succeeded on 3.11–3.14; Windows desktop #42330519740 passed the full Qt/offscreen suite, PyInstaller build, packaged backend smoke test, ZIP and artifact upload (`ECLIPSE-windows-x64`, 52,935,974 bytes).
 - The runtime suite spawns the fake HTTP/SSE server as a real process, exercises managed load/stream/stop, startup failure cleanup, attach mode and measured telemetry.
 - The Capability suite executes real `compileall`/unittest verification and real argument-list commands; failing checks and denied approvals cannot produce `completed`.
 - The Agent suite exercises the same runtime/tool loop with persisted conversations and attachments.
+- Offscreen Qt tests construct the full window with a temporary `AppContext` and exercise navigation, real workspace controls and theme switching.
+- `pip-audit 2.10.1 -r requirements-desktop.txt` audited PySide6 6.12.0, shiboken6, the PySide6 module wheels, PyInstaller 6.22.3 and pyinstaller-hooks-contrib 2026.9 with no known vulnerabilities; the dev venv's `pip` 24.0 advisories were cleared by upgrading to 26.3 (pip is tooling, not shipped).
 - A real CLI run (`eclipse chat --endpoint ... --json`) streamed an answer and reported state `ready` plus a generation run.
 - A real CLI benchmark (`eclipse benchmark --endpoint ... --runs 2 --warmup 1 --json`) returned `status=ok`, two measured samples, median TTFT `0.0016 s` and median throughput `122.645 tok/s` against the fake HTTP/SSE server. These are test-double measurements, not a model-performance claim.
 - `runtime-support` compares a real inspected GGUF atlas and host snapshot against the current backend declarations; `runtime_verified` stays false by design.
@@ -96,7 +99,6 @@
 ## PR #16 reconciliation — 7 November 2026
 
 PR #16 is a stale static runtime-contract branch cut before the integrated runtime landed. Its `src/eclipse/core/runtime.py` would duplicate the current backend/profile interfaces. The useful model-specific declaration comparison was adapted into `src/eclipse/runtime/backends.py` as `evaluate_model_support(...)` and the `runtime-support` CLI, with tests. The PR itself was not merged; its controller/recovery changes are historical and do not belong in the product runtime.
-- Offscreen Qt tests construct the full window with a temporary `AppContext` and exercise navigation, real workspace controls and theme switching.
 
 These are local automated results on Linux. They do not replace the owner Windows 11 llama.cpp/Vulkan/Qwen, rebuilt-package, real-Obsidian or installer gates.
 

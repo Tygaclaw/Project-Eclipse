@@ -4,11 +4,12 @@
 
 - Repository: `Tygaclaw/Project-Eclipse`.
 - Default branch: `main`.
-- Integration base: `84ce050`; implementation work is on `freebuff/938f3f76478afd5f73c65464` and is integrated into `main` on completion.
+- Integration base: `84ce050`; implementation work was done on `freebuff/938f3f76478afd5f73c65464` and is integrated into `main`. Windows CI and the portable package passed on code head `e27fec7`.
 - Autonomous bootstrap PRs #12/#13 and later controller work are merged. Every remote side branch was checked: the only unmerged branches were duplicate autonomous-controller attempts, not product code.
 - Mainline PRs #5, #6, #7, #10 and #11 are merged. PRs #8 and #9 are obsolete, closed and superseded.
 - The product now includes the previously missing shared Core, runtime, preparation, Capability System, knowledge workflow, Agent and full three-workspace integration described below, plus saved profiles with last-known-good restore, a model-specific support report and a repeated measured benchmark harness.
 - Latest local suite: **340 tests, OK**; a real CLI benchmark against the spawned HTTP/SSE test server completed with two measured samples.
+- Windows Python 3.11–3.14 checks passed in [run #42330519701](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519701); the Windows desktop package passed in [run #42330519740](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519740), including PyInstaller, packaged-backend smoke test and artifact upload.
 
 ## Product truth — 7 November 2026
 
@@ -39,12 +40,19 @@ The workflow has manual dispatch, main-branch push and six-hour scheduled entry 
 ## Next autonomous work order
 
 Use `AUTONOMOUS_BACKLOG.md` as the canonical queue. The local implementation work is complete; the remaining order is:
-1. Rebuild and smoke-test the Windows PyInstaller package with the new hidden imports.
+1. Owner-install or launch the CI-built Windows package and smoke-test all three workspaces plus the packaged backend.
 2. Verify the real Windows llama.cpp/Vulkan/Qwen connection, load/generate/stop/restart, observed context, telemetry and resource recovery.
 3. Walk through all three workspaces and the real Obsidian vault on Windows; run one Capability task and one Agent tool task with approvals.
 4. Complete the four model-agent evaluations with recorded evidence.
 5. Finish live provider route smoke tests and the live autonomous-workflow acceptance gates.
-6. Installer/update/uninstall, license/Qt LGPL compliance and security/dependency scans.
+6. Installer/update/uninstall, license/Qt LGPL compliance and the remaining binary/Qt security review (the Python dependency audit is already recorded in `LICENSES.md`).
+
+## Windows CI/package close-out — 7 November 2026
+
+- Code head `e27fec7` passed Windows Python checks 3.11–3.14 ([run #42330519701](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519701)).
+- The Windows desktop workflow passed the full Qt/offscreen suite, PyInstaller onedir build, packaged `ECLIPSE.exe --atlas-backend --help` smoke test, ZIP creation and artifact upload ([run #42330519740](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519740)). Artifact `ECLIPSE-windows-x64`, ID `13556659342`, 52,935,974 bytes, SHA-256 `2ff2029fc52363a2ad6d399807417708f02671ee4fd8d80bcea50a811c3c40cc`.
+- The first push-triggered run caught three real Windows defects: `.py` server scripts were launched without the interpreter, message ordering used SQLite `rowid`, and one test deleted a temp SQLite directory before closing it. Fixed in `edc02e7`, `1aeff21` and `e27fec7`; local Python 3.11.16 and 3.12 suites pass 340 tests.
+- This does not verify the owner's GPU-backed model runtime, installed-app launch or Obsidian vault. Those remain owner gates.
 
 ## Runtime completion pass — 7 November 2026
 
