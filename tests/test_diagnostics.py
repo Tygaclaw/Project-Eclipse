@@ -20,7 +20,14 @@ else:
     from PySide6.QtCore import QPoint, QPointF, Qt
     from PySide6.QtGui import QWheelEvent
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QScrollArea, QWidget
+    from PySide6.QtWidgets import (
+        QApplication,
+        QLineEdit,
+        QMessageBox,
+        QPushButton,
+        QScrollArea,
+        QWidget,
+    )
 
     from eclipse.desktop.diagnostics import InteractionRecorder, redact_text
 
@@ -101,6 +108,42 @@ class InteractionRecorderTests(unittest.TestCase):
         error = next(item for item in events if item["event"] == "test_error")
         self.assertIn("[REDACTED]", error["details"]["message"])
         self.assertNotIn("sk-abcdefghijklmnopqrstuv", json.dumps(events))
+
+    def test_records_message_box_content_and_severity_even_when_paused(self) -> None:
+        self.recorder.set_interactions_enabled(False)
+        dialog = QMessageBox(
+            QMessageBox.Icon.Warning,
+            "Model setup required",
+            "Register and select a model first.",
+            QMessageBox.StandardButton.Ok,
+            self.window,
+        )
+        dialog.setInformativeText("Use Add file to register an existing model.")
+        dialog.setDetailedText("API_KEY=sk-abcdefghijklmnopqrstuv")
+        dialog.show()
+        self.application.processEvents()
+        dialog.close()
+
+        events = self.read_events()
+        message_boxes = [item for item in events if item["event"] == "message_box_shown"]
+        self.assertEqual(len(message_boxes), 1)
+        details = message_boxes[0]["details"]
+        self.assertEqual(details["severity"], "warning")
+        self.assertEqual(details["title"], "Model setup required")
+        self.assertEqual(details["message"], "Register and select a model first.")
+        self.assertEqual(
+            details["informative_text"],
+            "Use Add file to register an existing model.",
+        )
+        self.assertIn("[REDACTED]", details["detailed_text"])
+        self.assertNotIn("sk-abcdefghijklmnopqrstuv", json.dumps(events))
+
+    def test_error_details_are_not_truncated_at_400_characters(self) -> None:
+        traceback_text = "trace-line\\n" * 80
+        self.recorder.record_error("long_error_detail", traceback=traceback_text)
+        events = self.read_events()
+        error = next(item for item in events if item["event"] == "long_error_detail")
+        self.assertEqual(error["details"]["traceback"], traceback_text)
 
     def test_secret_redaction_handles_tokens_and_bearer_headers(self) -> None:
         value = redact_text("Authorization: Bearer abcdefghijklmnop API_KEY=secret-value")
