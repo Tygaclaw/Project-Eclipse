@@ -1,8 +1,8 @@
 # ECLIPSE Project Status
 
-**Status:** `AUTONOMOUS_CONTROLLER_MERGED — AUTO-04_REVIEW_STAGE_OWNER_REVIEW_PENDING`
-**Last updated:** 2026-11-06
-**Current main head audited:** `acd7c41975fd6846fdfd4d7ac7c6616dd66765bb`
+**Status:** `INTEGRATED_LOCAL_IMPLEMENTATION_COMPLETE — OWNER_WINDOWS_VALIDATION_PENDING`
+**Last updated:** 2026-11-07
+**Implementation base:** `84ce050` (`main`); integrated on `freebuff/938f3f76478afd5f73c65464`
 
 ## Mainline history — verified
 
@@ -31,7 +31,20 @@ The old stacked PR #8 (hardware increment) and PR #9 (free provider pool) are cl
 - Windows x64 PyInstaller packaging and CI.
 - Ranked six-provider/12-route free OpenCode pool and benchmark report.
 
-A static estimate is not an executable placement plan or proof of inference. The Capability and Agent screens are not yet full implementations.
+## Integrated product implementation — 7 November 2026
+
+The previous placeholders and pending runtime layers have been replaced by working systems on the integration branch:
+
+- **Shared Core** — one SQLite store for models, prepared variants, profiles, runs, conversations, messages, attachments, tasks, corrections, knowledge metadata and settings; one event bus; one home/config layout; one permission broker with canonical path scoping, approvals, command validation and redaction. The desktop, CLI and tests all use this Core.
+- **Reversible preparation** — index/copy packages with source and output identity, SHA-256 inventories, manifests, lineage, verification, safe removal and quantization gated on a real `llama-quantize`.
+- **Inference runtime** — managed `llama-server` lifecycle and OpenAI-compatible attach mode; streaming text/tool calls; cancellation; observed vs requested context; measured TTFT, completion tokens and tokens/second; load/generation/stop run records; failure cleanup; truthful states; execution profiles with validation.
+- **Capability System** — watchdog routing, durable plans with acceptance criteria, project index/stack detection, workspace-scoped tools, independent `compileall`/test verification, bounded repair loop, loop detection, drift signals and Stop. Completion requires passing verification, not a model's claim.
+- **Correction memory and knowledge** — candidates are promoted only with substantive evidence and a regression reference; model notes wait in an Obsidian-compatible AI Inbox and approval copies them to trusted folders without overwriting existing notes.
+- **Agent** — persistent/searchable conversations, streaming, model selection, text attachments, scoped project tools, approvals, activity reporting and Stop on the same runtime and permission boundary.
+- **Desktop** — all three workspaces are functional: Inspect & feasibility, Prepare & run (registry, prepare/verify/delete, backend/profile, start/stop/restart, telemetry, test, diagnostics), Capability (four tabs), Agent (chat), plus a persisted light/dark theme.
+- **CLI** — 20 commands covering inspection, registry/preparation, runtime/chat, tasks, knowledge, corrections, status, diagnostics and check detection.
+
+A static feasibility estimate is still not an executable placement plan or proof of inference. The application-level permission boundary is not an OS container sandbox. The runtime has been exercised against a real spawned HTTP/SSE test server, but not yet against the owner's real Windows llama.cpp/Vulkan/Qwen installation.
 
 ## Autonomous engineering controller — merged to main
 
@@ -60,26 +73,25 @@ The autonomous controller now runs a deterministic, model-independent review gat
 
 Because this milestone changes the protected controller, its PR remains draft for owner review and Windows CI; it is not auto-merged. Batch status remains `IN_PROGRESS` until CI and merge are confirmed.
 
-## What is not yet complete as a working product
+## What still requires real-world validation
 
-- Real ECLIPSE-managed model inference lifecycle and backend capability matrix.
-- Executable CPU/GPU/hybrid placement and context/KV allocation verification.
-- Reversible prepared variants and transformation lineage.
-- Runtime profiles, actual telemetry and benchmarked performance.
-- Capability Watchdog, planner, research/context service, permissioned tool registry and sandbox.
-- Independent verification, recovery, loop detection, verified correction memory and reusable skills.
-- Obsidian knowledge vault and approval workflow.
-- Functional ECLIPSE Agent with chat, history, model switching, files, tools and Stop.
-- Complete end-to-end integration of all three workspaces through one Core.
+- Real Windows llama.cpp/Vulkan/Qwen load, generation, stop and restart through the packaged app, including observed context and actual VRAM/RAM telemetry.
+- Rebuilding the PyInstaller Windows package with the new Core/runtime/capability/agent hidden imports and smoke-testing the packaged executable.
+- Owner walkthrough of the rebuilt three-workspace UI and the real Obsidian vault.
+- Real Safetensors and multi-shard Hugging Face folder validation on Windows.
+- Executable CPU/GPU/hybrid placement planning and allocation reconciliation (profiles exist; placement is still configuration-based).
 - Four remaining evaluations: multi-file development, runtime debugging, safe interconnected-code changes and Three.js/game development.
-- Windows installer/update/uninstall/recovery and release compliance.
+- Windows installer/update/uninstall/recovery, license/Qt LGPL compliance and security/dependency scans.
+- Live provider route/tool-call smoke tests and one completed live autonomous workflow run.
 
 ## User-only release gates
 
 Do all independent development and GitHub-hosted Windows checks first. Then bundle only the remaining local checks into one clear Windows 11 validation run:
+- rebuild the package and launch the three-workspace app;
 - verify the existing llama.cpp/Vulkan/Qwen connection without reinstalling or changing the known-good configuration;
-- test real model load/generate/stop, actual hardware telemetry and resource recovery;
-- validate the user's Obsidian vault integration;
+- test real model load/generate/stop/restart, observed context, actual hardware telemetry and resource recovery;
+- run one Capability task and one Agent tool task with real approvals;
+- validate the user's real Obsidian vault workflow;
 - verify installation/update/uninstall on the target PC.
 
 Keep these gates `WAITING_FOR_OWNER_VALIDATION` until real evidence exists. Do not ask the owner to repeat the completed A* challenge, general hardware audit, Qwen installation or API-key setup.
@@ -96,7 +108,12 @@ Keep these gates `WAITING_FOR_OWNER_VALIDATION` until real evidence exists. Do n
 - [x] Protected bootstrap PRs #12 and #13 reviewed and merged to `main`.
 - [ ] First live autonomous run verified end-to-end (milestone PR merged by the controller).
 - [ ] Each API route passes live non-confidential text and tool-call smoke tests.
-- [ ] Runtime, sandbox, Obsidian, Agent, security/dependency scans and release gates complete.
+- [x] Shared Core, managed/attached runtime, Capability System, knowledge workflow and Agent implemented and locally tested.
+- [x] File tools are workspace-scoped and require explicit approval for writes and commands.
+- [x] A failed load, denied action or failed check is recorded as a failure, never converted into success.
+- [x] AI knowledge proposals remain in an Inbox until human approval; trusted notes are never overwritten.
+- [ ] Real Windows runtime, rebuilt package and real Obsidian walkthrough verified.
+- [ ] Security/dependency scans and release compliance complete.
 - [ ] License selection remains an owner decision; Qt/PySide6 LGPL packaging obligations must be addressed before redistribution.
 
 ## Autonomous bootstrap verification evidence — PR #12 (merged)

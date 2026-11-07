@@ -67,3 +67,33 @@
 **Decision:** Summarise tokenizer assets and chat templates statically under per-file and aggregate JSON/template byte limits, an aggregate template-count limit, bounded token-entry work and clipped previews. Reject a symlinked inspection root and do not follow root or nested symlinks. Never import, compile, render or execute a template; inventory SentencePiece `*.model` files by name and size only. Record the documented Hugging Face load sequence: read the legacy embedded `tokenizer_config.json` template (or the legacy `chat_template.json` format for processors), let root `chat_template.jinja` override the default, then merge named `additional_chat_templates/*.jinja`. Flag the documented processor incompatibility when `chat_template.json` coexists with modern Jinja files; do not infer that a folder is a processor and do not report an effective default for that combination. GGUF tokenizer facts are derived only from the bounded `tokenizer.*` previews the GGUF parser already produced.
 
 **Reason:** Chat templates are executable Jinja in the Transformers runtime and are untrusted data here. Treating them as inert text preserves the project's no-execution trust boundary while still telling the user what the model declares. Per-file and aggregate limits, bounded token-entry scans and clipped previews prevent large or malformed tokenizer metadata from causing uncontrolled work. Reusing the GGUF parser's bounded previews avoids a second read of the file. The cited Hugging Face load behaviour is reported as documentation, not proof that a particular model folder is runtime-compatible.
+
+## D-013 — One SQLite store and one event bus under all three workspaces
+
+**Decision:** Put models, prepared variants, profiles, runs, conversations, attachments, tasks, corrections, knowledge metadata and settings in one standard-library SQLite store owned by `AppContext`. The desktop, CLI and tests use the same Core.
+
+**Reason:** A single durable store prevents the three workspaces from drifting into separate histories or model registries. SQLite needs no server, works offline, and supports transactional updates and real integration tests without third-party packages.
+
+## D-014 — Managed llama.cpp with an OpenAI-compatible attach mode
+
+**Decision:** The first runtime adapter manages a real `llama-server` subprocess for GGUF models and also attaches to an existing OpenAI-compatible endpoint. Both use the same streaming client, profile validation and run records. States and errors are reported truthfully; a failed launch never becomes Ready.
+
+**Reason:** This preserves the owner's known-good Windows/Vulkan/Qwen setup instead of reinstalling it, while keeping ECLIPSE independent of one engine. Attach mode also makes it possible to test the complete streaming/tool contract without a GPU or a model download.
+
+## D-015 — Application-level permission boundary, not a claimed OS sandbox
+
+**Decision:** Scope file tools to the approved project root, reject canonical path escapes, require explicit approval for writes/commands, use argument-list subprocesses with timeouts, and cap outputs. Document this as application-level scoping rather than an OS container sandbox.
+
+**Reason:** The boundary is real and testable today, while an OS-level sandbox is a separate engineering and packaging problem. Overstating the protection would be worse than a precise limitation.
+
+## D-016 — Completion requires independent evidence
+
+**Decision:** A capability task is completed only when all plan objectives are done, the model loop stopped normally, and the verification engine actually ran passing checks. Denied or failed writes are recorded as failures. A correction memory entry is promoted only with substantive evidence and a regression reference. A repair produces a candidate lesson, not a verified one.
+
+**Reason:** The model's own summary is not evidence. This is the core honesty rule of the Capability System and is enforced by tests that seed failing checks and denied approvals.
+
+## D-017 — Knowledge proposals are separated from trusted knowledge
+
+**Decision:** Model-generated notes are written to `06 - AI Inbox` with `status: inbox`. Approval copies them into a trusted folder with an approval record; rejection records the reason. An existing trusted note is never overwritten; a collision gets a numeric suffix.
+
+**Reason:** Retrieval must not silently promote untrusted model output into the knowledge base. Keeping the vault as ordinary Markdown preserves the user's ability to inspect, edit and version it in Obsidian.

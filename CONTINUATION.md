@@ -4,14 +4,16 @@
 
 - Repository: `Tygaclaw/Project-Eclipse`.
 - Default branch: `main`.
-- Audited main head when this record was rewritten: `acd7c41975fd6846fdfd4d7ac7c6616dd66765bb`.
-- Autonomous bootstrap PRs #12 and #13 are merged to `main`; a live autonomous run created the current `feature/eclipse-autonomous-*` branch.
+- Integration base: `84ce050`; implementation work is on `freebuff/938f3f76478afd5f73c65464` and is integrated into `main` on completion.
+- Autonomous bootstrap PRs #12/#13 and later controller work are merged. Every remote side branch was checked: the only unmerged branches were duplicate autonomous-controller attempts, not product code.
 - Mainline PRs #5, #6, #7, #10 and #11 are merged. PRs #8 and #9 are obsolete, closed and superseded.
-- The existing product foundation includes static model inspection/Atlas, tokenizer/chat-template intelligence, static hardware feasibility, and the three-workspace Windows desktop shell.
+- The product now includes the previously missing shared Core, runtime, preparation, Capability System, knowledge workflow, Agent and full three-workspace integration described below.
 
-## Product truth
+## Product truth — 7 November 2026
 
-The Model Intelligence workspace has genuine static inspection and feasibility foundations. It does not yet have a managed inference lifecycle, executable placement planner, runtime profiles or full telemetry. Capability Amplification, Obsidian and the ECLIPSE Agent remain future implementation work beyond the existing honest placeholder screens. Do not report the product finished until the integrated backlog and release gates are satisfied.
+The three primary workspaces are now functional and share one `AppContext`: one SQLite store, runtime manager, event bus, knowledge base, correction memory, permission broker and agent. Model Intelligence retains the static inspectors and feasibility planner and adds a Prepare & run tab with registry/preparation, managed or attached inference, profiles, lifecycle, observed context, measured telemetry, diagnostics and a real generation test. Capability has a watchdog/planner, workspace-scoped tools, independent verification, a bounded repair loop, loop detection, correction memory and an Obsidian-compatible Inbox/approval workflow. Agent has persistent conversations, streaming, attachments, tools, approvals and Stop.
+
+The runtime and Capability/Agent orchestration have been exercised end to end against a real spawned HTTP/SSE inference double, real subprocess tool execution and the real SQLite store. The CLI `chat --endpoint` path was also run end to end and returned a real streamed answer and measured state. This is local automated evidence, not owner Windows/GPU acceptance. Original model files remain read-only; the permission boundary is application-level scoping, not an OS sandbox. The remaining gates are listed in `STATUS.md`.
 
 ## Autonomous controller bootstrap
 
@@ -35,16 +37,13 @@ The workflow has manual dispatch, main-branch push and six-hour scheduled entry 
 
 ## Next autonomous work order
 
-Use `AUTONOMOUS_BACKLOG.md` as the canonical queue. After the bootstrap controller is merged, continue with:
-1. Finish live provider smoke tests and failover/recovery acceptance.
-2. Build a real inference backend adapter compatible with the existing Windows/Vulkan setup, preserving the known-good configuration.
-3. Implement true load/generate/stop/unload lifecycle, execution profiles, actual runtime allocation and telemetry.
-4. Implement reversible preparation and integrity/rollback.
-5. Build the shared Capability Core: planning, research/context, tools, sandbox, verification, recovery, loop detection, corrections and skills.
-6. Integrate Obsidian with scoped retrieval and approval.
-7. Implement the full Agent chat/runtime, history, attachments, memory, tools, approvals and Stop.
-8. Complete three-workspace integration, UX and the remaining four evaluations.
-9. Complete release and final bundled Windows 11/Vulkan/Obsidian owner validation.
+Use `AUTONOMOUS_BACKLOG.md` as the canonical queue. The local implementation work is complete; the remaining order is:
+1. Rebuild and smoke-test the Windows PyInstaller package with the new hidden imports.
+2. Verify the real Windows llama.cpp/Vulkan/Qwen connection, load/generate/stop/restart, observed context, telemetry and resource recovery.
+3. Walk through all three workspaces and the real Obsidian vault on Windows; run one Capability task and one Agent tool task with approvals.
+4. Complete the four model-agent evaluations with recorded evidence.
+5. Finish live provider route smoke tests and the live autonomous-workflow acceptance gates.
+6. Installer/update/uninstall, license/Qt LGPL compliance and security/dependency scans.
 
 ## Model order and free-only safety
 
