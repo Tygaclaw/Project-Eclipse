@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QSize, Qt, Signal
-from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
+from PySide6.QtCore import QObject, QSize, Qt, Signal, QUrl
+from PySide6.QtGui import QCloseEvent, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -19,6 +21,7 @@ from PySide6.QtWidgets import (
 from eclipse import __version__
 
 from .context import AppContext
+from .diagnostics import InteractionRecorder
 from .theme import build_stylesheet
 from .workspaces import AgentWorkspace, CapabilityWorkspace
 from .workspaces.model_platform import ModelIntelligencePlatform
@@ -54,6 +57,15 @@ class MainWindow(QMainWindow):
     def __init__(self, context: AppContext | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.context = context or AppContext()
+        application = QApplication.instance()
+        if application is None:
+            raise RuntimeError("QApplication must be created before MainWindow.")
+        self.diagnostics = InteractionRecorder(
+            application,
+            self.context.paths.logs_dir,
+            enabled=bool(self.context.settings.get("ui_activity_logging_enabled", True)),
+            app_version=__version__,
+        )
         self.setWindowTitle("ECLIPSE — Local AI Workspace")
         self.setMinimumSize(1080, 720)
         self.resize(1400, 900)
@@ -128,6 +140,22 @@ class MainWindow(QMainWindow):
         self._theme_button.setObjectName("QuietButton")
         self._theme_button.clicked.connect(self._toggle_theme)
         sidebar_layout.addWidget(self._theme_button)
+        sidebar_layout.addSpacing(12)
+
+        self._activity_logging_toggle = QCheckBox("Record UI activity")
+        self._activity_logging_toggle.setObjectName("UiActivityLoggingToggle")
+        self._activity_logging_toggle.setToolTip(
+            "Records clicks, scrolling, navigation and errors locally. Text typed into chat or other fields is not recorded."
+        )
+        self._activity_logging_toggle.setChecked(self.diagnostics.interactions_enabled)
+        self._activity_logging_toggle.toggled.connect(self._set_activity_logging)
+        sidebar_layout.addWidget(self._activity_logging_toggle)
+
+        self._logs_button = QPushButton("Open diagnostics folder")
+        self._logs_button.setObjectName("OpenDiagnosticsFolderButton")
+        self._logs_button.setToolTip("Open the local folder containing ECLIPSE activity and error logs.")
+        self._logs_button.clicked.connect(self._open_diagnostics_folder)
+        sidebar_layout.addWidget(self._logs_button)
         sidebar_layout.addSpacing(14)
         version = QLabel(f"Version {__version__}")
         version.setObjectName("SidebarFaint")
@@ -148,6 +176,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
+        self.nav.currentRowChanged.connect(self._record_workspace_navigation)
         self.nav.setCurrentRow(0)
 
         for index in range(len(NAV_ITEMS)):
@@ -168,6 +197,17 @@ class MainWindow(QMainWindow):
         if 0 <= index < self.stack.count():
             self.nav.setCurrentRow(index)
             self.stack.setCurrentIndex(index)
+
+    def _record_workspace_navigation(self, index: int) -> None:
+        self.diagnostics.record("workspace_navigation", {"workspace_index": int(index)})
+
+    def _set_activity_logging(self, enabled: bool) -> None:
+        self.context.settings.set("ui_activity_logging_enabled", bool(enabled))
+        self.diagnostics.set_interactions_enabled(bool(enabled))
+
+    def _open_diagnostics_folder(self) -> None:
+        self.diagnostics.record("open_diagnostics_folder", {})
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.context.paths.logs_dir)))
 
     def _refresh_core_status(self) -> None:
         status = self.context.runtime.status
@@ -215,4 +255,5 @@ class MainWindow(QMainWindow):
             self.model_platform.shutdown()
         finally:
             self.context.shutdown()
+            self.diagnostics.close()
         super().closeEvent(event)
