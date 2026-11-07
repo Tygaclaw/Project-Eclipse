@@ -155,9 +155,12 @@ PR #12/#13 are now on `main`; the historical draft state above is superseded. Do
 
 
 
-## UI diagnostics addition
+## UI diagnostics — verified 7 November 2026
 
-- Added a local session recorder for mouse clicks/double-clicks, wheel scrolling, workspace navigation, safe keyboard shortcuts, focus, context menus, drag/drop event types and Python/Qt/application errors.
-- Interaction capture is enabled by default, has a visible sidebar pause/resume control, and can be opened from the sidebar. Logs remain on the PC under the ECLIPSE home `logs/` folder, with size/age retention limits.
-- Privacy boundary: typed text, chat messages, passwords, clipboard contents, file contents, screenshots and absolute screen coordinates are not captured. Errors are recorded even when interaction capture is paused; common credential formats are redacted.
-- Verification status: automated recorder tests and Windows build/test checks are pending this branch's CI. The owner must manually launch the new build and confirm the log reflects clicks and scrolling before this feature is accepted on the target PC.
+- Added and merged in PR #17, main commit `95d13c972f69f0b955babb17f8cbfb899e0e88dd`.
+- The local session recorder captures Qt UI mouse press/release/double-click events, wheel scrolling, workspace navigation, tab/menu actions, safe navigation shortcuts, focus changes, context-menu use, drag/drop event types, Python/Qt errors, unhandled exceptions, runtime state changes, runtime failures and measured generation metrics. It does not record generated response text.
+- Interaction logging is enabled by default, can be paused/resumed from the sidebar, and can be opened from the sidebar. Logs remain local under the ECLIPSE home `logs/` folder. Files have per-session size limits and old files are pruned.
+- Privacy boundary: the recorder does not read text typed into input controls or the Agent composer, clipboard contents, file contents, screenshots or absolute screen coordinates. Diagnostic errors and stack traces are saved for troubleshooting; common credential forms are redacted, but logs should be reviewed before sharing because an error may contain a local path or other technical details.
+- Windows Python checks [#42335580165](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42335580165) passed on Python 3.11–3.14. Windows desktop build [#42335580233](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42335580233) passed the full Qt/offscreen suite (**345 tests, 1 skipped**), PyInstaller 6.22.3, packaged backend smoke test, ZIP creation and artifact upload.
+- Windows artifact: `ECLIPSE-windows-x64`, ID `13558838091`, 52,953,540 bytes, SHA-256 `3959a94bfbb5e86d87f0b9d996dd4c09724aefaa781752fd0c2a1ace66b9ae0b`; expires 21 November 2026.
+- Owner validation remains: launch the new package on Windows 11, verify the activity log, then validate real llama.cpp/Vulkan/Qwen execution. The Windows CI build does not prove real GPU model execution.
