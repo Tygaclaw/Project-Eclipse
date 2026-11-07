@@ -164,3 +164,13 @@ PR #12/#13 are now on `main`; the historical draft state above is superseded. Do
 - Windows Python checks [#42335580165](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42335580165) passed on Python 3.11–3.14. Windows desktop build [#42335580233](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42335580233) passed the full Qt/offscreen suite (**345 tests, 1 skipped**), PyInstaller 6.22.3, packaged backend smoke test, ZIP creation and artifact upload.
 - Windows artifact: `ECLIPSE-windows-x64`, ID `13558838091`, 52,953,540 bytes, SHA-256 `3959a94bfbb5e86d87f0b9d996dd4c09724aefaa781752fd0c2a1ace66b9ae0b`; expires 21 November 2026.
 - Owner validation remains: launch the new package on Windows 11, verify the activity log, then validate real llama.cpp/Vulkan/Qwen execution. The Windows CI build does not prove real GPU model execution.
+
+### Diagnostics follow-up — PR #18 merged 7 November 2026
+
+- PR: https://github.com/Tygaclaw/Project-Eclipse/pull/18
+- Merge commit: `64ff0cd681e43458e5b265ba1d76cc1778179d62`.
+- Python matrix [run #42338515141](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42338515141) passed on Python 3.11, 3.12, 3.13 and 3.14.
+- Windows desktop [run #42338515159](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42338515159) passed the full Qt/offscreen test suite, PyInstaller build, packaged backend smoke test, ZIP creation and artifact upload.
+- Follow-up artifact: `ECLIPSE-windows-x64`, ID `13560219184`, 52,952,873 bytes, SHA-256 `9ac982014135562feb834aa5a238a73c8112ab6bcd5759c0af6a88c72ea7f04d`; expires 21 November 2026.
+- Message boxes now record severity, title, visible message, informative text and detailed text, including while ordinary interaction logging is paused. Diagnostic string values are bounded at 8,000 characters instead of the previous 400-character cap; credential redaction remains enabled.
+
