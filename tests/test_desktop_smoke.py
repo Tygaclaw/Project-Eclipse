@@ -397,6 +397,20 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertIn("15–20+ sustained tokens/second", text)
         self.assertIn("not a predicted or measured result", text)
 
+    def test_sidebar_exposes_local_ui_diagnostics_controls(self) -> None:
+        window = self.make_window()
+        self.assertTrue(window._activity_logging_toggle.isChecked())
+        self.assertIn("Text typed", window._activity_logging_toggle.toolTip())
+        self.assertTrue(window._logs_button.isEnabled())
+        window.navigate(1)
+        log_text = window.diagnostics.current_log_path.read_text(encoding="utf-8")
+        self.assertIn('"event":"workspace_navigation"', log_text)
+        self.assertIn('"event":"session_start"', log_text)
+        window._activity_logging_toggle.setChecked(False)
+        self.assertFalse(window.diagnostics.interactions_enabled)
+        window._activity_logging_toggle.setChecked(True)
+        self.assertTrue(window.diagnostics.interactions_enabled)
+
     def test_window_starts_and_closes_cleanly(self) -> None:
         window = self.make_window()
         window.show()
