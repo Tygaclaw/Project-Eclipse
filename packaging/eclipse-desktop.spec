@@ -48,6 +48,7 @@ a = Analysis(
         "eclipse.desktop.app",
         "eclipse.desktop.approval",
         "eclipse.desktop.context",
+        "eclipse.desktop.diagnostics",
         "eclipse.desktop.main_window",
         "eclipse.desktop.runtime_panel",
         "eclipse.desktop.theme",

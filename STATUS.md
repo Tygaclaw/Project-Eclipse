@@ -153,3 +153,11 @@ Last verified PR head before this documentation update: `44a463732448c6faa544620
 
 PR #12/#13 are now on `main`; the historical draft state above is superseded. Do not mark AUTO-01/02/03 completely accepted before the remaining live gates are satisfied.
 
+
+
+## UI diagnostics addition
+
+- Added a local session recorder for mouse clicks/double-clicks, wheel scrolling, workspace navigation, safe keyboard shortcuts, focus, context menus, drag/drop event types and Python/Qt/application errors.
+- Interaction capture is enabled by default, has a visible sidebar pause/resume control, and can be opened from the sidebar. Logs remain on the PC under the ECLIPSE home `logs/` folder, with size/age retention limits.
+- Privacy boundary: typed text, chat messages, passwords, clipboard contents, file contents, screenshots and absolute screen coordinates are not captured. Errors are recorded even when interaction capture is paused; common credential formats are redacted.
+- Verification status: automated recorder tests and Windows build/test checks are pending this branch's CI. The owner must manually launch the new build and confirm the log reflects clicks and scrolling before this feature is accepted on the target PC.

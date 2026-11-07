@@ -80,3 +80,11 @@ Synthetic tests prove parser behavior for the cases represented by their fixture
 4. Compare metadata/tensor descriptor output and derived sizes with a trusted upstream loader.
 5. Run the tokenizer/chat-format card against a real multi-file Hugging Face folder (including `additional_chat_templates/*.jinja`) and a real GGUF with embedded `tokenizer.chat_template`.
 6. Owner Windows 11 validation of `inspect-host`, `plan-feasibility` and the Model Intelligence memory-fit controls against the known-good model; check the KV estimate against backend-reported allocation (the estimate assumes full attention on every layer). Then separately validate runtime correctness and preparation integrity.
+
+
+## UI interaction and error diagnostics
+
+- `tests/test_diagnostics.py` verifies that the desktop recorder writes mouse press/release events and wheel-scroll deltas, identifies controls by safe widget metadata, does not store typed text from input controls, continues recording errors while ordinary interaction capture is paused, and redacts common API-key/Bearer formats.
+- Manual desktop check: launch ECLIPSE, confirm **Record UI activity** is checked, click between all three workspaces, use the inner tabs, scroll a page, open a menu and perform a harmless action. Select **Open diagnostics folder**. Confirm the current `eclipse-ui-*.jsonl` file contains event entries for the actions. Type a harmless test sentence into the Agent composer and confirm the sentence itself does not appear in the log.
+- To pause interaction capture, uncheck **Record UI activity**. Python/Qt error events remain logged. Re-check it to resume.
+- Logs are local only. Do not attach logs publicly without reviewing them; they may contain widget identifiers, local paths from error reports, and technical environment details even though typed text and common credentials are excluded.
