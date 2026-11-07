@@ -132,4 +132,4 @@ The desktop records a structured local session log by default. It captures mouse
 
 Logs are written under the ECLIPSE application data folder in `logs/` as JSON Lines files. They stay on the computer and are not uploaded automatically. The recorder does not read text typed into input controls or the Agent composer, clipboard contents, file contents, screenshots or absolute screen coordinates. Diagnostic errors and stack traces are saved for troubleshooting; common credential formats are redacted, but review logs before sharing because error details may include local paths or other technical information. Interaction logs can be paused from the sidebar; error logging remains active so failures can still be diagnosed. Old logs are pruned and each session has a size limit.
 
-On Windows, the default folder is `%LOCALAPPDATA%\\ECLIPSE\\logs`. See `TESTING.md` for the diagnostics test coverage.
+On Windows, the default folder is `%LOCALAPPDATA%\ECLIPSE\logs`. See `TESTING.md` for the diagnostics test coverage.
