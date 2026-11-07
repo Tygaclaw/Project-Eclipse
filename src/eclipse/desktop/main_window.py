@@ -190,6 +190,7 @@ class MainWindow(QMainWindow):
             self.context.events.subscribe(
                 name, lambda event, event_name=name: self._relay.event.emit(event_name, event.payload)
             )
+        self._unsubscribe_diagnostics = self.context.events.subscribe(None, self._record_core_event)
         self._refresh_core_status()
         self._apply_theme(str(self.context.settings.get("theme", "dark")))
 
@@ -208,6 +209,48 @@ class MainWindow(QMainWindow):
     def _open_diagnostics_folder(self) -> None:
         self.diagnostics.record("open_diagnostics_folder", {})
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.context.paths.logs_dir)))
+
+    def _record_core_event(self, event: object) -> None:
+        """Record useful Core outcomes without persisting model/chat text."""
+        name = str(getattr(event, "name", "unknown"))
+        payload = getattr(event, "payload", {})
+        if not isinstance(payload, dict):
+            payload = {}
+
+        if name == "runtime.state":
+            details = {
+                key: payload.get(key)
+                for key in ("state", "backend", "pid", "owns_process", "requested_context", "observed_context")
+                if payload.get(key) is not None
+            }
+            self.diagnostics.record("runtime_state", details)
+            error = payload.get("error")
+            if payload.get("state") == "failed" or error:
+                self.diagnostics.record_error(
+                    "runtime_failure",
+                    state=payload.get("state"),
+                    backend=payload.get("backend"),
+                    error=error or "Runtime entered a failed state.",
+                )
+        elif name == "runtime.metrics":
+            metrics = payload.get("metrics")
+            if isinstance(metrics, dict):
+                allowed = (
+                    "time_to_first_token_seconds",
+                    "total_seconds",
+                    "decode_seconds",
+                    "chunk_count",
+                    "characters",
+                    "prompt_tokens",
+                    "completion_tokens",
+                    "tokens_per_second",
+                    "cancelled",
+                    "measurement",
+                )
+                details = {key: metrics[key] for key in allowed if key in metrics}
+                self.diagnostics.record("runtime_metrics", details)
+        elif any(marker in name.lower() for marker in ("error", "failed", "denied")):
+            self.diagnostics.record_error("core_failure_event", event_name=name)
 
     def _refresh_core_status(self) -> None:
         status = self.context.runtime.status
@@ -254,6 +297,10 @@ class MainWindow(QMainWindow):
             self.capability_workspace.shutdown()
             self.model_platform.shutdown()
         finally:
+            try:
+                self._unsubscribe_diagnostics()
+            except Exception:
+                pass
             self.context.shutdown()
             self.diagnostics.close()
         super().closeEvent(event)
