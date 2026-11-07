@@ -249,6 +249,30 @@ class _BenchmarkWorker(QThread):
         self.finished_with.emit(result)
 
 
+class _VerifyWorker(QThread):
+    succeeded = Signal(dict)
+    failed = Signal(str)
+
+    def __init__(self, path: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.path = path
+
+    def run(self) -> None:
+        try:
+            package = verify_prepared_package(self.path)
+            integrity = package.manifest.get("integrity") or {}
+            self.succeeded.emit(
+                {
+                    "integrity": integrity,
+                    "verified_files": len(integrity.get("verified_files") or []),
+                }
+            )
+        except PreparationError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:  # noqa: BLE001 - reported to the UI
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
 class ModelRuntimePanel(QWidget):
     """Real model loading, generation, preparation and telemetry."""
 
@@ -262,6 +286,7 @@ class ModelRuntimePanel(QWidget):
         self._benchmark_worker: _BenchmarkWorker | None = None
         self._selected_model: dict[str, Any] | None = None
         self._register_worker: _RegisterWorker | None = None
+        self._verify_worker: _VerifyWorker | None = None
         self.setObjectName("ModelRuntimePanel")
         self.setAccessibleName("Model preparation and inference")
 
@@ -666,6 +691,7 @@ class ModelRuntimePanel(QWidget):
 
     def refresh_variants(self) -> None:
         self._variant_list.clear()
+        verifying = self._verify_worker is not None and self._verify_worker.isRunning()
         if self._selected_model is None:
             self._verify_button.setEnabled(False)
             self._rollback_button.setEnabled(False)
@@ -677,8 +703,8 @@ class ModelRuntimePanel(QWidget):
             )
             item.setData(Qt.ItemDataRole.UserRole, variant["id"])
             self._variant_list.addItem(item)
-        self._verify_button.setEnabled(bool(variants))
-        self._rollback_button.setEnabled(bool(variants))
+        self._verify_button.setEnabled(bool(variants) and not verifying)
+        self._rollback_button.setEnabled(bool(variants) and not verifying)
 
     def _choose_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -768,19 +794,37 @@ class ModelRuntimePanel(QWidget):
 
     def _verify_variant(self) -> None:
         variant = self._variant()
-        if variant is None:
+        if variant is None or self._verify_worker is not None:
             return
-        try:
-            package = verify_prepared_package(variant["path"])
-        except PreparationError as exc:
-            QMessageBox.warning(self, "Integrity check failed", str(exc))
-            return
+        # Re-hashing a multi-gigabyte package on the GUI thread froze the window
+        # for the whole check, so run it on a worker thread.
+        self._verify_button.setEnabled(False)
+        self._rollback_button.setEnabled(False)
+        worker = _VerifyWorker(variant["path"], self)
+        self._verify_worker = worker
+        worker.succeeded.connect(self._verified)
+        worker.failed.connect(self._verify_failed)
+        worker.finished.connect(self._verify_finished)
+        worker.start()
+
+    def _verified(self, result: dict[str, Any]) -> None:
+        integrity = result.get("integrity") or {}
         QMessageBox.information(
             self,
             "Prepared package",
-            f"Integrity: {package.manifest['integrity']['status']}\n"
-            f"Files checked: {len(package.manifest['integrity'].get('verified_files') or [])}",
+            f"Integrity: {integrity.get('status')}\n"
+            f"Files checked: {result.get('verified_files')}",
         )
+
+    def _verify_failed(self, message: str) -> None:
+        QMessageBox.warning(self, "Integrity check failed", message)
+
+    def _verify_finished(self) -> None:
+        worker = self._verify_worker
+        self._verify_worker = None
+        if worker is not None:
+            worker.deleteLater()
+        self.refresh_variants()
 
     def _delete_variant(self) -> None:
         variant = self._variant()
@@ -924,11 +968,18 @@ class ModelRuntimePanel(QWidget):
 
     def _started(self, payload: dict[str, Any]) -> None:
         warnings = payload.get("warnings") or []
-        self._state_detail.setText(
-            "Ready. " + ("; ".join(warnings) if warnings else "The backend accepted the load.")
-        )
+        applied = payload.get("applied", True)
         self.refresh_profiles()
         self._render_status()
+        if not applied:
+            self._state_detail.setText(
+                "Settings not applied. "
+                + ("; ".join(warnings) if warnings else "Restart the runtime to apply them.")
+            )
+        elif warnings:
+            self._state_detail.setText(f"{self._state_detail.text()} {'; '.join(warnings)}")
+        else:
+            self._state_detail.setText("Ready. The backend accepted the load.")
         self._start_button.setEnabled(False)
         self._stop_button.setEnabled(True)
         self.status_changed.emit()
@@ -1148,3 +1199,5 @@ class ModelRuntimePanel(QWidget):
             self._benchmark_worker.wait(5000)
         if self._register_worker is not None:
             self._register_worker.wait(5000)
+        if self._verify_worker is not None:
+            self._verify_worker.wait(5000)

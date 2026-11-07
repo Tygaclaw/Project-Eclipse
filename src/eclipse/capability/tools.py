@@ -92,6 +92,7 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
             "additionalProperties": False,
         },
         action="read",
+        requires_workspace=True,
     ),
     ToolSpec(
         name="read_file",
@@ -106,6 +107,7 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
             "additionalProperties": False,
         },
         action="read",
+        requires_workspace=True,
     ),
     ToolSpec(
         name="search_text",
@@ -121,6 +123,7 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
             "additionalProperties": False,
         },
         action="read",
+        requires_workspace=True,
     ),
     ToolSpec(
         name="write_file",
@@ -138,6 +141,7 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
             "additionalProperties": False,
         },
         action="write",
+        requires_workspace=True,
     ),
     ToolSpec(
         name="run_command",
@@ -158,6 +162,7 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
             "additionalProperties": False,
         },
         action="command",
+        requires_workspace=True,
     ),
     ToolSpec(
         name="verify",
@@ -169,6 +174,7 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
             "additionalProperties": False,
         },
         action="command",
+        requires_workspace=True,
     ),
     ToolSpec(
         name="knowledge_search",

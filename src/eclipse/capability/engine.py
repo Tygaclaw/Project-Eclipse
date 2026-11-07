@@ -23,7 +23,7 @@ from eclipse.runtime.client import CancellationToken, ChatError, ChatMessage
 from .execution import LoopResult, ToolEvent, run_tool_loop
 from .knowledge import KnowledgeBase
 from .memory import CorrectionMemory, MemoryError
-from .planner import Plan, build_plan, mark_objective
+from .planner import Objective, Plan, build_plan, mark_objective
 from .research import ProjectIndex, detect_project_stack, list_workspace_files
 from .tools import ToolRegistry, ToolResult
 from .verification import VerificationEngine
@@ -227,6 +227,25 @@ class CapabilityEngine:
             stopped_reason = loop.stopped_reason
             record(f"Model loop finished with reason '{loop.stopped_reason}' after {loop.steps} step(s).")
 
+            if "answer" in {objective.id for objective in plan.objectives}:
+                # Fast-mode tasks have a single 'answer' objective and no
+                # verification stage. Without this the objective stayed pending
+                # and every successful fast task was reported as needs_attention.
+                if summary:
+                    mark_objective(
+                        plan,
+                        "answer",
+                        "done",
+                        [f"Model produced an answer after {loop.steps} step(s); no tool evidence is required in fast mode."],
+                    )
+                else:
+                    mark_objective(
+                        plan,
+                        "answer",
+                        "failed",
+                        ["The model returned no answer text."],
+                    )
+
             used = {event.name for event in loop.tool_events}
             if "inspect" in {objective.id for objective in plan.objectives}:
                 if used & {"read_file", "search_text", "list_dir"}:
@@ -321,7 +340,14 @@ class CapabilityEngine:
                 task_id,
                 status=status,
                 evidence=evidence,
-                plan={**plan.to_dict(), "assessment": assessment.to_dict()},
+                plan={
+                    **plan.to_dict(),
+                    "assessment": assessment.to_dict(),
+                    # Persist the raw verification reports so the desktop
+                    # Verification tab still shows the commands and their real
+                    # output after the task is reselected or the app restarts.
+                    "verification": verification,
+                },
             )
             self.store.record_run(
                 kind="capability_task",
@@ -360,7 +386,11 @@ class CapabilityEngine:
                 task_id,
                 status="cancelled" if cancel.cancelled else "failed",
                 evidence=evidence,
-                plan={**plan.to_dict(), "assessment": assessment.to_dict()},
+                plan={
+                    **plan.to_dict(),
+                    "assessment": assessment.to_dict(),
+                    "verification": verification,
+                },
             )
             self.events.emit(
                 "task.completed",
@@ -447,14 +477,12 @@ class CapabilityEngine:
             ]
         if not any(objective.id == "verify" for objective in plan.objectives):
             plan.objectives.append(
-                type(plan.objectives[0])(
+                Objective(
                     id="verify",
                     title="Verify the change with independent checks",
                     acceptance_criteria=["A real check passes."],
                     verification="Run the project's checks.",
                 )
-                if plan.objectives
-                else plan.objectives
             )
         self.events.emit("task.verification", task_id=task_id, reports=reports)
         return reports

@@ -226,6 +226,18 @@ class RuntimeTests(unittest.TestCase):
         self.runtime.stop()
         self.assertIsNone(process.poll(), "Attach mode must not stop the external server")
 
+    def test_changed_settings_for_a_loaded_model_are_reported_not_silently_ignored(self) -> None:
+        self.start_managed()
+        pid = self.runtime.status.pid
+        result = self.runtime.start(self.model_record(), self.spec(context_tokens=1024))
+        self.assertEqual(result.status["state"], "ready")
+        self.assertFalse(result.applied)
+        self.assertEqual(self.runtime.status.pid, pid)
+        self.assertEqual(self.runtime.status.observed_context, 2048)
+        self.assertTrue(any("Restart" in warning for warning in result.warnings))
+        unchanged = self.runtime.start(self.model_record(), self.spec())
+        self.assertTrue(unchanged.applied)
+
     def test_profile_resolution_validates_against_capabilities(self) -> None:
         spec = resolve_profile(
             intent="balanced",

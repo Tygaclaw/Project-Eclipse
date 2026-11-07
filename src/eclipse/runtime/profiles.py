@@ -323,6 +323,12 @@ def _profile_signature(payload: Mapping[str, Any]) -> tuple[tuple[str, Any], ...
     return tuple(values)
 
 
+def settings_match(left: ProfileSpec, right: ProfileSpec) -> bool:
+    """Compare only the effective execution settings, not explanatory text."""
+
+    return _profile_signature(left.to_payload()) == _profile_signature(right.to_payload())
+
+
 def find_matching_profile(store: Any, model_id: str, spec: ProfileSpec) -> dict[str, Any] | None:
     """Find the stored profile with the same effective settings."""
 

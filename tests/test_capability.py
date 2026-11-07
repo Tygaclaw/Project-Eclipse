@@ -186,6 +186,21 @@ class ToolTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("FAILED", result.output)
 
+    def test_workspace_tools_are_hidden_without_a_workspace(self) -> None:
+        unbound = ToolRegistry(
+            PermissionBroker([self.root], approver=approver),
+            None,
+            store=self.store,
+            verifier=VerificationEngine(),
+        )
+        names = {schema["function"]["name"] for schema in unbound.schemas()}
+        self.assertNotIn("read_file", names)
+        self.assertNotIn("run_command", names)
+        self.assertIn("correction_lookup", names)
+        bound = {schema["function"]["name"] for schema in self.tools.schemas()}
+        self.assertIn("read_file", bound)
+        self.assertIn("run_command", bound)
+
     def test_project_index_returns_provenance(self) -> None:
         index = ProjectIndex(self.root)
         hits = index.search("answer")
@@ -265,6 +280,13 @@ class KnowledgeTests(unittest.TestCase):
         self.assertNotEqual(Path(approved["approved_path"]).name, target.name)
         self.assertEqual(target.read_text(encoding="utf-8"), "Existing trusted note")
 
+    def test_two_proposals_with_the_same_title_never_overwrite_each_other(self) -> None:
+        first = self.knowledge.propose_note(title="Same title", body="First body.", source="test")
+        second = self.knowledge.propose_note(title="Same title", body="Second body.", source="test")
+        self.assertNotEqual(first["path"], second["path"])
+        self.assertIn("First body.", (self.vault / first["path"]).read_text(encoding="utf-8"))
+        self.assertIn("Second body.", (self.vault / second["path"]).read_text(encoding="utf-8"))
+
     def test_trusted_folders_only_and_inbox_only_approval(self) -> None:
         note = self.knowledge.propose_note(title="X", body="Y")
         with self.assertRaises(KnowledgeError):
@@ -326,6 +348,29 @@ class EngineTests(unittest.TestCase):
         stored = self.store.get_task(task["id"])
         self.assertEqual(stored["status"], "completed")
         self.assertTrue(any(entry["kind"] == "tool" for entry in stored["evidence"]))
+        # The raw verification reports must survive the task run so the desktop
+        # Verification tab can show real command output after a reselect.
+        persisted = stored["plan"].get("verification") or []
+        self.assertEqual(len(persisted), len(run.verification))
+        self.assertTrue(all(report.get("command") for report in persisted))
+        self.assertTrue(
+            any(report.get("stdout") or report.get("stderr") for report in persisted)
+        )
+
+    def test_fast_task_answer_is_not_reported_as_needs_attention(self) -> None:
+        runtime = ScriptedRuntime([{"text": "Paris is the capital of France."}])
+        engine = self.engine(runtime)
+        task = engine.create_task("What is the capital of France?", mode="fast")
+        run = engine.run_task(task["id"], approver=approver)
+        self.assertEqual(run.status, "completed", run.to_dict())
+        self.assertEqual(run.stopped_reason, "complete")
+        stored = self.store.get_task(task["id"])
+        self.assertEqual(stored["status"], "completed")
+        answer = next(
+            objective for objective in stored["plan"]["objectives"] if objective["id"] == "answer"
+        )
+        self.assertEqual(answer["status"], "done")
+        self.assertTrue(answer["evidence"])
 
     def test_verification_failure_is_not_reported_as_success(self) -> None:
         runtime = ScriptedRuntime(

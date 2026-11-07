@@ -9,6 +9,7 @@ import tempfile
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
+from unittest.mock import patch
 
 try:
     import PySide6  # noqa: F401
@@ -19,7 +20,7 @@ except ModuleNotFoundError as exc:
 else:
     # Once PySide6 is installed, import or UI construction errors must fail the
     # test suite instead of silently converting every desktop test to a skip.
-    from PySide6.QtWidgets import QLabel, QPlainTextEdit, QPushButton, QToolButton
+    from PySide6.QtWidgets import QLabel, QMessageBox, QPlainTextEdit, QPushButton, QToolButton
 
     from eclipse.desktop.app import create_application
     from eclipse.desktop.context import AppContext
@@ -195,6 +196,28 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertIn("Send", text)
         self.assertNotIn("No model adapter connected", text)
         self.assertIn("No model loaded", text)
+
+    def test_deleting_the_last_conversation_clears_the_stale_transcript(self) -> None:
+        window = self.make_window()
+        agent = window.agent_workspace
+        conversation_id = agent._conversation_id
+        window.context.store.add_message(conversation_id, "user", "stale transcript text")
+        agent._select_conversation(conversation_id)
+        self.assertIn("stale transcript text", " ".join(widget_texts(agent)))
+
+        class _Confirm:
+            StandardButton = QMessageBox.StandardButton
+
+            @staticmethod
+            def question(*_args, **_kwargs):
+                return QMessageBox.StandardButton.Yes
+
+        with patch("eclipse.desktop.workspaces.agent.QMessageBox", _Confirm):
+            agent._delete_conversation()
+        self.app.processEvents()
+        self.assertIsNotNone(agent._conversation_id)
+        self.assertNotEqual(agent._conversation_id, conversation_id)
+        self.assertNotIn("stale transcript text", " ".join(widget_texts(agent)))
 
     def test_theme_toggle_persists_the_choice(self) -> None:
         window = self.make_window()

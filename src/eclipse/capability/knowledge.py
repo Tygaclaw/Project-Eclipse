@@ -136,8 +136,16 @@ class KnowledgeBase:
             raise KnowledgeError("A note needs a title")
         self.ensure_vault()
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        filename = f"{stamp}-{_slug(title)}.md"
+        base_name = f"{stamp}-{_slug(title)}"
+        filename = f"{base_name}.md"
         target = self._resolve_inside(f"{INBOX}/{filename}")
+        # Two proposals with the same title within one second used to share a
+        # filename, so the second silently overwrote the first candidate note.
+        suffix = 2
+        while target.exists():
+            filename = f"{base_name}-{suffix}.md"
+            target = self._resolve_inside(f"{INBOX}/{filename}")
+            suffix += 1
         content = "\n".join(
             [
                 f"# {title.strip()}",

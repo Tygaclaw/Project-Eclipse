@@ -36,6 +36,7 @@ from .profiles import (
     last_known_good_profile,
     restore_profile,
     save_profile,
+    settings_match,
     validate_profile,
 )
 from .telemetry import ResourceSampler, StreamMetrics, process_snapshot
@@ -115,6 +116,7 @@ class LoadResult:
     status: dict[str, Any]
     spec: dict[str, Any]
     warnings: list[str] = field(default_factory=list)
+    applied: bool = True
 
 
 class RuntimeManager:
@@ -217,7 +219,26 @@ class RuntimeManager:
         warnings = validate_profile(spec, atlas=atlas)
         if self._status.state in {RuntimeState.READY, RuntimeState.GENERATING}:
             if self._status.model_id == model.get("id"):
-                return LoadResult(status=self.status.to_dict(), spec=spec.to_payload(), warnings=warnings)
+                current = self._spec
+                if current is None or settings_match(current, spec):
+                    return LoadResult(
+                        status=self.status.to_dict(),
+                        spec=spec.to_payload(),
+                        warnings=warnings,
+                    )
+                # The same model is already running with a different profile.
+                # Returning silently would tell the user new settings were
+                # applied when they were not, so report it instead.
+                warnings.append(
+                    "This model is already loaded with different settings. "
+                    "Use Restart to apply the new execution profile."
+                )
+                return LoadResult(
+                    status=self.status.to_dict(),
+                    spec=current.to_payload(),
+                    warnings=warnings,
+                    applied=False,
+                )
             self.stop()
 
         with self._lock:
@@ -506,14 +527,26 @@ class RuntimeManager:
         return self.start(model, spec_payload)
 
     def shutdown(self) -> None:
+        with self._lock:
+            active = self._server is not None or self._client is not None or self._sampler is not None
+        if not active:
+            return
         try:
-            if self._server is not None:
-                self.stop()
+            self.stop()
         except Exception:  # noqa: BLE001 - shutdown must not raise
-            well = self._server
-            if well is not None:
+            with self._lock:
+                server = self._server
+                sampler = self._sampler
+                self._server = None
+                self._sampler = None
+            if server is not None:
                 try:
-                    well.stop()
+                    server.stop()
+                except Exception:  # noqa: BLE001
+                    pass
+            if sampler is not None:
+                try:
+                    sampler.stop()
                 except Exception:  # noqa: BLE001
                     pass
 

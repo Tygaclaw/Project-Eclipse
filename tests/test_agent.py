@@ -11,7 +11,7 @@ import unittest
 from eclipse.agent import AgentService
 from eclipse.core.config import AppPaths, Settings
 from eclipse.core.storage import Store
-from eclipse.runtime.client import CancellationToken, ChatError, StreamChunk, ToolCall
+from eclipse.runtime.client import CancellationToken, ChatCancelled, ChatError, StreamChunk, ToolCall
 from tests.test_capability import ScriptedRuntime, approver
 
 
@@ -95,6 +95,22 @@ class AgentTests(unittest.TestCase):
         message = self.store.list_messages(conversation["id"])[-1]
         self.assertEqual(message["content"], "The note says the sky is blue.")
         self.assertEqual(len(message["metadata"]["tool_events"]), 1)
+
+    def test_stop_is_not_recorded_as_a_runtime_failure(self) -> None:
+        class StoppingRuntime(ScriptedRuntime):
+            def stream_chat(self, messages, **kwargs):
+                raise ChatCancelled("stopped by user")
+                yield  # pragma: no cover - keeps this method a generator
+
+        agent = self.service(StoppingRuntime([]))
+        conversation = agent.new_conversation()
+        with self.assertRaises(ChatCancelled):
+            agent.send(conversation["id"], "Stop please")
+        messages = self.store.list_messages(conversation["id"])
+        self.assertEqual(messages[-1]["role"], "assistant")
+        self.assertIn("stopped at your request", messages[-1]["content"])
+        self.assertTrue(messages[-1]["metadata"].get("cancelled"))
+        self.assertNotIn("runtime is not available", messages[-1]["content"])
 
     def test_runtime_failure_is_recorded_honestly(self) -> None:
         runtime = ScriptedRuntime([{"raise": "endpoint unreachable"}])

@@ -89,6 +89,27 @@ The autonomous controller now runs a deterministic, model-independent review gat
 
 Because this milestone changes the protected controller, its PR remains draft for owner review and Windows CI; it is not auto-merged. Batch status remains `IN_PROGRESS` until CI and merge are confirmed.
 
+### Bug audit and repair pass — 7 November 2026
+
+A finite audit of the integrated application found and fixed these confirmed defects:
+
+- **Agent Stop reported a false runtime failure** — `ChatCancelled` is a `ChatError` subclass, so Stop fell into the runtime-failure handler and persisted "the inference runtime is not available". The Agent now records "Generation stopped at your request" with `cancelled` metadata, and the desktop Stop path no longer shows an error dialog.
+- **Every fast-mode Capability task ended `needs_attention`** — the `answer` objective was created but never marked, so successful simple answers failed the completion gate. It is now marked `done` with evidence when the model returns text, and `failed` when it returns none.
+- **Capability verification evidence was not durable** — raw command reports were rendered live but never stored, so the desktop Verification tab lost them on reselect or restart. They are now persisted in the task plan and rendered from there.
+- **Knowledge proposals could overwrite each other** — two same-title proposals created within one second shared a filename. Proposal filenames now receive a counter suffix and existing files are never replaced.
+- **Workspace tools were advertised without a workspace** — `read_file`, `write_file`, `run_command` and the other workspace-bound tools were offered in workspace-free Agent chats and then failed with "No workspace is attached". The existing `requires_workspace` gate is now set for all of them.
+- **Changed runtime settings were silently ignored** — loading an already-loaded model returned "ready" without applying or reporting a different profile. It now returns the running status with an explicit "Use Restart" warning and `applied=false`, which the desktop displays.
+- **Runtime shutdown did not release attached clients or the sampler** — `shutdown()` only stopped an owned server process. It now stops any active runtime, including attach-mode clients and the resource sampler.
+- **Large package verification froze the window** — re-hashing ran on the GUI thread. It now runs in a `QThread` with the Verify/Delete controls disabled until completion.
+- **Transcript widgets from a previous conversation stayed parented** — switching or deleting conversations deferred removal, leaving stale bubbles in the widget tree. Bubbles are now detached immediately, and deleting the last conversation creates a clean new one.
+- **Empty-plan verification could append the objective list itself** — the guard now appends a proper `Objective`.
+
+**Verification (this pass):** `python -m compileall -q src tests` exited 0. The full local suite ran **353 tests, OK** on Python 3.12.3/Linux with `QT_QPA_PLATFORM=offscreen` (PySide6 6.12.0 plus extracted Qt system libraries). This includes the spawned HTTP/SSE runtime tests and the offscreen desktop tests.
+
+**Not verified in this environment:** hosted Windows CI and real Windows/llama.cpp/GPU execution were not run here; the pushed branch still needs the Windows workflow. The Qt checks are offscreen, not a visual review.
+
+**Audited but not changed in this pass:** `Quantize GGUF` still runs synchronously on the GUI thread (it is gated on a real `llama-quantize` and was not exercised); Capability Stop still shows "Task could not complete" even though the task is recorded as `cancelled`.
+
 ## What still requires real-world validation
 
 - Real Windows llama.cpp/Vulkan/Qwen load, generation, stop and restart through the packaged app, including observed context and actual VRAM/RAM telemetry.

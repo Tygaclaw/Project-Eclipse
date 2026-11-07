@@ -19,7 +19,7 @@ from eclipse.core.config import AppPaths
 from eclipse.core.events import EventBus
 from eclipse.core.security import PermissionBroker
 from eclipse.core.storage import Store
-from eclipse.runtime.client import CancellationToken, ChatError, ChatMessage
+from eclipse.runtime.client import CancellationToken, ChatCancelled, ChatError, ChatMessage
 from eclipse.capability.execution import LoopResult, ToolEvent, run_tool_loop
 from eclipse.capability.knowledge import KnowledgeBase
 from eclipse.capability.memory import CorrectionMemory
@@ -226,6 +226,23 @@ class AgentService:
                 on_delta=on_delta,
                 on_tool=on_tool,
             )
+        except ChatCancelled:
+            # Stop is an explicit user action, not a runtime failure. Record the
+            # cancellation honestly instead of claiming the model was unavailable.
+            self.store.add_message(
+                conversation_id,
+                "assistant",
+                "Generation stopped at your request.",
+                metadata={
+                    "cancelled": True,
+                    "steps": 0,
+                    "tool_events": tool_events,
+                    "started_at": started,
+                    "finished_at": utc_now_iso(),
+                },
+            )
+            self.events.emit("agent.cancelled", conversation_id=conversation_id)
+            raise
         except ChatError:
             self.store.add_message(
                 conversation_id,

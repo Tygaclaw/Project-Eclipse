@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from eclipse.runtime import CancellationToken
+from eclipse.runtime import CancellationToken, ChatCancelled
 
 from ..approval import ApprovalBridge
 from ..context import AppContext
@@ -51,6 +51,7 @@ class _Composer(QPlainTextEdit):
 class _SendWorker(QThread):
     completed = Signal(dict)
     failed = Signal(str)
+    cancelled = Signal()
 
     def __init__(self, context: AppContext, conversation_id: str, text: str, approver: Any, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -69,6 +70,8 @@ class _SendWorker(QThread):
                 approver=self.approver,
             )
             self.completed.emit(result)
+        except ChatCancelled:
+            self.cancelled.emit()
         except Exception as exc:  # noqa: BLE001
             self.failed.emit(str(exc))
 
@@ -319,6 +322,10 @@ class AgentWorkspace(QWidget):
         self.context.agent.delete_conversation(self._conversation_id)
         self._conversation_id = None
         self._refresh_conversations()
+        if self._conversation_id is None:
+            # Deleting the last conversation used to leave its transcript on
+            # screen even though the conversation no longer existed.
+            self._new_conversation()
 
     # -- transcript ------------------------------------------------------
 
@@ -327,6 +334,10 @@ class AgentWorkspace(QWidget):
             item = self._transcript_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                # Deleting only defers removal, so the previous conversation's
+                # bubbles stayed parented and could still be painted after a
+                # switch. Detach them from the widget tree immediately.
+                widget.setParent(None)
                 widget.deleteLater()
         if not messages:
             welcome = QLabel(
@@ -403,6 +414,7 @@ class AgentWorkspace(QWidget):
         self._worker = worker
         worker.completed.connect(self._completed)
         worker.failed.connect(self._failed)
+        worker.cancelled.connect(self._cancelled)
         worker.finished.connect(self._cleanup)
         worker.start()
 
@@ -427,6 +439,14 @@ class AgentWorkspace(QWidget):
             self._stream_bubble.append_text(f"\n\n[Generation failed: {message}]")
         self._stream_bubble = None
         QMessageBox.warning(self, "Agent", message)
+
+    def _cancelled(self) -> None:
+        self._activity.setText("Stopped at your request.")
+        if self._stream_bubble is not None and not self._stream_bubble._text:
+            self._stream_bubble.append_text("(Stopped before a complete response was received.)")
+        self._stream_bubble = None
+        self._refresh_conversations()
+        self._scroll_to_bottom()
 
     def _cleanup(self) -> None:
         self._worker = None
