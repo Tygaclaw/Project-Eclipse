@@ -224,6 +224,36 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertIn("Restore last good", panel._restore_profile_button.text())
         self.assertIn("Benchmark", panel._benchmark_button.text())
 
+    def test_placement_controls_apply_a_plan_without_claiming_verification(self) -> None:
+        window = self.make_window()
+        panel = window.model_platform.runtime
+        self.assertEqual(panel._placement_combo.count(), 4)
+        self.assertEqual(
+            [panel._placement_combo.itemData(index) for index in range(4)],
+            ["auto", "cpu", "gpu", "hybrid"],
+        )
+        self.assertFalse(panel._plan_button.isEnabled())
+        self.assertFalse(panel._use_plan_button.isEnabled())
+        panel._placement_plan = {"assignment": {"gpu_layers": 7}}
+        panel._use_plan_button.setEnabled(True)
+        panel._use_planned_layers()
+        self.assertEqual(panel._gpu_layers.value(), 7)
+        self.assertIn("not verified", panel._placement_note.text())
+
+    def test_placement_plan_button_enables_for_a_registered_managed_model(self) -> None:
+        window = self.make_window()
+        panel = window.model_platform.runtime
+        panel.context.store.add_model(
+            name="Placement sample",
+            source_path="/tmp/placement-sample.gguf",
+            source_kind="gguf",
+            atlas=sample_atlas(),
+        )
+        panel.refresh_models()
+        self.assertIsNotNone(panel._selected_model)
+        self.assertTrue(panel._plan_button.isEnabled())
+        self.assertTrue(panel._placement_combo.isEnabled())
+
     def test_model_workspace_renders_the_required_atlas_sections(self) -> None:
         window = self.make_window()
         workspace = window.model_workspace

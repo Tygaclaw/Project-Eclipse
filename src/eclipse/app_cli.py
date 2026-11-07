@@ -39,11 +39,14 @@ from eclipse.model_intelligence.preparation import (
     verify_prepared_package,
 )
 from eclipse.runtime import (
+    PLACEMENT_INTENTS,
     CancellationToken,
     ChatMessage,
+    PlacementRequest,
     RuntimeManager,
     evaluate_model_support,
     intent_choices,
+    plan_placement,
     resolve_profile,
     run_benchmark,
     support_matrix_report,
@@ -140,6 +143,20 @@ def register_commands(subparsers: Any) -> None:
     runtime_support.add_argument("--placement", choices=("cpu", "gpu", "hybrid", "remote"))
     runtime_support.add_argument("--control", action="append", default=[], help="requested control name (repeatable)")
     runtime_support.add_argument("--compact", action="store_true")
+
+    placement = subparsers.add_parser(
+        "placement",
+        help="derive an executable CPU/GPU/hybrid layer split for the managed backend",
+    )
+    placement.add_argument("path", help="path to a supported GGUF, Safetensors file or model folder")
+    placement.add_argument("--mode", default="auto", choices=PLACEMENT_INTENTS)
+    placement.add_argument("--context-tokens", type=int, help="requested context; defaults to the model-declared value")
+    placement.add_argument("--kv-cache-dtype", choices=("f16", "bf16", "f32", "q8_0", "q4_0"), default="f16")
+    placement.add_argument("--sequence-slots", type=int, default=1)
+    placement.add_argument("--ram-reserve-mib", type=int, default=8192)
+    placement.add_argument("--vram-reserve-mib", type=int, default=768)
+    placement.add_argument("--max-gpu-layers", type=int)
+    placement.add_argument("--compact", action="store_true")
 
     registry_add = subparsers.add_parser("registry-add", help="inspect and register a model in the shared registry")
     registry_add.add_argument("path")
@@ -279,6 +296,7 @@ def dispatch(args: argparse.Namespace) -> int | None:
     handlers = {
         "backends": _cmd_backends,
         "runtime-support": _cmd_runtime_support,
+        "placement": _cmd_placement,
         "benchmark": _cmd_benchmark,
         "profiles": _cmd_profiles,
         "registry-add": _cmd_registry_add,
@@ -347,6 +365,30 @@ def _cmd_runtime_support(args: argparse.Namespace) -> int:
         placement_mode=args.placement,
         requested_controls=controls,
     )
+    _emit(report, args.compact)
+    return 0
+
+
+def _cmd_placement(args: argparse.Namespace) -> int:
+    for option in ("sequence_slots",):
+        if getattr(args, option) <= 0:
+            raise CliError(f"--{option.replace('_', '-')} must be greater than zero")
+    for option in ("ram_reserve_mib", "vram_reserve_mib"):
+        if getattr(args, option) < 0:
+            raise CliError(f"--{option.replace('_', '-')} cannot be negative")
+    if args.context_tokens is not None and args.context_tokens <= 0:
+        raise CliError("--context-tokens must be greater than zero")
+    request = PlacementRequest(
+        context_tokens=args.context_tokens,
+        kv_cache_dtype=args.kv_cache_dtype,
+        sequence_slots=args.sequence_slots,
+        system_ram_reserve_bytes=args.ram_reserve_mib * 1024 * 1024,
+        gpu_vram_reserve_bytes=args.vram_reserve_mib * 1024 * 1024,
+        mode=args.mode,
+        max_gpu_layers=args.max_gpu_layers,
+    )
+    atlas = build_model_atlas(args.path)
+    report = plan_placement(atlas, detect_host_hardware().to_dict(), request)
     _emit(report, args.compact)
     return 0
 

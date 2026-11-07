@@ -278,6 +278,20 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(len(benchmark_runs), 1)
         self.assertEqual(benchmark_runs[0]["status"], "ok")
 
+    def test_load_and_stop_record_placement_evidence(self) -> None:
+        self.start_managed()
+        load_run = [run for run in self.store.list_runs() if run["kind"] == "model_load"][0]
+        metrics = load_run["metrics"]
+        self.assertEqual(metrics["gpu_layers"], 0)
+        self.assertEqual(metrics["placement"]["status"], "unknown_missing_model_facts")
+        self.assertFalse(metrics["placement"]["runtime_verified"])
+        self.runtime.stop()
+        stop_run = [run for run in self.store.list_runs() if run["kind"] == "model_stop"][0]
+        reconciliation = stop_run["metrics"]["placement_reconciliation"]
+        self.assertEqual(reconciliation["format"], "eclipse_placement_reconciliation")
+        self.assertIn("verdict", reconciliation)
+        self.assertFalse(reconciliation["runtime_verified"])
+
     def test_last_known_good_profile_can_be_restored_after_stop(self) -> None:
         self.start_managed()
         list(self.runtime.stream_chat([ChatMessage(role="user", content="hi")]))

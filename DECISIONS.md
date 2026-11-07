@@ -109,3 +109,9 @@
 **Decision:** Model-generated notes are written to `06 - AI Inbox` with `status: inbox`. Approval copies them into a trusted folder with an approval record; rejection records the reason. An existing trusted note is never overwritten; a collision gets a numeric suffix.
 
 **Reason:** Retrieval must not silently promote untrusted model output into the knowledge base. Keeping the vault as ordinary Markdown preserves the user's ability to inspect, edit and version it in Obsidian.
+
+## D-020 — Placement is planned as an explicit layer count, never as verified allocation
+
+**Decision:** Derive an executable `llama-server --n-gpu-layers` assignment from the Atlas repeating-layer/KV facts and a host snapshot. Use a uniform per-layer estimate, one GPU (largest observed free VRAM), explicit RAM/VRAM reserves and a configurable allocation margin. Emit a layer count only when the repeating-layer count, complete weight storage, KV facts and the budgets the mode needs are known; otherwise report the missing fact and emit no count. Auto prefers full offload, then the largest hybrid split that fits both budgets, then CPU-only. Reconcile the plan with observed process RSS/host memory at stop, and report per-process VRAM as unavailable.
+
+**Reason:** An "all layers" default is a guess that can fail on a host without enough VRAM, while a memory-capacity envelope is not executable. An explicit count with labelled evidence is testable and reviewable. Keeping GPU allocation unavailable until a real sensor exists avoids converting an estimate or a host-wide reading into a fabricated per-process measurement.

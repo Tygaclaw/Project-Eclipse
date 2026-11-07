@@ -4,11 +4,12 @@
 
 ## Current state
 
-- Status: BOOTSTRAP
-- Active backlog item: AUTO-01 — autonomous run controller and workflow.
-- Base branch: main
+- Status: IN_PROGRESS — integrated product on `main`; RUN-05 executable placement planning implemented locally on `freebuff/112e97381b60e3079576fd9d`.
+- Active backlog item: RUN-05 real-backend acceptance (owner Windows/Vulkan gate). Next independent candidate: CAP-03 web research/context retrieval or PREP-03 experiment framework.
+- Base branch: `main` (`84ce050`). Product work from 7 November is merged; this session's placement work is unmerged.
 - Session ID: created by the autonomous controller at runtime and recorded in the runner log only; never place provider credentials here.
-- Last verified checkpoint: main includes merged PRs #5, #6, #7, #10 and #11.
+- Controller: **blocked** by open PR #16 (`mergeable_state=dirty`, non-draft). PR #16 is superseded by `main` and should be closed by the owner, never merged.
+- Last verified checkpoint: Windows CI green on `e27fec7` (runs #42330519701 / #42330519740); UI diagnostics merged via PR #17 and #18.
 
 ## Current product reality
 
@@ -44,6 +45,13 @@ Update this section after each milestone with changed files, commit/PR, selected
 - Cause 3: a CLI/config error was classed as a retryable unknown failure, burning 6 calls on each of 12 routes (~8 min). It is now a fatal `configuration` failure that stops the run immediately.
 - Guards added: the validator now rejects any model `limit` missing `context` or `output`; a test restricts the command line to flags present in 1.19.5.
 - Verified against the real pinned CLI: config loads, the `eclipse-autonomous` agent resolves, a session ID is produced. A real provider call is still unproven (the sandbox used for this check has no network path to the providers).
+
+### Executable placement planning (RUN-05) — 2026-11-07
+
+- Added `src/eclipse/runtime/placement.py` (planner + reconciliation) and wired it into `profiles.py`, `manager.py`, `app_cli.py` and the desktop Prepare & run panel.
+- `resolve_profile` uses the planned split only when `gpu_layers` is not pinned; planned status and estimated bytes are stored in the profile payload. Loading records the plan; stopping records RAM reconciliation and marks VRAM unavailable.
+- Tests: `tests/test_placement.py` 24 tests, one runtime load/stop evidence test, plus two offscreen desktop assertions. Portable suite **374 tests, OK, 22 skipped**. Qt could not run here (missing `libxkbcommon`, no root).
+- Not verified: real backend acceptance of a planned split, actual VRAM allocation, multi-GPU splitting.
 
 ### AUTO-04 independent review stage — 2026-11-06
 

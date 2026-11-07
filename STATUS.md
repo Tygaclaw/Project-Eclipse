@@ -1,6 +1,6 @@
 # ECLIPSE Project Status
 
-**Status:** `WINDOWS_CI_AND_PACKAGE_VERIFIED — OWNER_RUNTIME_AND_RELEASE_VALIDATION_PENDING`
+**Status:** `EXECUTABLE_PLACEMENT_PLANNER_IMPLEMENTED — OWNER_RUNTIME_AND_RELEASE_VALIDATION_PENDING`
 **Last updated:** 2026-11-07
 **Implementation base:** `e27fec7` (`main`); integrated into `main` by fast-forward after local verification
 **Windows verification:** Python checks [#42330519701](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519701) and Windows desktop [#42330519740](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519740) both succeeded on `e27fec7`.
@@ -89,6 +89,15 @@ The autonomous controller now runs a deterministic, model-independent review gat
 
 Because this milestone changes the protected controller, its PR remains draft for owner review and Windows CI; it is not auto-merged. Batch status remains `IN_PROGRESS` until CI and merge are confirmed.
 
+### Executable placement planning — RUN-05, 7 November 2026
+
+- `src/eclipse/runtime/placement.py` derives a concrete llama.cpp repeating-layer split from the model facts in an atlas and a host snapshot. It reports the exact `--n-gpu-layers` fragment, per-layer weight/KV estimates, the selected GPU, usable RAM/VRAM budgets and the evidence label of every input. It never emits a layer count when the repeating-layer count, complete weight storage, KV facts or host budgets are unknown.
+- CPU-only, all-GPU, hybrid and auto modes are executable. Auto chooses full offload when it fits, otherwise the largest hybrid split that fits both budgets, otherwise CPU-only. Explicit `gpu` mode reports the shortfall plus a hybrid fallback instead of pretending full offload fits; a layer cap is reported honestly as a hybrid plan.
+- `resolve_profile` plans the layer count when the caller did not pin `gpu_layers`, stores `placement_mode` plus a compact placement summary in the profile and keeps the previous all-layers default with a warning only when planning is unknown. Loading records the planned placement; stopping records a reconciliation of the estimate against observed peak process RSS and reports per-process VRAM as unavailable because ECLIPSE has no such sensor.
+- CLI `placement <path>` and a desktop **Placement plan** card (Auto / CPU only / All on GPU / Hybrid, **Plan placement**, **Use planned layers**) expose the same planner. Nothing is reported as runtime-verified.
+- Verification: `tests/test_placement.py` (24 tests) covers full offload, the maximum hybrid split, CPU-only, shortfall with fallback, no-GPU auto, unknown model/host facts, caps, quantized KV, reconciliation and profile/CLI integration; `tests/test_runtime.py` adds one real spawned-server load/stop placement-evidence assertion. Portable suite **374 tests, OK, 22 skipped** (optional Qt tests). Qt desktop execution was not possible in this Linux sandbox: PySide6 `6.12.0` installs but importing `QtWidgets` fails on missing `libxkbcommon` and root is unavailable, so the two new offscreen desktop assertions await the Windows desktop job.
+- Boundary: this is an estimated plan. It does not prove the backend build supports GPU offload, that llama.cpp accepted the layer count, or real VRAM use. Run it against the owner's Vulkan/Qwen setup before treating any split as validated.
+
 ## What still requires real-world validation
 
 - Real Windows llama.cpp/Vulkan/Qwen load, generation, stop and restart through the packaged app, including observed context and actual VRAM/RAM telemetry.
@@ -96,7 +105,7 @@ Because this milestone changes the protected controller, its PR remains draft fo
 - Owner launch/installation and acceptance of the CI-built Windows package; the package build and backend smoke test are verified in hosted CI, but an installed-app launch is not.
 - Owner walkthrough of the rebuilt three-workspace UI and the real Obsidian vault.
 - Real Safetensors and multi-shard Hugging Face folder validation on Windows.
-- Executable CPU/GPU/hybrid placement planning and allocation reconciliation (profiles exist; placement is still configuration-based).
+- Real backend acceptance of planned layer counts and measured VRAM reconciliation (the planner and RAM reconciliation exist; ECLIPSE still has no per-process GPU sensor and plans only one GPU).
 - Four remaining evaluations: multi-file development, runtime debugging, safe interconnected-code changes and Three.js/game development.
 - Windows installer/update/uninstall/recovery, license/Qt LGPL compliance and the remaining binary/Qt security review (the Python dependency audit is recorded above).
 - Live provider route/tool-call smoke tests and one completed live autonomous workflow run.
@@ -128,6 +137,7 @@ Keep these gates `WAITING_FOR_OWNER_VALIDATION` until real evidence exists. Do n
 - [x] Shared Core, managed/attached runtime, Capability System, knowledge workflow and Agent implemented and locally tested.
 - [x] Model-specific support matrix, saved profiles with last-known-good restore, and repeated measured benchmark harness implemented and locally tested.
 - [x] File tools are workspace-scoped and require explicit approval for writes and commands.
+- [x] Placement planning emits an executable layer count only from observed model/host facts and never claims a verified allocation.
 - [x] A failed load, denied action or failed check is recorded as a failure, never converted into success.
 - [x] AI knowledge proposals remain in an Inbox until human approval; trusted notes are never overwritten.
 - [x] Windows Python matrix and Windows x64 desktop package build/smoke/upload verified on `e27fec7`.

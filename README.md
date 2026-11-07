@@ -21,7 +21,7 @@ On top of these, `build-atlas` composes the relevant inspectors into one evidenc
 
 No inspector loads, maps, decodes or executes tensor weights, and no inspector imports, compiles or renders a chat template.
 
-Two further read-only commands support memory planning: `inspect-host` reports currently observable host facts (OS/CPU, RAM, NVIDIA VRAM via `nvidia-smi` when available, storage capacity), and `plan-feasibility` combines that snapshot with the atlas to estimate weight and KV-cache memory against usable RAM and the largest single GPU. The result is a static capacity envelope, not an executable layer placement and not a speed prediction; unavailable values are reported as unknown, and the KV estimate assumes full attention on every layer.
+Two further read-only commands support memory planning: `inspect-host` reports currently observable host facts (OS/CPU, RAM, NVIDIA VRAM via `nvidia-smi` when available, storage capacity), and `plan-feasibility` combines that snapshot with the atlas to estimate weight and KV-cache memory against usable RAM and the largest single GPU. The result is a static capacity envelope, not an executable layer placement and not a speed prediction; unavailable values are reported as unknown, and the KV estimate assumes full attention on every layer. `placement` then derives an explicit `llama.cpp --n-gpu-layers` split (CPU-only, all-GPU, hybrid or auto) from the same facts and budgets. It declines to emit a layer count when model facts or host readings are unknown, and it always labels the result as an estimate that the backend has not verified.
 
 ## Shared Core, model runtime, Capability System and Agent
 
@@ -35,7 +35,7 @@ The Capability System (`src/eclipse/capability/`) implements a watchdog and plan
 
 The Agent (`src/eclipse/agent/`) is a real streaming chat service on the same runtime: persistent conversations with search/rename/delete, model selection, text attachments, tool use with approvals, activity reporting and Stop. It shares the same knowledge, correction memory and permission boundaries as the Capability workspace.
 
-The same Core is exposed through 23 CLI commands, including `registry-add`, `prepare`, `verify-package`, `runtime-support`, `chat`, `benchmark`, `profiles list|delete`, `task new|run`, `knowledge propose|approve|search`, `corrections propose|promote`, `app-status`, `diagnostics` and `detect-checks`.
+The same Core is exposed through 24 CLI commands, including `registry-add`, `prepare`, `verify-package`, `runtime-support`, `placement`, `chat`, `benchmark`, `profiles list|delete`, `task new|run`, `knowledge propose|approve|search`, `corrections propose|promote`, `app-status`, `diagnostics` and `detect-checks`.
 
 ## Desktop application
 
@@ -63,6 +63,7 @@ py -3 -m eclipse inspect-tokenizer "D:\Models\YourModelFolder"
 py -3 -m eclipse build-atlas "D:\Models\YourModelFolder"
 py -3 -m eclipse inspect-host --storage-path "D:\Models"
 py -3 -m eclipse plan-feasibility "D:\Models\model.gguf" --context-tokens 8192
+py -3 -m eclipse placement "D:\Models\model.gguf" --mode hybrid --context-tokens 8192
 ```
 
 The integrated Core and workspaces are also available from the CLI:
@@ -114,7 +115,7 @@ This produces `dist\ECLIPSE\ECLIPSE.exe`.
 
 ## Project status
 
-The three workspaces, shared Core, reversible preparation, runtime lifecycle/telemetry, saved profiles with last-known-good restore, measured benchmarks, Capability System, Obsidian-compatible knowledge workflow and Agent are implemented and covered by **340 automated tests**, including a real spawned HTTP inference double, real tool/verification execution, CLI end-to-end chat and benchmark runs, and offscreen Qt UI tests. This is a locally and hosted-Windows verified implementation, not final release acceptance: real Windows llama.cpp/Vulkan/Qwen load and generation, owner launch/installation of the CI-built package, a real Obsidian vault walkthrough, the four remaining evaluations, installer/update and the license decision still require owner or release validation. See [`STATUS.md`](STATUS.md) and [`CONTINUATION.md`](CONTINUATION.md) for the exact evidence and remaining gates.
+The three workspaces, shared Core, reversible preparation, runtime lifecycle/telemetry, executable placement planning, saved profiles with last-known-good restore, measured benchmarks, Capability System, Obsidian-compatible knowledge workflow and Agent are implemented and covered by **374 automated tests**, including a real spawned HTTP inference double, real tool/verification execution, CLI end-to-end chat and benchmark runs, and offscreen Qt UI tests. This is a locally and hosted-Windows verified implementation, not final release acceptance: real Windows llama.cpp/Vulkan/Qwen load and generation, owner launch/installation of the CI-built package, a real Obsidian vault walkthrough, the four remaining evaluations, installer/update and the license decision still require owner or release validation. See [`STATUS.md`](STATUS.md) and [`CONTINUATION.md`](CONTINUATION.md) for the exact evidence and remaining gates.
 
 ## Autonomous engineering
 

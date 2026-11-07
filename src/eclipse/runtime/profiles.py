@@ -14,6 +14,16 @@ from typing import Any, Mapping
 
 from eclipse.core.config import Settings
 from .backends import BackendCapabilities, BackendUnsupported, backend_capabilities
+from .placement import (
+    PLACEMENT_INTENTS,
+    STATUS_CPU_ONLY,
+    STATUS_CPU_ONLY_NO_GPU,
+    STATUS_GPU_FULL,
+    STATUS_HYBRID,
+    PlacementRequest,
+    plan_placement,
+    summarize_placement,
+)
 
 INTENTS = ("auto", "balanced", "fast", "quality", "custom")
 
@@ -38,6 +48,7 @@ def intent_choices() -> list[dict[str, str]]:
 class ProfileSpec:
     backend: str = "llamacpp_server"
     intent: str = "balanced"
+    placement_mode: str = "auto"
     context_tokens: int = 8192
     gpu_layers: int = -1
     threads: int | None = None
@@ -51,10 +62,13 @@ class ProfileSpec:
     extra_args: tuple[str, ...] = ()
     rationale: str = ""
     warnings: tuple[str, ...] = ()
+    placement: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.intent not in INTENTS:
             raise ValueError(f"Unknown execution intent: {self.intent}")
+        if self.placement_mode not in PLACEMENT_INTENTS:
+            raise ValueError(f"Unknown placement mode: {self.placement_mode}")
         if self.context_tokens <= 0:
             raise ValueError("context_tokens must be positive")
         if self.gpu_layers < -1:
@@ -71,6 +85,7 @@ class ProfileSpec:
         return {
             "backend": self.backend,
             "intent": self.intent,
+            "placement_mode": self.placement_mode,
             "context_tokens": int(self.context_tokens),
             "gpu_layers": int(self.gpu_layers),
             "threads": int(self.threads) if self.threads else None,
@@ -84,6 +99,7 @@ class ProfileSpec:
             "extra_args": list(self.extra_args),
             "rationale": self.rationale,
             "warnings": list(self.warnings),
+            "placement": self.placement,
         }
 
     @classmethod
@@ -91,6 +107,7 @@ class ProfileSpec:
         return cls(
             backend=str(payload.get("backend") or "llamacpp_server"),
             intent=str(payload.get("intent") or "balanced"),
+            placement_mode=str(payload.get("placement_mode") or "auto"),
             context_tokens=int(payload.get("context_tokens") or 8192),
             gpu_layers=int(payload.get("gpu_layers", -1)),
             threads=int(payload["threads"]) if payload.get("threads") else None,
@@ -104,6 +121,11 @@ class ProfileSpec:
             extra_args=tuple(str(item) for item in payload.get("extra_args") or ()),
             rationale=str(payload.get("rationale") or ""),
             warnings=tuple(str(item) for item in payload.get("warnings") or ()),
+            placement=(
+                dict(payload["placement"])
+                if isinstance(payload.get("placement"), Mapping)
+                else None
+            ),
         )
 
 
@@ -260,9 +282,6 @@ def resolve_profile(
             f"Requested context {context:,} exceeds the declared {declared:,}."
         )
 
-    gpu_layers = int(overrides.get("gpu_layers", -1))
-    if backend == "openai_compatible":
-        gpu_layers = 0
     threads = overrides.get("threads", None)
     if threads is None:
         threads = cpu_threads if backend == "llamacpp_server" else None
@@ -273,9 +292,54 @@ def resolve_profile(
         )
         kv_cache_dtype = capabilities.kv_cache_dtypes[0]
 
+    placement_mode = str(overrides.get("placement_mode") or "auto")
+    if placement_mode not in PLACEMENT_INTENTS:
+        raise ValueError(f"Unknown placement mode: {placement_mode}")
+    placement_plan: dict[str, Any] | None = None
+    gpu_layers = int(overrides.get("gpu_layers", -1))
+    if backend == "openai_compatible":
+        gpu_layers = 0
+    elif "gpu_layers" not in overrides and atlas:
+        # Resolve the executable layer split from observed facts instead of
+        # trusting an "all layers" default that may not fit the host at all.
+        try:
+            placement_plan = plan_placement(
+                atlas,
+                host,
+                PlacementRequest(
+                    context_tokens=context,
+                    kv_cache_dtype=kv_cache_dtype,
+                    sequence_slots=max(1, parallel),
+                    mode=placement_mode,
+                ),
+            )
+        except ValueError:
+            placement_plan = None
+        assignment = (placement_plan or {}).get("assignment") or {}
+        planned_layers = assignment.get("gpu_layers")
+        status = (placement_plan or {}).get("status")
+        if isinstance(planned_layers, int) and status in {
+            STATUS_CPU_ONLY,
+            STATUS_CPU_ONLY_NO_GPU,
+            STATUS_GPU_FULL,
+            STATUS_HYBRID,
+        }:
+            gpu_layers = planned_layers
+            total_layers = assignment.get("total_layers")
+            rationale.append(
+                f"The placement planner selected {gpu_layers} of {total_layers} repeating "
+                f"layers on the GPU ({status})."
+            )
+        else:
+            warnings.append(
+                "Placement could not be planned from the available model and host facts; "
+                "the existing all-layers default is kept and remains unverified."
+            )
+
     spec = ProfileSpec(
         backend=backend,
         intent=resolved_intent if intent != "custom" else "custom",
+        placement_mode=placement_mode,
         context_tokens=context,
         gpu_layers=gpu_layers,
         threads=int(threads) if threads else None,
@@ -289,6 +353,7 @@ def resolve_profile(
         extra_args=tuple(str(item) for item in overrides.get("extra_args") or ()),
         rationale=" ".join(rationale),
         warnings=tuple(warnings),
+        placement=summarize_placement(placement_plan),
     )
     validate_profile(spec, atlas=atlas, capabilities=capabilities)
     return spec
@@ -296,9 +361,13 @@ def resolve_profile(
 
 # -- saved profiles and last-known-good restore -------------------------
 
+# Placement summaries are evidence about a load, not a setting. They are
+# deliberately excluded from the matching signature so the same effective
+# settings found on a different host still resolve to one saved profile.
 _PROFILE_KEYS = (
     "backend",
     "intent",
+    "placement_mode",
     "context_tokens",
     "gpu_layers",
     "threads",

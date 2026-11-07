@@ -40,9 +40,11 @@ from eclipse.runtime import (
     CancellationToken,
     ChatError,
     ChatMessage,
+    PlacementRequest,
     ProfileSpec,
     intent_choices,
     last_known_good_profile,
+    plan_placement,
     resolve_profile,
     run_benchmark,
 )
@@ -261,6 +263,7 @@ class ModelRuntimePanel(QWidget):
         self._test_worker: _TestWorker | None = None
         self._benchmark_worker: _BenchmarkWorker | None = None
         self._selected_model: dict[str, Any] | None = None
+        self._placement_plan: dict[str, Any] | None = None
         self._register_worker: _RegisterWorker | None = None
         self.setObjectName("ModelRuntimePanel")
         self.setAccessibleName("Model preparation and inference")
@@ -458,6 +461,36 @@ class ModelRuntimePanel(QWidget):
         profile_layout.addLayout(profile_row)
         right_layout.addWidget(profile_card)
 
+        placement_card, placement_layout = make_card(
+            "Placement plan",
+            "Estimate how many repeating layers fit on the GPU, then apply the result "
+            "explicitly. Estimates are not measured results.",
+        )
+        placement_row = QHBoxLayout()
+        self._placement_combo = QComboBox()
+        self._placement_combo.setObjectName("PlacementModeCombo")
+        self._placement_combo.setAccessibleName("Placement mode")
+        for value, label in (
+            ("auto", "Auto (best fit)"),
+            ("cpu", "CPU only"),
+            ("gpu", "All on GPU"),
+            ("hybrid", "Hybrid"),
+        ):
+            self._placement_combo.addItem(label, value)
+        placement_row.addWidget(self._placement_combo, 1)
+        self._plan_button = QPushButton("Plan placement")
+        self._plan_button.clicked.connect(self._plan_placement)
+        self._use_plan_button = QPushButton("Use planned layers")
+        self._use_plan_button.clicked.connect(self._use_planned_layers)
+        self._use_plan_button.setEnabled(False)
+        placement_row.addWidget(self._plan_button)
+        placement_row.addWidget(self._use_plan_button)
+        placement_layout.addLayout(placement_row)
+        self._placement_note = add_text(
+            placement_layout, "No placement plan yet.", "Faint"
+        )
+        right_layout.addWidget(placement_card)
+
         telemetry_card, telemetry_layout = make_card(
             "Last measured generation",
             "Measured wall-clock stream telemetry. Missing sensors stay unknown.",
@@ -544,6 +577,9 @@ class ModelRuntimePanel(QWidget):
             if item is not None:
                 model_id = item.data(Qt.ItemDataRole.UserRole)
         self._selected_model = self.context.store.get_model(model_id) if model_id else None
+        self._placement_plan = None
+        self._use_plan_button.setEnabled(False)
+        self._placement_note.setText("No placement plan yet.")
         self._remove_button.setEnabled(self._selected_model is not None)
         self._prepare_button.setEnabled(self._selected_model is not None)
         self._copy_button.setEnabled(self._selected_model is not None)
@@ -846,6 +882,10 @@ class ModelRuntimePanel(QWidget):
         self._gpu_layers.setEnabled(managed)
         self._threads.setEnabled(managed)
         self._binary_edit.setEnabled(managed)
+        self._placement_combo.setEnabled(managed)
+        self._plan_button.setEnabled(managed and self._selected_model is not None)
+        if not managed:
+            self._use_plan_button.setEnabled(False)
         self._start_button.setEnabled(
             (self._selected_model is not None and managed) or not managed
         )
@@ -855,11 +895,62 @@ class ModelRuntimePanel(QWidget):
         if path:
             self._binary_edit.setText(path)
 
+    def _plan_placement(self) -> None:
+        if self._selected_model is None:
+            return
+        atlas = self._selected_model.get("atlas") or {}
+        try:
+            host = detect_host_hardware().to_dict()
+        except Exception:  # noqa: BLE001 - host probing is advisory
+            host = {}
+        try:
+            plan = plan_placement(
+                atlas,
+                host,
+                PlacementRequest(
+                    context_tokens=self._context_spin.value(),
+                    sequence_slots=1,
+                    mode=str(self._placement_combo.currentData()),
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - reported to the user
+            QMessageBox.warning(self, "Placement", str(exc))
+            return
+        self._placement_plan = plan
+        assignment = plan.get("assignment") or {}
+        layers = assignment.get("total_layers")
+        gpu_layers = assignment.get("gpu_layers")
+        status = str(plan.get("status") or "unknown").replace("_", " ")
+        if isinstance(gpu_layers, int) and isinstance(layers, int):
+            self._placement_note.setText(
+                f"{status} · {gpu_layers} of {layers} layers on the GPU · estimated peak "
+                f"VRAM {human_bytes(assignment.get('estimated_peak_vram_bytes'))}, RAM "
+                f"{human_bytes(assignment.get('estimated_peak_ram_bytes'))}. "
+                "Estimate only; not measured."
+            )
+            self._use_plan_button.setEnabled(True)
+        else:
+            reason = (plan.get("warnings") or ["Placement is unknown."])[0]
+            self._placement_note.setText(f"{status} · {reason}")
+            self._use_plan_button.setEnabled(False)
+
+    def _use_planned_layers(self) -> None:
+        assignment = (self._placement_plan or {}).get("assignment") or {}
+        gpu_layers = assignment.get("gpu_layers")
+        if not isinstance(gpu_layers, int):
+            return
+        self._gpu_layers.setValue(gpu_layers)
+        self._placement_note.setText(
+            f"GPU layers set to {gpu_layers} from the placement plan. Start the model to "
+            "test it; the plan itself is not verified."
+        )
+
     def _profile_payload(self) -> dict[str, Any]:
         backend = str(self._backend_combo.currentData())
         overrides: dict[str, Any] = {
             "context_tokens": self._context_spin.value(),
             "gpu_layers": self._gpu_layers.value(),
+            "placement_mode": str(self._placement_combo.currentData()),
             "threads": self._threads.value() or None,
             "temperature": self._temperature.value(),
             "max_tokens": self._max_tokens.value(),

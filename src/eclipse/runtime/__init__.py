@@ -43,6 +43,14 @@ from .manager import (
     RuntimeState,
     RuntimeStatus,
 )
+from .placement import (
+    PLACEMENT_INTENTS,
+    PlacementError,
+    PlacementRequest,
+    plan_placement,
+    reconcile_placement,
+    summarize_placement,
+)
 from .profiles import (
     INTENTS,
     ProfileSpec,
@@ -75,7 +83,10 @@ __all__ = [
     "DEFAULT_PROMPT",
     "LoadResult",
     "OpenAICompatibleClient",
+    "PLACEMENT_INTENTS",
     "PLACEMENT_MODES",
+    "PlacementError",
+    "PlacementRequest",
     "ProfileSpec",
     "ResourceSampler",
     "RuntimeManager",
@@ -99,11 +110,14 @@ __all__ = [
     "intent_choices",
     "last_known_good_profile",
     "ping_endpoint",
+    "plan_placement",
     "process_snapshot",
+    "reconcile_placement",
     "resolve_profile",
     "restore_profile",
     "run_benchmark",
     "save_profile",
+    "summarize_placement",
     "support_matrix_report",
     "validate_profile",
 ]

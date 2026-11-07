@@ -8,8 +8,15 @@
 - Autonomous bootstrap PRs #12/#13 and later controller work are merged. Every remote side branch was checked: the only unmerged branches were duplicate autonomous-controller attempts, not product code.
 - Mainline PRs #5, #6, #7, #10 and #11 are merged. PRs #8 and #9 are obsolete, closed and superseded.
 - The product now includes the previously missing shared Core, runtime, preparation, Capability System, knowledge workflow, Agent and full three-workspace integration described below, plus saved profiles with last-known-good restore, a model-specific support report and a repeated measured benchmark harness.
-- Latest local suite: **340 tests, OK**; a real CLI benchmark against the spawned HTTP/SSE test server completed with two measured samples.
+- Latest local suite: **374 tests, OK, 22 skipped** (optional Qt tests; PySide6 is not installed in the default interpreter). Placement planning added 24 focused tests plus one runtime evidence test; a real CLI benchmark against the spawned HTTP/SSE test server previously completed with two measured samples.
 - Windows Python 3.11–3.14 checks passed in [run #42330519701](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519701); the Windows desktop package passed in [run #42330519740](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519740), including PyInstaller, packaged-backend smoke test and artifact upload.
+
+## Executable placement planning — 7 November 2026
+
+- Added `src/eclipse/runtime/placement.py`: an evidence-labelled planner that turns atlas facts and a host snapshot into an explicit `--n-gpu-layers` assignment for the managed llama.cpp backend, with CPU-only, all-GPU, hybrid and auto modes, budget shortfalls, cap handling and a reconciliation against observed samples.
+- `src/eclipse/runtime/profiles.py` now plans the split when `gpu_layers` was not pinned, persists `placement_mode` and a compact plan summary, and keeps the old all-layers default only with an explicit warning when planning is unknown. `manager.py` records the planned placement at load and a RAM reconciliation at stop.
+- CLI `placement <path>` and the desktop Prepare & run **Placement plan** card expose the planner. `tests/test_placement.py` adds 24 tests; `tests/test_desktop_smoke.py` adds two offscreen assertions (not runnable in this Linux sandbox).
+- Branch: `feature/executable-placement-planning-20261107` pushed from this session's worktree (`freebuff/112e97381b60e3079576fd9d`); not merged. Next: real backend acceptance of a planned split on the owner's Vulkan/Qwen setup, then CAP-03 web research/context or PREP-03 experiment framework.
 
 ## Product truth — 7 November 2026
 
@@ -60,7 +67,7 @@ Use `AUTONOMOUS_BACKLOG.md` as the canonical queue. The local implementation wor
 - `src/eclipse/runtime/profiles.py` and `manager.py` persist the effective profile after a successful load and mark it last-known-good after a successful generation. The desktop can apply, save and restore profiles; the CLI lists/deletes them. Restoring validates the saved profile against the current model and then starts it.
 - `src/eclipse/runtime/benchmark.py` runs configurable warm-up plus measured generations, reports min/median/mean/max/stdev and persists a `benchmark` run. The desktop has a Benchmark control; the CLI has `benchmark`.
 - Verification: full suite **340 tests, OK**; real CLI benchmark `status=ok`, 2 samples, TTFT median `0.0016 s`, throughput median `122.645 tok/s` against the fake server. The values are test-double evidence only.
-- PR #16 remains stale and unmerged; its unique static-contract value is now implemented against the live runtime. Its controller/recovery changes are not product requirements.
+- PR #16 remains open, non-draft and `mergeable_state=dirty`. Its 64-file branch re-implements the integrated product in a different shape (`src/eclipse/core/runtime.py`) that `main` superseded; the useful static-contract idea is already implemented against the live runtime. Its controller/recovery changes are not product requirements. The controller's one-open-autonomous-PR guard parks new autonomous milestones until the owner closes PR #16. Do not merge it.
 
 ## Model order and free-only safety
 

@@ -18,6 +18,7 @@ from typing import Any, Iterator, Mapping, Sequence
 
 from eclipse.core.config import AppPaths, Settings
 from eclipse.core.events import EventBus
+from eclipse.core.hardware import detect_host_hardware
 from eclipse.core.storage import Store
 from .backends import BackendError, BackendUnavailable, backend_capabilities, support_matrix_report
 from .client import (
@@ -30,6 +31,12 @@ from .client import (
     ping_endpoint,
 )
 from .llamacpp import LlamaCppServer, tail_text
+from .placement import (
+    PlacementRequest,
+    plan_placement,
+    reconcile_placement,
+    summarize_placement,
+)
 from .profiles import (
     ProfileSpec,
     find_matching_profile,
@@ -139,6 +146,7 @@ class RuntimeManager:
         self._server: LlamaCppServer | None = None
         self._sampler: ResourceSampler | None = None
         self._load_metrics: dict[str, Any] = {}
+        self._load_placement: dict[str, Any] | None = None
         self._profile_id: str | None = None
         self._last_generation_metrics: dict[str, Any] = {}
         self._generation_lock = threading.Lock()
@@ -164,6 +172,34 @@ class RuntimeManager:
     def endpoint(self) -> str | None:
         with self._lock:
             return self._status.endpoint
+
+    def placement_plan(
+        self,
+        model: Mapping[str, Any],
+        request: PlacementRequest | None = None,
+    ) -> dict[str, Any]:
+        """Plan an executable layer split for a registered model.
+
+        This is an estimate derived from stored model facts and the current host
+        snapshot. It never starts a backend and never claims a verified placement.
+        """
+
+        atlas = dict(model.get("atlas")) if isinstance(model.get("atlas"), Mapping) else {}
+        if model.get("source_kind") and not atlas.get("source_kind"):
+            atlas["source_kind"] = model.get("source_kind")
+        try:
+            host = detect_host_hardware().to_dict()
+        except Exception:  # noqa: BLE001 - host probing is advisory evidence
+            host = {}
+        spec = self._spec
+        if request is None and spec is not None:
+            request = PlacementRequest(
+                context_tokens=spec.context_tokens,
+                kv_cache_dtype=spec.kv_cache_dtype,
+                sequence_slots=spec.parallel_slots,
+                mode=spec.placement_mode,
+            )
+        return plan_placement(atlas, host, request)
 
     # -- state helpers ---------------------------------------------------
 
@@ -236,6 +272,22 @@ class RuntimeManager:
         self.events.emit("runtime.state", **self.status.to_dict())
 
         started_clock = time.monotonic()
+        placement: dict[str, Any] | None = None
+        if spec.backend == "llamacpp_server":
+            try:
+                placement = self.placement_plan(
+                    model,
+                    PlacementRequest(
+                        context_tokens=spec.context_tokens,
+                        kv_cache_dtype=spec.kv_cache_dtype,
+                        sequence_slots=spec.parallel_slots,
+                        mode=spec.placement_mode,
+                    ),
+                )
+            except Exception:  # noqa: BLE001 - planning is advisory, never a load gate
+                placement = None
+        with self._lock:
+            self._load_placement = placement
         try:
             if spec.backend == "llamacpp_server":
                 result = self._start_managed(model, spec, prepared_path)
@@ -261,6 +313,8 @@ class RuntimeManager:
                 "requested_context": spec.context_tokens,
                 "observed_context": result.get("observed_context"),
                 "pid": result.get("pid"),
+                "gpu_layers": spec.gpu_layers,
+                "placement": summarize_placement(placement),
                 "started_at": utc_now_iso(),
             }
         if self._sampler is None:
@@ -442,6 +496,7 @@ class RuntimeManager:
             self._client = None
             sampler = self._sampler
             self._sampler = None
+            self._load_placement = None
         if server is not None:
             try:
                 server.stop()
@@ -454,6 +509,7 @@ class RuntimeManager:
         with self._lock:
             server = self._server
             sampler = self._sampler
+            placement = self._load_placement
             previous = self._status.to_dict()
             if server is None and self._status.state in {RuntimeState.NOT_LOADED, RuntimeState.FAILED}:
                 self._status = RuntimeStatus(detail="No model is loaded.")
@@ -471,12 +527,28 @@ class RuntimeManager:
                     stopped["log_excerpt"] = log_tail
         finally:
             samples = sampler.stop() if sampler is not None else []
+            resource_summary = _summarise_samples(samples)
+            reconciliation = reconcile_placement(
+                placement,
+                {
+                    "peak_process_resident_bytes": resource_summary.get(
+                        "peak_process_resident_bytes"
+                    ),
+                    "minimum_host_available_bytes": resource_summary.get(
+                        "minimum_host_available_bytes"
+                    ),
+                    "peak_gpu_memory_used_bytes": None,
+                    "sample_count": resource_summary.get("sample_count"),
+                    "source": "runtime resource sampler",
+                },
+            )
             with self._lock:
                 self._server = None
                 self._client = None
                 self._sampler = None
                 self._spec = None
                 self._profile_id = None
+                self._load_placement = None
                 self._last_generation_metrics = {}
                 self._status = RuntimeStatus(
                     state=RuntimeState.UNLOADING,
@@ -493,7 +565,9 @@ class RuntimeManager:
             model_id=previous.get("model_id"),
             profile_id=profile_id,
             metrics={
-                "resources": _summarise_samples(samples),
+                "resources": resource_summary,
+                "placement": summarize_placement(placement),
+                "placement_reconciliation": reconciliation,
                 "stop": {key: value for key, value in stopped.items() if key != "log_excerpt"},
             },
             status="ok",
@@ -670,6 +744,7 @@ class RuntimeManager:
             "profile": spec.to_payload() if spec else None,
             "profile_id": self._profile_id,
             "load_metrics": dict(self._load_metrics),
+            "placement": summarize_placement(self._load_placement),
             "log_excerpt": log_excerpt,
             "host": {
                 "pid": os.getpid(),
