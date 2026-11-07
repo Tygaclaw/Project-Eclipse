@@ -41,12 +41,14 @@ from eclipse import __version__
 
 
 _SECRET_PATTERNS = (
-    (re.compile(r"(?i)\b(api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|passwd|client[_ -]?secret|authorization)(\s*[:=]\s*)([^\s,;]+)"), r"\1\2[REDACTED]"),
-    (re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}"), "Bearer [REDACTED]"),
-    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"), "[REDACTED_GITHUB_TOKEN]"),
-    (re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"), "[REDACTED_API_KEY]"),
-    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[REDACTED_AWS_KEY]"),
-    (re.compile(r"(https?://)([^/\s:@]+:[^/\s@]+@)"), r"\1[REDACTED]@"),
+    # Match Bearer credentials before the generic key/value rule so the
+    # credential following "Authorization: Bearer" cannot be left behind.
+    (re.compile(r"(?i)\\bBearer\\s+[A-Za-z0-9._~+/=-]{8,}"), "Bearer [REDACTED]"),
+    (re.compile(r"(?i)\\b(api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|passwd|client[_ -]?secret|authorization)(\\s*[:=]\\s*)(?:Bearer\\s+)?([^\\s,;]+)"), r"\\1\\2[REDACTED]"),
+    (re.compile(r"\\bgh[pousr]_[A-Za-z0-9]{20,}\\b"), "[REDACTED_GITHUB_TOKEN]"),
+    (re.compile(r"\\bsk-[A-Za-z0-9_-]{20,}\\b"), "[REDACTED_API_KEY]"),
+    (re.compile(r"\\bAKIA[0-9A-Z]{16}\\b"), "[REDACTED_AWS_KEY]"),
+    (re.compile(r"(https?://)([^/\\s:@]+:[^/\\s@]+@)"), r"\\1[REDACTED]@"),
 )
 
 
