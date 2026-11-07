@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QLineEdit,
     QMenu,
+    QMessageBox,
     QPlainTextEdit,
     QTabBar,
     QTextEdit,
@@ -69,7 +70,8 @@ def _safe_details(value: Any, depth: int = 0) -> Any:
     if value is None or isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, str):
-        return redact_text(value, limit=400)
+        # Preserve useful exception/dialog detail while keeping every field bounded.
+        return redact_text(value, limit=8_000)
     if isinstance(value, dict):
         return {
             str(key)[:80]: _safe_details(item, depth + 1)
@@ -202,14 +204,21 @@ class InteractionRecorder(QObject):
         """Record errors even when ordinary interaction logging is paused."""
         if self._closed:
             return
-        safe = _safe_details(details)
-        self.record(kind, safe, force=True)
+        # record() applies the shared redaction and size bounds exactly once.
+        self.record(kind, details, force=True)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
-        if self._closed or not self._enabled or not isinstance(watched, QWidget):
+        if self._closed or not isinstance(watched, QWidget):
             return False
         try:
             event_type = event.type()
+            # Message boxes are application-generated diagnostics, not ordinary
+            # user input. Record them even when interaction logging is paused.
+            if isinstance(watched, QMessageBox) and event_type == QEvent.Type.Show:
+                self._record_message_box(watched)
+                return False
+            if not self._enabled:
+                return False
             if event_type in (
                 QEvent.Type.MouseButtonPress,
                 QEvent.Type.MouseButtonRelease,
@@ -292,6 +301,24 @@ class InteractionRecorder(QObject):
                 message=redact_text(exc, limit=1_000),
             )
         return False
+
+    def _record_message_box(self, dialog: QMessageBox) -> None:
+        """Record application-generated dialog text without reading input controls."""
+        severity = {
+            QMessageBox.Icon.NoIcon: "none",
+            QMessageBox.Icon.Information: "information",
+            QMessageBox.Icon.Warning: "warning",
+            QMessageBox.Icon.Critical: "critical",
+            QMessageBox.Icon.Question: "question",
+        }.get(dialog.icon(), "unknown")
+        self.record_error(
+            "message_box_shown",
+            severity=severity,
+            title=redact_text(dialog.windowTitle(), limit=200),
+            message=redact_text(dialog.text(), limit=2_000),
+            informative_text=redact_text(dialog.informativeText(), limit=2_000),
+            detailed_text=redact_text(dialog.detailedText(), limit=4_000),
+        )
 
     @staticmethod
     def _find_ancestor(widget: QWidget, target_type: type) -> QWidget | None:
