@@ -5,11 +5,11 @@
 ## Current state
 
 - Status: ACTIVE
-- Active backlog item: RUN-01 (runtime capability contract) implemented locally this run; next READY backend-independent item is PREP-01 (source identity, checksums and prepared-variant registry).
-- Note: the PR #16 recovery of 2026-11-06 did not start PREP-01; it re-synchronised the stale branch with `main` (PR #15) so the independent review gate passes. See "Recovery — stale branch" below.
+- Active backlog item: RUN-01 (runtime capability contract) implemented locally; next READY backend-independent item is PREP-01 (source identity, checksums and prepared-variant registry).
+- Note: the PR #16 recovery of 2026-11-06 resynchronised the stale branch with `main` (PR #15); the 2026-11-07 recovery resynchronised it again with the far-ahead integrated `main` (PR #15 plus the shared Core/runtime/Capability/Agent/desktop integration) while preserving the branch's RUN-01 additions. Neither recovery started PREP-01. See "Recovery" sections below.
 - Base branch: main
 - Session ID: created by the autonomous controller at runtime and recorded in the runner log only; never place provider credentials here.
-- Last verified checkpoint: main includes merged PRs #5, #6, #7, #10 and #11.
+- Last verified checkpoint: `main` includes merged PRs #5, #6, #7, #10, #11, #12, #13, #14, #15 plus the integrated-implementation commits `8dddf39`, `5ee46bf` and `ed07f38`.
 
 ## Current product reality
 
@@ -75,3 +75,17 @@ Update this section after each milestone with changed files, commit/PR, selected
 - Local gates actually run (Linux, Python 3.12.16, PySide6 not installed): `python -m unittest discover -s tests` = **283 tests OK, 11 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed; `python -m compileall -q src tests .github/scripts scripts` OK; `python .github/scripts/validate_provider_pool.py` OK; `scripts/eclipse_review.py --base origin/main` accepted; `git diff --check` clean.
 - Consequence recorded honestly: restoring `scripts/eclipse_autonomous.py` and the `tests/test_autonomous_*` files touches controller/test paths that the controller classifies as protected, so this recovered PR is expected to remain owner-review only rather than auto-merge.
 - Not changed by this recovery: no new backlog item, no change to any milestone status, no commit/push/merge by the agent.
+
+### Recovery — stale branch versus the integrated main (PR #16, second pass) — 2026-11-07
+
+- Trigger: the recovered run again received CI evidence showing "Windows desktop build" and "Python checks" workflow runs in `action_required` state with no retrievable logs. The agent cannot change GitHub-side run approval; the reproducible local failure was used instead.
+- Real reproducible failure: the branch was still cut from `main` at PR #14 (`37419e9`). After the first recovery, `main` advanced with PR #15 (`84ce050`) and the integrated-implementation commits `8dddf39`, `5ee46bf` and `ed07f38` (shared Core, real runtime, preparation, Capability System, Agent and three-workspace desktop integration). The controller's independent review gate compares the worktree against `origin/main`, so it reported main's new test modules — `tests/test_agent.py`, `tests/test_app_cli.py`, `tests/test_capability.py`, `tests/test_core_foundation.py`, `tests/test_preparation.py` — and `tests/fixtures/fake_llama_server.py` as **deleted**, and rejected the change set. The same divergence left the PR unmergeable.
+- Fix: resynchronised the worktree with `origin/main` by taking main's version of every file main added or changed, then reconciled the branch's RUN-01 additions:
+  - kept `src/eclipse/core/runtime.py` (manifest-driven capability contract and evidence-labelled support evaluator that main's `runtime/backends.py` does not provide) and `tests/test_runtime_cli.py`;
+  - moved the branch's contract tests to `tests/test_runtime_contract.py` so they coexist with main's real runtime suite `tests/test_runtime.py` (taken from main unchanged);
+  - merged `src/eclipse/__main__.py` to keep main's `app_cli` dispatch and re-add the `runtime-support` command;
+  - took main's updated `AUTONOMOUS_BACKLOG.md` and `REQUIREMENTS.md`; kept and updated this handoff plus `STATUS.md`, `CONTINUATION.md` and `TESTING.md`.
+- No product code or test was weakened. `tests/test_recovery.py` gained a multi-file stale-base regression case.
+- Local gates actually run (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`): `python -m unittest discover -s tests` = **367 tests OK, 13 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed; `python -m compileall -q src tests scripts .github/scripts` OK; `python .github/scripts/validate_provider_pool.py` OK; `scripts/eclipse_review.py --base origin/main` accepted; `git diff --check origin/main` clean.
+- Consequence recorded honestly: the resynchronisation adds main's integrated implementation to this branch's change set and touches controller/test paths, so the PR remains owner-review only rather than auto-merge.
+- Not changed by this recovery: no new backlog item, no milestone-status change, no commit/push/merge by the agent. The Windows CI and owner Windows/GPU/Obsidian gates remain the unresolved acceptance gates.

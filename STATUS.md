@@ -1,8 +1,8 @@
 # ECLIPSE Project Status
 
-**Status:** `AUTONOMOUS_RUN_ACTIVE — RUN-01_RUNTIME_CAPABILITY_CONTRACT_LOCAL_VERIFIED`
-**Last updated:** 2026-11-06
-**Current main head audited:** `acd7c41975fd6846fdfd4d7ac7c6616dd66765bb`
+**Status:** `INTEGRATED_LOCAL_IMPLEMENTATION_COMPLETE — OWNER_WINDOWS_VALIDATION_PENDING`
+**Last updated:** 2026-11-07
+**Implementation base:** `84ce050` (`main`); integrated on `freebuff/938f3f76478afd5f73c65464`
 
 ## Mainline history — verified
 
@@ -31,7 +31,20 @@ The old stacked PR #8 (hardware increment) and PR #9 (free provider pool) are cl
 - Windows x64 PyInstaller packaging and CI.
 - Ranked six-provider/12-route free OpenCode pool and benchmark report.
 
-A static estimate is not an executable placement plan or proof of inference. The Capability and Agent screens are not yet full implementations.
+## Integrated product implementation — 7 November 2026
+
+The previous placeholders and pending runtime layers have been replaced by working systems on the integration branch:
+
+- **Shared Core** — one SQLite store for models, prepared variants, profiles, runs, conversations, messages, attachments, tasks, corrections, knowledge metadata and settings; one event bus; one home/config layout; one permission broker with canonical path scoping, approvals, command validation and redaction. The desktop, CLI and tests all use this Core.
+- **Reversible preparation** — index/copy packages with source and output identity, SHA-256 inventories, manifests, lineage, verification, safe removal and quantization gated on a real `llama-quantize`.
+- **Inference runtime** — managed `llama-server` lifecycle and OpenAI-compatible attach mode; streaming text/tool calls; cancellation; observed vs requested context; measured TTFT, completion tokens and tokens/second; load/generation/stop run records; failure cleanup; truthful states; execution profiles with validation.
+- **Capability System** — watchdog routing, durable plans with acceptance criteria, project index/stack detection, workspace-scoped tools, independent `compileall`/test verification, bounded repair loop, loop detection, drift signals and Stop. Completion requires passing verification, not a model's claim.
+- **Correction memory and knowledge** — candidates are promoted only with substantive evidence and a regression reference; model notes wait in an Obsidian-compatible AI Inbox and approval copies them to trusted folders without overwriting existing notes.
+- **Agent** — persistent/searchable conversations, streaming, model selection, text attachments, scoped project tools, approvals, activity reporting and Stop on the same runtime and permission boundary.
+- **Desktop** — all three workspaces are functional: Inspect & feasibility, Prepare & run (registry, prepare/verify/delete, backend/profile, start/stop/restart, telemetry, test, diagnostics), Capability (four tabs), Agent (chat), plus a persisted light/dark theme.
+- **CLI** — 20 commands covering inspection, registry/preparation, runtime/chat, tasks, knowledge, corrections, status, diagnostics and check detection.
+
+A static feasibility estimate is still not an executable placement plan or proof of inference. The application-level permission boundary is not an OS container sandbox. The runtime has been exercised against a real spawned HTTP/SSE test server, but not yet against the owner's real Windows llama.cpp/Vulkan/Qwen installation.
 
 ## Autonomous engineering controller — merged to main
 
@@ -60,36 +73,25 @@ The autonomous controller now runs a deterministic, model-independent review gat
 
 Because this milestone changes the protected controller, its PR remains draft for owner review and Windows CI; it is not auto-merged. Batch status remains `IN_PROGRESS` until CI and merge are confirmed.
 
-## Runtime capability contract and support matrix — RUN-01
+## What still requires real-world validation
 
-`src/eclipse/core/runtime.py` adds the first shared-Core runtime contract. `BackendCapabilities`, `DeviceSupport` and `ControlSupport` let an inference adapter declare its support envelope (formats, architectures, tensor types, CPU/GPU devices, placement modes, controls, telemetry, maximum context). `evaluate_model_support(...)` compares a Model Atlas and host snapshot against that declaration and returns an evidence-labelled `eclipse_runtime_support` matrix. Per-dimension results are `declared_supported`, `unsupported` or `unknown`; a missing host snapshot or an unenumerated API (for example Vulkan) stays `unknown`, and an observed NVIDIA GPU is `hardware_present_backend_unvalidated` rather than supported. `runtime_verified` is always `false`; the contract never claims a model loads or generates. `load_capabilities(path)` reads a JSON manifest, and the `runtime-support` CLI command combines the atlas, host snapshot, requested placement mode and requested controls.
-
-Tests: `tests/test_runtime.py` (24 tests) and `tests/test_runtime_cli.py` (6 tests) cover supported/unsupported/unknown formats, architectures, tensor types, CPU/CUDA/Vulkan device cases, placement modes, control support and restart flags, manifest JSON round-trip and validation errors, and CLI success/error paths. Focused run: 30 tests OK. Full portable suite after the PR #16 stale-branch recovery: `python -m unittest discover -s tests` ran **283 tests, OK, 11 skipped** (optional Qt tests) both with `PYTHONPATH=src` and with `PYTHONPATH` removed. This is a static contract and declaration comparison, not a working inference adapter; RUN-02 (real llama.cpp adapter) remains the runtime integration gate.
-
-## PR #16 recovery — stale branch resynchronised with main
-
-The recovered PR #16 branch was cut from `main` at PR #14 and did not contain PR #15. Because the controller's independent review gate compares the worktree against `origin/main`, it reported `tests/test_autonomous_orphans.py` and `tests/test_autonomous_parking.py` as deleted and rejected the change set even though the RUN-01 product code was correct. The recovery restored the three files PR #15 changed (`scripts/eclipse_autonomous.py` plus the two controller test modules) from `origin/main`; no test or product behaviour was weakened. `tests/test_recovery.py` (2 tests) reproduces the stale-base failure and the resynchronisation fix in a temporary Git repository. Local gates: 283 tests OK (11 skipped), compile OK, provider pool OK, independent review accepted, whitespace clean. This recovery did not start a new backlog item and did not change any milestone status. It changes controller/test paths, so the PR remains owner-review only.
-
-## What is not yet complete as a working product
-
-- Real ECLIPSE-managed model inference lifecycle. The backend capability contract and static support matrix exist (RUN-01), but no backend is integrated and no model is loaded, generated, stopped or measured by ECLIPSE yet.
-- Executable CPU/GPU/hybrid placement and context/KV allocation verification.
-- Reversible prepared variants and transformation lineage.
-- Runtime profiles, actual telemetry and benchmarked performance.
-- Capability Watchdog, planner, research/context service, permissioned tool registry and sandbox.
-- Independent verification, recovery, loop detection, verified correction memory and reusable skills.
-- Obsidian knowledge vault and approval workflow.
-- Functional ECLIPSE Agent with chat, history, model switching, files, tools and Stop.
-- Complete end-to-end integration of all three workspaces through one Core.
+- Real Windows llama.cpp/Vulkan/Qwen load, generation, stop and restart through the packaged app, including observed context and actual VRAM/RAM telemetry.
+- Rebuilding the PyInstaller Windows package with the new Core/runtime/capability/agent hidden imports and smoke-testing the packaged executable.
+- Owner walkthrough of the rebuilt three-workspace UI and the real Obsidian vault.
+- Real Safetensors and multi-shard Hugging Face folder validation on Windows.
+- Executable CPU/GPU/hybrid placement planning and allocation reconciliation (profiles exist; placement is still configuration-based).
 - Four remaining evaluations: multi-file development, runtime debugging, safe interconnected-code changes and Three.js/game development.
-- Windows installer/update/uninstall/recovery and release compliance.
+- Windows installer/update/uninstall/recovery, license/Qt LGPL compliance and security/dependency scans.
+- Live provider route/tool-call smoke tests and one completed live autonomous workflow run.
 
 ## User-only release gates
 
 Do all independent development and GitHub-hosted Windows checks first. Then bundle only the remaining local checks into one clear Windows 11 validation run:
+- rebuild the package and launch the three-workspace app;
 - verify the existing llama.cpp/Vulkan/Qwen connection without reinstalling or changing the known-good configuration;
-- test real model load/generate/stop, actual hardware telemetry and resource recovery;
-- validate the user's Obsidian vault integration;
+- test real model load/generate/stop/restart, observed context, actual hardware telemetry and resource recovery;
+- run one Capability task and one Agent tool task with real approvals;
+- validate the user's real Obsidian vault workflow;
 - verify installation/update/uninstall on the target PC.
 
 Keep these gates `WAITING_FOR_OWNER_VALIDATION` until real evidence exists. Do not ask the owner to repeat the completed A* challenge, general hardware audit, Qwen installation or API-key setup.
@@ -106,7 +108,12 @@ Keep these gates `WAITING_FOR_OWNER_VALIDATION` until real evidence exists. Do n
 - [x] Protected bootstrap PRs #12 and #13 reviewed and merged to `main`.
 - [ ] First live autonomous run verified end-to-end (milestone PR merged by the controller).
 - [ ] Each API route passes live non-confidential text and tool-call smoke tests.
-- [ ] Runtime, sandbox, Obsidian, Agent, security/dependency scans and release gates complete.
+- [x] Shared Core, managed/attached runtime, Capability System, knowledge workflow and Agent implemented and locally tested.
+- [x] File tools are workspace-scoped and require explicit approval for writes and commands.
+- [x] A failed load, denied action or failed check is recorded as a failure, never converted into success.
+- [x] AI knowledge proposals remain in an Inbox until human approval; trusted notes are never overwritten.
+- [ ] Real Windows runtime, rebuilt package and real Obsidian walkthrough verified.
+- [ ] Security/dependency scans and release compliance complete.
 - [ ] License selection remains an owner decision; Qt/PySide6 LGPL packaging obligations must be addressed before redistribution.
 
 ## Autonomous bootstrap verification evidence — PR #12 (merged)
@@ -125,4 +132,12 @@ Last verified PR head before this documentation update: `44a463732448c6faa544620
 - [ ] Observation of a completed live autonomous workflow run that produces a merged milestone PR.
 
 PR #12/#13 are now on `main`; the historical draft state above is superseded. Do not mark AUTO-01/02/03 completely accepted before the remaining live gates are satisfied.
+
+## PR #16 recovery — resynchronised with the integrated `main`
+
+The recovered PR #16 branch was cut from `main` before PR #15 (`84ce050`) and before the integrated-implementation commits (`8dddf39`, `5ee46bf`, `ed07f38`) that added the shared Core, runtime, preparation, Capability System, knowledge workflow, Agent and three-workspace desktop integration. The controller's independent review gate (`scripts/eclipse_review.py --base origin/main`) compares the worktree against `origin/main`, so the stale branch appeared to delete main's new test modules (`tests/test_agent.py`, `tests/test_app_cli.py`, `tests/test_capability.py`, `tests/test_core_foundation.py`, `tests/test_preparation.py`) and `tests/fixtures/fake_llama_server.py`, and rejected the change set. The same divergence also made the PR unmergeable with `main`.
+
+The recovery resynchronised the worktree with `origin/main` (taking main's version of every file main added or changed) and reconciled the branch's RUN-01 additions on top: the manifest-driven `src/eclipse/core/runtime.py` capability contract, `tests/test_runtime_cli.py`, and the contract tests moved to `tests/test_runtime_contract.py` so they coexist with main's real runtime suite `tests/test_runtime.py`. `src/eclipse/__main__.py` keeps main's `app_cli` dispatch and re-adds the `runtime-support` command. No product behaviour or test was weakened. `tests/test_recovery.py` now also reproduces the multi-file stale-base shape and proves the resynchronisation accepts the identical additive change.
+
+Local gates after the resynchronisation (Linux, Python 3.12.16, PySide6 not installed): `python -m unittest discover -s tests` = **367 tests OK, 13 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed; `compileall` OK; provider-pool validation OK; `scripts/eclipse_review.py --base origin/main` accepted; `git diff --check` clean. This recovery did not start a new backlog item and did not change any milestone status; the Windows CI and owner Windows/GPU/Obsidian gates above remain the unresolved gates.
 

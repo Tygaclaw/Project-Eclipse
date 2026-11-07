@@ -1,285 +1,231 @@
+"""Runtime tests against a real spawned HTTP server process."""
+
 from __future__ import annotations
 
 from tests import _bootstrap  # noqa: F401
 
+import os
+from pathlib import Path
+import stat
+import sys
+import tempfile
+import time
 import unittest
 
-from eclipse.core.runtime import (
-    BackendCapabilities,
-    ControlSupport,
-    DeviceSupport,
-    RuntimeContractError,
-    evaluate_controls,
-    evaluate_model_support,
+from eclipse.core.config import AppPaths, Settings
+from eclipse.core.storage import Store
+from eclipse.runtime import (
+    BackendUnavailable,
+    CancellationToken,
+    ChatCancelled,
+    ChatError,
+    ChatMessage,
+    LlamaCppServer,
+    LlamaCppStartError,
+    OpenAICompatibleClient,
+    RuntimeManager,
+    RuntimeState,
+    find_server_binary,
+    resolve_profile,
 )
+from tests.test_model_atlas import build_gguf
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
-CPU_DEVICE = DeviceSupport(kind="cpu", api="cpu")
-CUDA_DEVICE = DeviceSupport(kind="gpu", api="cuda")
+def fake_server_script() -> Path:
+    return FIXTURES / "fake_llama_server.py"
 
 
-def capabilities(**overrides) -> BackendCapabilities:
-    values = {
-        "backend_id": "test-backend",
-        "display_name": "Test Backend",
-        "integration_status": "integrated",
-        "model_formats": frozenset({"gguf"}),
-        "architectures": frozenset({"llama"}),
-        "quantization_types": frozenset({"f16", "q4_k"}),
-        "devices": (CPU_DEVICE,),
-        "placement_modes": frozenset({"cpu_only"}),
-        "controls": {
-            "context_length": ControlSupport(supported=True, requires_restart=True),
-            "gpu_layer_offload": ControlSupport(supported=False),
-        },
-        "telemetry": frozenset({"process_state"}),
-        "max_context_tokens": 32768,
-    }
-    values.update(overrides)
-    return BackendCapabilities(**values)
+class RuntimeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        os.chmod(fake_server_script(), os.stat(fake_server_script()).st_mode | stat.S_IEXEC)
 
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.model_path = self.root / "model.gguf"
+        self.model_path.write_bytes(build_gguf([("blk.0.weight", (4, 8), 0, 0)]))
+        self.paths = AppPaths.discover(self.root / "home").ensure()
+        self.settings = Settings(self.paths.settings_path)
+        self.store = Store(self.paths.database_path)
+        self.addCleanup(self.store.close)
+        self.runtime = RuntimeManager(self.store, self.settings, self.paths)
+        self.addCleanup(lambda: self.runtime.shutdown())
 
-def atlas(
-    *,
-    source_kind: str = "gguf",
-    architecture: str | None = "llama",
-    counts: dict | None = None,
-) -> dict:
-    return {
-        "format": "eclipse_model_atlas",
-        "atlas_version": 1,
-        "source_kind": source_kind,
-        "source_name": "test-model.gguf",
-        "architecture": {"architecture": architecture, "evidence": "observed"},
-        "summary": {
-            "distribution": {"label": "ggml_type", "counts": counts if counts is not None else {"F16": 4}},
-        },
-    }
+    def model_record(self, atlas: dict | None = None) -> dict:
+        return {
+            "id": "model_test",
+            "name": "Fake model",
+            "source_path": str(self.model_path),
+            "source_kind": "gguf",
+            "atlas": atlas or {},
+        }
 
+    def spec(self, **overrides) -> dict:
+        base = {
+            "backend": "llamacpp_server",
+            "intent": "balanced",
+            "context_tokens": 2048,
+            "gpu_layers": 0,
+            "threads": 1,
+            "parallel_slots": 1,
+            "kv_cache_dtype": "f16",
+            "temperature": 0.2,
+            "max_tokens": 64,
+            "binary": str(fake_server_script()),
+        }
+        base.update(overrides)
+        return base
 
-def host(*, gpu_vendor: str | None = None) -> dict:
-    gpus = []
-    if gpu_vendor is not None:
-        gpus.append({"vendor": gpu_vendor, "name": "Test GPU"})
-    return {"schema_version": 1, "gpus": gpus}
+    def start_managed(self) -> None:
+        self.runtime.start(self.model_record(), self.spec())
 
+    def test_client_streams_text_and_usage(self) -> None:
+        self.start_managed()
+        client = OpenAICompatibleClient(self.runtime.endpoint(), model="fake-model")
+        text, final = client.chat([ChatMessage(role="user", content="hello")])
+        self.assertEqual(text, "Hello from the fake server.")
+        self.assertEqual(final.usage["completion_tokens"], 5)
+        self.assertEqual(final.finish_reason, "stop")
 
-class CapabilityContractTests(unittest.TestCase):
-    def test_to_dict_and_from_dict_round_trip(self) -> None:
-        original = capabilities()
-        restored = BackendCapabilities.from_dict(original.to_dict())
-        self.assertEqual(restored, original)
-        self.assertEqual(restored.controls["context_length"].requires_restart, True)
-        self.assertEqual(restored.architectures, frozenset({"llama"}))
-
-    def test_from_dict_normalizes_case_and_accepts_boolean_control(self) -> None:
-        restored = BackendCapabilities.from_dict(
-            {
-                "backend_id": "b",
-                "display_name": "B",
-                "model_formats": ["GGUF"],
-                "architectures": ["LLaMA"],
-                "devices": [{"kind": "GPU", "api": "Vulkan"}],
-                "placement_modes": ["Hybrid"],
-                "controls": {"flash_attention": True},
-                "telemetry": ["VRAM_Usage"],
-            }
-        )
-        self.assertEqual(restored.model_formats, frozenset({"gguf"}))
-        self.assertEqual(restored.architectures, frozenset({"llama"}))
-        self.assertEqual(restored.devices[0].api, "vulkan")
-        self.assertEqual(restored.controls["flash_attention"], ControlSupport(supported=True))
-
-    def test_from_dict_rejects_unknown_fields(self) -> None:
-        with self.assertRaises(RuntimeContractError) as caught:
-            BackendCapabilities.from_dict(
-                {"backend_id": "b", "display_name": "B", "mystery": 1}
+    def test_client_assembles_streamed_tool_calls(self) -> None:
+        self.start_managed()
+        client = OpenAICompatibleClient(self.runtime.endpoint(), model="fake-model")
+        chunks = list(
+            client.stream_chat(
+                [ChatMessage(role="user", content="TOOL please write a file")],
+                tools=[{"type": "function", "function": {"name": "write_file", "parameters": {}}}],
             )
-        self.assertIn("unknown capability field", str(caught.exception))
-
-    def test_from_dict_rejects_non_list_devices(self) -> None:
-        with self.assertRaises(RuntimeContractError):
-            BackendCapabilities.from_dict({"backend_id": "b", "display_name": "B", "devices": "cpu"})
-
-    def test_requires_at_least_one_device_and_format_and_placement(self) -> None:
-        with self.assertRaises(RuntimeContractError):
-            capabilities(devices=())
-        with self.assertRaises(RuntimeContractError):
-            capabilities(model_formats=frozenset())
-        with self.assertRaises(RuntimeContractError):
-            capabilities(placement_modes=frozenset())
-
-    def test_rejects_invalid_tokens(self) -> None:
-        with self.assertRaises(RuntimeContractError):
-            capabilities(model_formats=frozenset({"onnx"}))
-        with self.assertRaises(RuntimeContractError):
-            capabilities(placement_modes=frozenset({"magic"}))
-        with self.assertRaises(RuntimeContractError):
-            capabilities(telemetry=frozenset({"vibes"}))
-        with self.assertRaises(RuntimeContractError):
-            capabilities(controls={"warp_drive": ControlSupport()})
-
-    def test_rejects_invalid_identity_and_status(self) -> None:
-        with self.assertRaises(RuntimeContractError):
-            capabilities(backend_id="  ")
-        with self.assertRaises(RuntimeContractError):
-            capabilities(display_name="")
-        with self.assertRaises(RuntimeContractError):
-            capabilities(integration_status="maybe")
-
-    def test_rejects_invalid_max_context(self) -> None:
-        with self.assertRaises(RuntimeContractError):
-            capabilities(max_context_tokens=0)
-        with self.assertRaises(RuntimeContractError):
-            capabilities(max_context_tokens=True)
-
-    def test_device_validation(self) -> None:
-        with self.assertRaises(RuntimeContractError):
-            DeviceSupport(kind="cpu", api="cuda")
-        with self.assertRaises(RuntimeContractError):
-            DeviceSupport(kind="gpu", api="cpu")
-        with self.assertRaises(RuntimeContractError):
-            DeviceSupport(kind="tpu", api="cuda")
-        with self.assertRaises(RuntimeContractError):
-            DeviceSupport(kind="gpu", api="cuda", evidence="guessed")
-
-
-class SupportMatrixTests(unittest.TestCase):
-    def test_supported_format_when_integrated_is_declared_compatible(self) -> None:
-        result = evaluate_model_support(capabilities(), atlas(), host())
-        self.assertEqual(result["dimensions"]["format"]["status"], "declared_supported")
-        self.assertEqual(result["overall_status"], "declared_compatible_not_runtime_verified")
-        self.assertFalse(result["runtime_verified"])
-
-    def test_unsupported_format_dominates_overall(self) -> None:
-        result = evaluate_model_support(
-            capabilities(model_formats=frozenset({"safetensors"})), atlas(), host()
         )
-        self.assertEqual(result["dimensions"]["format"]["status"], "unsupported")
-        self.assertEqual(result["overall_status"], "unsupported")
+        final = chunks[-1]
+        self.assertEqual(len(final.tool_calls), 1)
+        self.assertEqual(final.tool_calls[0].name, "write_file")
+        self.assertEqual(final.tool_calls[0].arguments_dict()["path"], "created_by_agent.txt")
 
-    def test_unknown_format_is_reported_unknown(self) -> None:
-        result = evaluate_model_support(capabilities(), atlas(source_kind="unknown_kind"), host())
-        self.assertEqual(result["dimensions"]["format"]["status"], "unknown")
-        self.assertIsNone(result["model"]["model_format"])
+    def test_managed_lifecycle_reaches_ready_with_observed_context(self) -> None:
+        self.start_managed()
+        status = self.runtime.status
+        self.assertEqual(status.state, RuntimeState.READY)
+        self.assertTrue(status.owns_process)
+        self.assertIsNotNone(status.pid)
+        self.assertEqual(status.observed_context, 2048)
+        self.assertIn(f":{status.endpoint.rsplit(':', 1)[1]}", status.endpoint)
 
-    def test_not_integrated_backend_never_reports_declared_compatible(self) -> None:
-        result = evaluate_model_support(
-            capabilities(integration_status="not_integrated"), atlas(), host()
+    def test_generation_returns_measured_telemetry(self) -> None:
+        self.start_managed()
+        parts = [
+            chunk.text
+            for chunk in self.runtime.stream_chat([ChatMessage(role="user", content="hi")])
+            if chunk.text
+        ]
+        self.assertEqual("".join(parts), "Hello from the fake server.")
+        self.assertEqual(self.runtime.status.state, RuntimeState.READY)
+        runs = self.store.list_runs()
+        generation = [run for run in runs if run["kind"] == "generation"][0]
+        metrics = generation["metrics"]
+        self.assertIsNotNone(metrics["time_to_first_token_seconds"])
+        self.assertEqual(metrics["completion_tokens"], 5)
+        self.assertIsNotNone(metrics["tokens_per_second"])
+        self.assertEqual(metrics["tokens_per_second_evidence"], "observed")
+
+    def test_stop_terminates_the_owned_process_and_releases_state(self) -> None:
+        self.start_managed()
+        pid = self.runtime.status.pid
+        self.assertIsNotNone(pid)
+        result = self.runtime.stop()
+        self.assertTrue(result["stopped"])
+        self.assertEqual(self.runtime.status.state, RuntimeState.NOT_LOADED)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                break
+            time.sleep(0.05)
+        else:
+            self.fail("The managed process is still alive after stop")
+
+    def test_missing_server_binary_fails_honestly(self) -> None:
+        spec = self.spec(binary=str(self.root / "does-not-exist"))
+        with self.assertRaises(Exception):
+            self.runtime.start(self.model_record(), spec)
+        self.assertEqual(self.runtime.status.state, RuntimeState.FAILED)
+        self.assertIsNotNone(self.runtime.status.error)
+
+    def test_startup_crash_is_reported_and_cleaned_up(self) -> None:
+        crash = self.root / "crash-server.py"
+        crash.write_text("#!/usr/bin/env python3\nimport sys\nsys.exit(3)\n", encoding="utf-8")
+        os.chmod(crash, 0o755)
+        spec = self.spec(binary=str(crash))
+        with self.assertRaises(Exception):
+            self.runtime.start(self.model_record(), spec)
+        self.assertEqual(self.runtime.status.state, RuntimeState.FAILED)
+        self.assertIsNone(self.runtime.status.pid)
+
+    def test_cancellation_stops_the_stream(self) -> None:
+        self.start_managed()
+        cancel = CancellationToken()
+        client = OpenAICompatibleClient(self.runtime.endpoint(), model="fake-model")
+        stream = client.stream_chat([ChatMessage(role="user", content="hi")], cancel=cancel)
+        next(stream)
+        cancel.cancel()
+        with self.assertRaises(ChatCancelled):
+            list(stream)
+
+    def test_attach_mode_does_not_own_the_external_server(self) -> None:
+        import subprocess
+
+        port = 18771
+        process = subprocess.Popen(
+            [sys.executable, str(fake_server_script()), "--port", str(port)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
-        self.assertEqual(result["overall_status"], "not_integrated")
-
-    def test_architecture_supported_unsupported_and_unknown(self) -> None:
-        supported = evaluate_model_support(capabilities(), atlas(), host())
-        self.assertEqual(supported["dimensions"]["architecture"]["status"], "declared_supported")
-
-        unsupported = evaluate_model_support(
-            capabilities(architectures=frozenset({"mistral"})), atlas(), host()
+        self.addCleanup(process.terminate)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            try:
+                OpenAICompatibleClient(f"http://127.0.0.1:{port}", timeout_seconds=1).list_models()
+                break
+            except ChatError:
+                time.sleep(0.1)
+        else:
+            self.fail("The external fake server did not become ready")
+        self.runtime.start(
+            {"id": "remote", "name": "External", "source_path": "", "source_kind": "remote", "atlas": {}},
+            self.spec(backend="openai_compatible", endpoint=f"http://127.0.0.1:{port}", model_name="fake-model"),
         )
-        self.assertEqual(unsupported["dimensions"]["architecture"]["status"], "unsupported")
-
-        undeclared = evaluate_model_support(
-            capabilities(architectures=None), atlas(), host()
+        self.assertEqual(self.runtime.status.state, RuntimeState.READY)
+        self.assertFalse(self.runtime.status.owns_process)
+        text = "".join(
+            chunk.text
+            for chunk in self.runtime.stream_chat([ChatMessage(role="user", content="hi")])
+            if chunk.text
         )
-        self.assertEqual(undeclared["dimensions"]["architecture"]["status"], "unknown")
+        self.assertEqual(text, "Hello from the fake server.")
+        self.runtime.stop()
+        self.assertIsNone(process.poll(), "Attach mode must not stop the external server")
 
-        absent = evaluate_model_support(capabilities(), atlas(architecture=None), host())
-        self.assertEqual(absent["dimensions"]["architecture"]["status"], "unknown")
-
-    def test_quantization_supported_unsupported_and_unknown(self) -> None:
-        supported = evaluate_model_support(capabilities(), atlas(), host())
-        self.assertEqual(supported["dimensions"]["quantization"]["status"], "declared_supported")
-
-        unsupported = evaluate_model_support(
-            capabilities(quantization_types=frozenset({"f16"})),
-            atlas(counts={"Q4_K": 4}),
-            host(),
+    def test_profile_resolution_validates_against_capabilities(self) -> None:
+        spec = resolve_profile(
+            intent="balanced",
+            backend="llamacpp_server",
+            atlas={
+                "source_kind": "gguf",
+                "architecture": {"architecture": "llama", "details": {"context_length": {"value": 4096}}},
+            },
+            overrides={"context_tokens": 8192},
         )
-        self.assertEqual(unsupported["dimensions"]["quantization"]["status"], "unsupported")
-        self.assertEqual(
-            unsupported["dimensions"]["quantization"]["unsupported_types"], ["q4_k"]
-        )
+        self.assertEqual(spec.context_tokens, 8192)
+        self.assertTrue(any("exceeds" in warning for warning in spec.warnings))
+        with self.assertRaises(Exception):
+            resolve_profile(intent="balanced", backend="llamacpp_server", atlas={"source_kind": "safetensors"})
 
-        unknown = evaluate_model_support(capabilities(quantization_types=None), atlas(), host())
-        self.assertEqual(unknown["dimensions"]["quantization"]["status"], "unknown")
-
-        none_observed = evaluate_model_support(capabilities(), atlas(counts={}), host())
-        self.assertEqual(none_observed["dimensions"]["quantization"]["status"], "unknown")
-
-    def test_cpu_device_is_declared_supported(self) -> None:
-        result = evaluate_model_support(capabilities(), atlas(), host())
-        self.assertEqual(result["dimensions"]["devices"]["status"], "declared_supported")
-
-    def test_cuda_device_with_nvidia_hardware_is_unvalidated(self) -> None:
-        result = evaluate_model_support(
-            capabilities(devices=(CUDA_DEVICE,)), atlas(), host(gpu_vendor="nvidia")
-        )
-        self.assertEqual(
-            result["dimensions"]["devices"]["status"], "hardware_present_backend_unvalidated"
-        )
-        self.assertEqual(result["overall_status"], "unknown")
-
-    def test_cuda_device_without_nvidia_is_unsupported(self) -> None:
-        result = evaluate_model_support(
-            capabilities(devices=(CUDA_DEVICE,)), atlas(), host(gpu_vendor="amd")
-        )
-        self.assertEqual(result["dimensions"]["devices"]["status"], "unsupported")
-        self.assertEqual(result["overall_status"], "unsupported")
-
-    def test_vulkan_device_with_gpu_is_unknown(self) -> None:
-        result = evaluate_model_support(
-            capabilities(devices=(DeviceSupport(kind="gpu", api="vulkan"),)),
-            atlas(),
-            host(gpu_vendor="nvidia"),
-        )
-        self.assertEqual(result["dimensions"]["devices"]["status"], "unknown")
-
-    def test_missing_host_snapshot_leaves_gpu_unknown(self) -> None:
-        result = evaluate_model_support(capabilities(devices=(CUDA_DEVICE,)), atlas(), None)
-        self.assertEqual(result["dimensions"]["devices"]["status"], "unknown")
-
-    def test_placement_mode_checks(self) -> None:
-        supported = evaluate_model_support(
-            capabilities(placement_modes=frozenset({"cpu_only", "hybrid"})),
-            atlas(),
-            host(),
-            placement_mode="hybrid",
-        )
-        self.assertEqual(supported["dimensions"]["placement"]["status"], "declared_supported")
-
-        unsupported = evaluate_model_support(
-            capabilities(placement_modes=frozenset({"cpu_only"})),
-            atlas(),
-            host(),
-            placement_mode="gpu_offload",
-        )
-        self.assertEqual(unsupported["dimensions"]["placement"]["status"], "unsupported")
-
-    def test_controls_report_supported_unsupported_and_restart(self) -> None:
-        controls = evaluate_controls(
-            capabilities(),
-            {"context_length": 8192, "gpu_layer_offload": 33, "warp_drive": 1},
-        )
-        self.assertEqual(controls["context_length"]["status"], "declared_supported")
-        self.assertTrue(controls["context_length"]["requires_restart"])
-        self.assertEqual(controls["gpu_layer_offload"]["status"], "unsupported")
-        self.assertEqual(controls["warp_drive"]["status"], "unknown")
-
-    def test_evaluate_model_support_includes_controls(self) -> None:
-        result = evaluate_model_support(
-            capabilities(), atlas(), host(), requested_controls={"context_length": 4096}
-        )
-        self.assertIn("context_length", result["controls"])
-
-    def test_rejects_invalid_inputs(self) -> None:
-        with self.assertRaises(RuntimeContractError):
-            evaluate_model_support(capabilities(), {"format": "not_atlas"}, host())
-        with self.assertRaises(RuntimeContractError):
-            evaluate_model_support("not a backend", atlas(), host())
-        with self.assertRaises(RuntimeContractError):
-            evaluate_model_support(capabilities(), atlas(), host="not a snapshot")
-        with self.assertRaises(RuntimeContractError):
-            evaluate_controls(capabilities(), "not a mapping")
+    def test_binary_discovery_accepts_an_explicit_executable(self) -> None:
+        self.assertEqual(find_server_binary(str(fake_server_script())), fake_server_script())
 
 
 if __name__ == "__main__":

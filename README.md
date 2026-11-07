@@ -21,11 +21,25 @@ On top of these, `build-atlas` composes the relevant inspectors into one evidenc
 
 No inspector loads, maps, decodes or executes tensor weights, and no inspector imports, compiles or renders a chat template.
 
-Two further read-only commands support memory planning: `inspect-host` reports currently observable host facts (OS/CPU, RAM, NVIDIA VRAM via `nvidia-smi` when available, storage capacity), and `plan-feasibility` combines that snapshot with the atlas to estimate weight and KV-cache memory against usable RAM and the largest single GPU. The result is a static capacity envelope, not an executable layer placement and not a speed prediction; unavailable values are reported as unknown, and the KV estimate assumes full attention on every layer. See [`STATUS.md`](STATUS.md) for which pull request currently carries these commands.
+Two further read-only commands support memory planning: `inspect-host` reports currently observable host facts (OS/CPU, RAM, NVIDIA VRAM via `nvidia-smi` when available, storage capacity), and `plan-feasibility` combines that snapshot with the atlas to estimate weight and KV-cache memory against usable RAM and the largest single GPU. The result is a static capacity envelope, not an executable layer placement and not a speed prediction; unavailable values are reported as unknown, and the KV estimate assumes full attention on every layer.
+
+## Shared Core, model runtime, Capability System and Agent
+
+A standard-library Core now sits under all three workspaces: one SQLite store (`src/eclipse/core/storage.py`) for models, prepared variants, profiles, runs, conversations, attachments, tasks, corrections and knowledge notes; one event bus; one settings/home layout; and one permission broker that scopes file access to an approved project folder and requires explicit approval for writes and commands.
+
+Model preparation is reversible and auditable (`src/eclipse/model_intelligence/preparation.py`): index and copy packages record SHA-256 lineage, verification detects changed files, removal deletes only the derived package, and quantization is gated on a real `llama-quantize` executable.
+
+The runtime (`src/eclipse/runtime/`) supports a managed `llama-server` process and an OpenAI-compatible attached endpoint. It streams text and tool calls, reports the context the backend actually accepted, measures time-to-first-token, completion tokens and tokens/second, records every load/generation/stop, cleans up failed launches, and never turns a failed load into a Ready state. Execution profiles resolve intent into explicit context, GPU-layer, parallel-slot and KV-cache settings with warnings when the model declares a smaller context.
+
+The Capability System (`src/eclipse/capability/`) implements a watchdog and planner with acceptance criteria, workspace-scoped tools, independent `compileall`/test verification with a bounded repair loop, loop detection, project indexing, correction memory that only promotes candidates with evidence and a regression case, and an Obsidian-compatible Markdown vault whose AI proposals stay in an Inbox until explicitly approved. Approval never overwrites an existing trusted note.
+
+The Agent (`src/eclipse/agent/`) is a real streaming chat service on the same runtime: persistent conversations with search/rename/delete, model selection, text attachments, tool use with approvals, activity reporting and Stop. It shares the same knowledge, correction memory and permission boundaries as the Capability workspace.
+
+The same Core is exposed through 20 CLI commands, including `registry-add`, `prepare`, `verify-package`, `chat`, `task new|run`, `knowledge propose|approve|search`, `corrections propose|promote`, `app-status`, `diagnostics` and `detect-checks`.
 
 ## Desktop application
 
-A PySide6 `6.12.0` Windows-first shell (`eclipse-desktop`) hosts the three primary workspaces. The Model Intelligence workspace lets you pick a GGUF, Safetensors file or Hugging Face folder and renders the same evidence-labelled atlas, with progress, cancellation and read-only safety reporting. It talks to the core through a bounded, cancellable subprocess boundary, so no parsing is duplicated in the UI. The Capability and Agent workspaces are honest placeholders; the Agent screen has no chat input and reports that no model adapter is connected.
+A PySide6 `6.12.0` Windows-first shell (`eclipse-desktop`) hosts the three primary workspaces over one shared `AppContext`. Model Intelligence has two tabs: **Inspect & feasibility** renders the evidence-labelled atlas with progress, cancellation and read-only safety reporting, while **Prepare & run** registers models, creates and verifies prepared packages, starts/stops/restarts the managed or attached backend, shows truthful runtime state and measured telemetry, and runs a real generation test. The Capability workspace has **Plan & evidence**, **Verification**, **Knowledge** and **Corrections** tabs and runs real tasks with per-action approval and Stop. The Agent workspace provides conversation search, streaming chat, attachments, tool activity, approvals, model status and Stop. The shell also has a persisted light/dark theme. The inspection boundary remains a bounded, cancellable subprocess (`AtlasClient`), so parsing is not duplicated in the UI.
 
 See [`docs/ADR-001-desktop-framework.md`](docs/ADR-001-desktop-framework.md) for the framework decision. The active Windows desktop build workflow is [`.github/workflows/desktop.yml`](.github/workflows/desktop.yml); its readable reference copy is [`docs/desktop-build-workflow.yml`](docs/desktop-build-workflow.yml). The workflow runs on pull requests to `main` (or when started manually), tests the Qt UI, builds a portable Windows x64 package and uploads the `ECLIPSE-windows-x64` artifact. Latest PR #5 corrected Windows desktop validation: [#42198092066](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198092066) (145 tests including Qt, PyInstaller build and packaged backend smoke test passed). The packaged UI has also been manually exercised on Windows 11 with a real GGUF: its Atlas reported zero tensor payload bytes read and no source modification. This is static inspection only, not inference or a GPU-feasibility claim.
 
@@ -49,6 +63,19 @@ py -3 -m eclipse inspect-tokenizer "D:\Models\YourModelFolder"
 py -3 -m eclipse build-atlas "D:\Models\YourModelFolder"
 py -3 -m eclipse inspect-host --storage-path "D:\Models"
 py -3 -m eclipse plan-feasibility "D:\Models\model.gguf" --context-tokens 8192
+```
+
+The integrated Core and workspaces are also available from the CLI:
+
+```powershell
+$env:PYTHONPATH = "src"
+py -3 -m eclipse registry-add "D:\Models\model.gguf"
+py -3 -m eclipse prepare "D:\Models\model.gguf" --register
+py -3 -m eclipse backends --compact
+py -3 -m eclipse chat --endpoint http://127.0.0.1:8080 --prompt "Hello" --json
+py -3 -m eclipse task new "Add a bounded --json flag and verify it" --workspace .
+py -3 -m eclipse knowledge propose --title "Observed fact" --body "Evidence-backed note"
+py -3 -m eclipse app-status --compact
 ```
 
 For a compact JSON report, add `--compact` to either command:
@@ -85,7 +112,7 @@ This produces `dist\ECLIPSE\ECLIPSE.exe`.
 
 ## Project status
 
-See [`STATUS.md`](STATUS.md) and [`CONTINUATION.md`](CONTINUATION.md). This is an early engineering milestone, not a complete desktop app or a claim that the full ECLIPSE roadmap has shipped.
+The three workspaces, shared Core, reversible preparation, runtime lifecycle/telemetry, Capability System, Obsidian-compatible knowledge workflow and Agent are implemented and covered by **333 automated tests**, including a real spawned HTTP inference double, real tool/verification execution, a CLI end-to-end chat run and offscreen Qt UI tests. This is a locally verified implementation, not final release acceptance: real Windows llama.cpp/Vulkan/Qwen load and generation, a real Obsidian vault walkthrough, a rebuilt Windows package, the four remaining evaluations, installer/update and the license decision still require owner or release validation. See [`STATUS.md`](STATUS.md) and [`CONTINUATION.md`](CONTINUATION.md) for the exact evidence and remaining gates.
 
 ## Autonomous engineering
 
@@ -93,5 +120,5 @@ The repository's autonomous development controller is defined by [`docs/AUTONOMO
 
 The workflow entry points are manual dispatch, main-branch updates and a six-hour schedule. Safe product PRs are only eligible for automatic merge after the Windows Python matrix and Windows Qt/PyInstaller package checks pass. Workflow, credential, permission and controller changes require owner review. No paid fallback or automatic top-up is allowed.
 
-**Bootstrap status:** the autonomous controller is being introduced on `feature/autonomous-engineering-engine-2026-11-06`. It is not active on `main` until its protected bootstrap PR is reviewed/merged and the first GitHub Actions run succeeds. The project is not yet the finished application; see `AUTONOMOUS_BACKLOG.md` and `STATUS.md`.
+**Controller status:** the autonomous bootstrap PRs #12/#13 and the follow-up controller work are merged on `main`. The product implementation described above was built on one integration branch after checking every remote side branch; the remaining unmerged branches were duplicate controller attempts, not product code. The backlog and remaining owner/release gates are tracked in `AUTONOMOUS_BACKLOG.md` and `STATUS.md`.
 

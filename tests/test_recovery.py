@@ -92,5 +92,82 @@ class StaleBaseRecoveryTests(unittest.TestCase):
         self.assertTrue(result.accepted, result.to_text())
 
 
+class MultiFileStaleBaseRecoveryTests(unittest.TestCase):
+    """The PR #16 shape: one base advance adds several tests and a fixture.
+
+    The 2026-11-07 recovery found the branch cut before the integrated ``main``
+    commits, which added five test modules and a fixture at once. The reviewer
+    reported every one as a deletion. This class pins both halves of the fix:
+    all of them are reported, and restoring all of them accepts the branch's
+    additive change.
+    """
+
+    BASE_TESTS = (
+        "tests/test_agent.py",
+        "tests/test_app_cli.py",
+        "tests/test_capability.py",
+        "tests/test_core_foundation.py",
+        "tests/test_preparation.py",
+        "tests/fixtures/fake_llama_server.py",
+    )
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self._git("init")
+        self._git("config", "user.email", "recovery@example.test")
+        self._git("config", "user.name", "Recovery Test")
+        self._git("checkout", "-b", "main")
+
+        (self.root / "AUTONOMOUS_BACKLOG.md").write_text(BACKLOG, encoding="utf-8")
+        (self.root / "STATUS.md").write_text("Status: in progress\n", encoding="utf-8")
+        (self.root / "tests").mkdir()
+        (self.root / "tests" / "test_existing.py").write_text(TEST_SOURCE, encoding="utf-8")
+        self._git("add", "-A")
+        self._git("commit", "-m", "base")
+
+        # The stale feature branch does its own product work with its own tests.
+        self._git("checkout", "-b", "feature")
+        (self.root / "src").mkdir()
+        (self.root / "src" / "core").mkdir()
+        (self.root / "src" / "core" / "runtime.py").write_text("x = 1\n", encoding="utf-8")
+        (self.root / "tests" / "test_runtime_contract.py").write_text(TEST_SOURCE, encoding="utf-8")
+        (self.root / "tests" / "test_runtime_cli.py").write_text(TEST_SOURCE, encoding="utf-8")
+        self._git("add", "-A")
+        self._git("commit", "-m", "feature work")
+
+        # Main advances with several tests and a fixture the branch never saw.
+        self._git("checkout", "main")
+        (self.root / "tests" / "fixtures").mkdir()
+        for path in self.BASE_TESTS:
+            (self.root / path).write_text(TEST_SOURCE, encoding="utf-8")
+        self._git("add", "-A")
+        self._git("commit", "-m", "integrated main advance")
+        self.main_tip = self._git("rev-parse", "HEAD").stdout.strip()
+        self._git("checkout", "feature")
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _git(self, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args], cwd=self.root, text=True, capture_output=True, check=True
+        )
+
+    def test_all_base_advance_tests_are_reported_as_deleted(self) -> None:
+        result = review_worktree(self.root, self.main_tip)
+        self.assertFalse(result.accepted)
+        deleted = {f.path for f in result.findings if f.code == "deleted_test_file"}
+        self.assertEqual(deleted, set(self.BASE_TESTS), result.to_text())
+
+    def test_restoring_all_base_files_accepts_the_additive_change(self) -> None:
+        self._git("checkout", self.main_tip, "--", *self.BASE_TESTS)
+        result = review_worktree(self.root, self.main_tip)
+        self.assertTrue(result.accepted, result.to_text())
+        # The branch's own additive tests must still be present afterwards.
+        self.assertTrue((self.root / "tests" / "test_runtime_contract.py").is_file())
+        self.assertTrue((self.root / "tests" / "test_runtime_cli.py").is_file())
+
+
 if __name__ == "__main__":
     unittest.main()

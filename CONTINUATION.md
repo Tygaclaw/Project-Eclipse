@@ -4,14 +4,16 @@
 
 - Repository: `Tygaclaw/Project-Eclipse`.
 - Default branch: `main`.
-- Audited main head when this record was rewritten: `acd7c41975fd6846fdfd4d7ac7c6616dd66765bb`.
-- Autonomous bootstrap PRs #12 and #13 are merged to `main`; a live autonomous run created the current `feature/eclipse-autonomous-*` branch.
+- Integration base: `84ce050`; implementation work is on `freebuff/938f3f76478afd5f73c65464` and is integrated into `main` on completion.
+- Autonomous bootstrap PRs #12/#13 and later controller work are merged. Every remote side branch was checked: the only unmerged branches were duplicate autonomous-controller attempts, not product code.
 - Mainline PRs #5, #6, #7, #10 and #11 are merged. PRs #8 and #9 are obsolete, closed and superseded.
-- The existing product foundation includes static model inspection/Atlas, tokenizer/chat-template intelligence, static hardware feasibility, and the three-workspace Windows desktop shell.
+- The product now includes the previously missing shared Core, runtime, preparation, Capability System, knowledge workflow, Agent and full three-workspace integration described below.
 
-## Product truth
+## Product truth — 7 November 2026
 
-The Model Intelligence workspace has genuine static inspection and feasibility foundations. It does not yet have a managed inference lifecycle, executable placement planner, runtime profiles or full telemetry. Capability Amplification, Obsidian and the ECLIPSE Agent remain future implementation work beyond the existing honest placeholder screens. Do not report the product finished until the integrated backlog and release gates are satisfied.
+The three primary workspaces are now functional and share one `AppContext`: one SQLite store, runtime manager, event bus, knowledge base, correction memory, permission broker and agent. Model Intelligence retains the static inspectors and feasibility planner and adds a Prepare & run tab with registry/preparation, managed or attached inference, profiles, lifecycle, observed context, measured telemetry, diagnostics and a real generation test. Capability has a watchdog/planner, workspace-scoped tools, independent verification, a bounded repair loop, loop detection, correction memory and an Obsidian-compatible Inbox/approval workflow. Agent has persistent conversations, streaming, attachments, tools, approvals and Stop.
+
+The runtime and Capability/Agent orchestration have been exercised end to end against a real spawned HTTP/SSE inference double, real subprocess tool execution and the real SQLite store. The CLI `chat --endpoint` path was also run end to end and returned a real streamed answer and measured state. This is local automated evidence, not owner Windows/GPU acceptance. Original model files remain read-only; the permission boundary is application-level scoping, not an OS sandbox. The remaining gates are listed in `STATUS.md`.
 
 ## Autonomous controller bootstrap
 
@@ -35,16 +37,13 @@ The workflow has manual dispatch, main-branch push and six-hour scheduled entry 
 
 ## Next autonomous work order
 
-Use `AUTONOMOUS_BACKLOG.md` as the canonical queue. After the bootstrap controller is merged, continue with:
-1. Finish live provider smoke tests and failover/recovery acceptance.
-2. Build a real inference backend adapter compatible with the existing Windows/Vulkan setup, preserving the known-good configuration.
-3. Implement true load/generate/stop/unload lifecycle, execution profiles, actual runtime allocation and telemetry.
-4. Implement reversible preparation and integrity/rollback.
-5. Build the shared Capability Core: planning, research/context, tools, sandbox, verification, recovery, loop detection, corrections and skills.
-6. Integrate Obsidian with scoped retrieval and approval.
-7. Implement the full Agent chat/runtime, history, attachments, memory, tools, approvals and Stop.
-8. Complete three-workspace integration, UX and the remaining four evaluations.
-9. Complete release and final bundled Windows 11/Vulkan/Obsidian owner validation.
+Use `AUTONOMOUS_BACKLOG.md` as the canonical queue. The local implementation work is complete; the remaining order is:
+1. Rebuild and smoke-test the Windows PyInstaller package with the new hidden imports.
+2. Verify the real Windows llama.cpp/Vulkan/Qwen connection, load/generate/stop/restart, observed context, telemetry and resource recovery.
+3. Walk through all three workspaces and the real Obsidian vault on Windows; run one Capability task and one Agent tool task with approvals.
+4. Complete the four model-agent evaluations with recorded evidence.
+5. Finish live provider route smoke tests and the live autonomous-workflow acceptance gates.
+6. Installer/update/uninstall, license/Qt LGPL compliance and security/dependency scans.
 
 ## Model order and free-only safety
 
@@ -91,45 +90,18 @@ Verification actually run locally (Linux, Python 3.12.16, no PySide6): focused `
 
 The controller change is protected, so the milestone PR must remain draft for owner review and Windows CI. AUTO-04 stays `IN_PROGRESS` until that merge and CI are confirmed. Next READY milestone after AUTO-04 is RUN-01 (runtime adapter/backend capability contract and support matrix).
 
-## RUN-01 runtime capability contract — 6 November 2026
+## PR #16 recovery — resynchronised with the integrated `main` — 7 November 2026
 
-Base main: `acd7c41975fd6846fdfd4d7ac7c6616dd66765bb`.
+Recovered process, not a new backlog milestone. The existing PR #16 branch (`feature/eclipse-autonomous-42307488690-1`) was cut from `main` before PR #15 (`84ce050`) and before the integrated-implementation commits (`8dddf39`, `5ee46bf`, `ed07f38`) that added the shared Core, runtime, Capability System, Agent and three-workspace desktop integration. The controller's independent review gate (`scripts/eclipse_review.py --base origin/main`) compares the worktree against `origin/main`, so the stale branch appeared to delete main's new test modules and fixture and the whole change set was rejected. The branch was therefore also unmergeable with `main`.
 
-Implemented:
-- `src/eclipse/core/runtime.py`: `BackendCapabilities`, `DeviceSupport`, `ControlSupport` contract with strict validation; `from_dict`/`to_dict` JSON manifest round-trip; `load_capabilities(path)`; `evaluate_model_support(...)` producing an evidence-labelled `eclipse_runtime_support` matrix; `evaluate_controls(...)`.
-- Per-dimension status vocabulary is `declared_supported` / `unsupported` / `unknown`. Missing atlas facts, an undeclared adapter capability, an unenumerated GPU API (Vulkan/SYCL/Metal) or a missing host snapshot stay `unknown`. An observed NVIDIA GPU for a CUDA device is `hardware_present_backend_unvalidated`, never supported. `runtime_verified` is always `false`; the matrix is a declaration comparison and does not prove loading, generation or speed.
-- `src/eclipse/core/__init__.py` exports the contract and evaluator; `src/eclipse/__main__.py` adds the `runtime-support` command (model path plus `--capabilities manifest.json`, optional `--placement` and repeatable `--control`).
-- `tests/test_runtime.py` (24 tests) and `tests/test_runtime_cli.py` (6 tests) cover supported/unsupported/unknown formats, architectures, tensor types, CPU/CUDA/Vulkan devices, placement, controls/restart flags, manifest validation and JSON round-trip, plus CLI success and error paths.
+Fix: resynchronised the worktree with `origin/main` by taking main's version of every file main added or changed, then reconciled the branch's own RUN-01 work:
 
-Verification actually run locally (Linux, Python 3.12.16, PySide6 not installed): focused `tests.test_runtime` + `tests.test_runtime_cli` = 30 tests OK; full `python -m unittest discover -s tests` = 283 tests OK, 11 skipped (after the PR #16 recovery below), both with `PYTHONPATH=src` and with `PYTHONPATH` removed; `python -m compileall -q src tests scripts .github/scripts` passed; `git diff --check` clean.
+- kept `src/eclipse/core/runtime.py` — the manifest-driven capability contract and evidence-labelled support evaluator that main's `runtime/backends.py` does not provide;
+- kept `tests/test_runtime_cli.py` and moved the branch's contract tests to `tests/test_runtime_contract.py` so they coexist with main's real runtime suite `tests/test_runtime.py`, which was taken from main unchanged;
+- merged `src/eclipse/__main__.py` so it keeps main's `app_cli` dispatch and re-adds the `runtime-support` command;
+- kept and updated `.eclipse/AUTONOMOUS_SESSION_HANDOFF.md`.
 
-This is a static contract milestone, not a working inference adapter. No backend is integrated and the CLI reports `not_integrated` unless a manifest declares otherwise. RUN-02 (Windows-compatible llama.cpp adapter that connects to the existing Vulkan setup) remains the runtime integration gate and has owner-only Windows validation. Next READY backend-independent milestone after RUN-01 is PREP-01 (source identity, checksums and prepared-variant registry).
+No product behaviour or test was weakened. `tests/test_recovery.py` gained a regression case that reproduces the multi-file stale-base shape and proves the resynchronisation accepts the identical additive change.
 
-## PR #16 stale-branch recovery — 6 November 2026
-
-Recovered process, not a new backlog milestone. The existing PR #16 branch
-(`feature/eclipse-autonomous-42307488690-1`) was based on `main` at PR #14
-(`37419e9`) and was missing PR #15 (`84ce050`). The controller's independent
-review gate (`scripts/eclipse_review.py --base origin/main`, part of
-`validate_worktree`) compares the working tree against `origin/main`, so it
-reported two **deleted test files** — `tests/test_autonomous_orphans.py` and
-`tests/test_autonomous_parking.py` — and rejected the change set. The RUN-01
-product code was correct; the branch was stale.
-
-Fix: restored the three files PR #15 changed from `origin/main`
-(`scripts/eclipse_autonomous.py`, `tests/test_autonomous_orphans.py`,
-`tests/test_autonomous_parking.py`). No product code or test was weakened.
-Added `tests/test_recovery.py` (2 tests) which reproduces the stale-base shape
-in a temporary Git repository and asserts the rejected-then-accepted behaviour.
-
-Local gates (Linux, Python 3.12.16, PySide6 not installed): `python -m unittest
-discover -s tests` = 283 tests OK, 11 skipped, with and without `PYTHONPATH`;
-`compileall` OK; provider-pool validation OK; `eclipse_review.py --base
-origin/main` accepted; `git diff --check` clean.
-
-Because the fix restores controller and `tests/test_autonomous_*` paths, the
-controller classifies the recovered PR as protected and it is expected to remain
-owner-review only. The recovery did not start PREP-01 or change any milestone
-status. The reported CI runs were in `action_required` state with no logs
-(awaiting approval), which the agent cannot change from the runner.
+Local gates (Linux, Python 3.12.16, PySide6 not installed): `python -m unittest discover -s tests` = **367 tests OK, 13 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed; `python -m compileall -q src tests scripts .github/scripts` OK; `python .github/scripts/validate_provider_pool.py` OK; `scripts/eclipse_review.py --base origin/main` accepted; `git diff --check` clean. Because the recovery touches controller/test paths, the PR is expected to remain owner-review only.
 

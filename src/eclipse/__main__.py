@@ -37,7 +37,11 @@ from eclipse.model_intelligence import (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="eclipse",
-        description="ECLIPSE static model-inspection tools (no model inference).",
+        description="ECLIPSE model intelligence, capability and agent tools.",
+    )
+    parser.add_argument(
+        "--home",
+        help="override the ECLIPSE application data directory (or set ECLIPSE_HOME)",
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -139,6 +143,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="requested control name to check (repeatable)",
     )
     runtime.add_argument("--compact", action="store_true", help="emit compact JSON")
+
+    from eclipse.app_cli import register_commands
+
+    register_commands(commands)
 
     return parser
 
@@ -318,6 +326,11 @@ def _run_build_atlas(args: argparse.Namespace, parser: argparse.ArgumentParser) 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    from eclipse.app_cli import dispatch
+
+    app_result = dispatch(args)
+    if app_result is not None:
+        return app_result
     if args.command == "inspect-gguf":
         return _run_gguf(args, parser)
     if args.command == "inspect-safetensors":
