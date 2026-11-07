@@ -1,7 +1,7 @@
 # Reference copy of the installed Windows desktop build workflow.
 #
 # Reference copy of the active workflow installed at .github/workflows/desktop.yml.
-# It runs for pull requests to main and can be started manually.
+# It runs for push and pull requests to main and can be started manually.
 # Latest verified run: https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42170364882
 #
 # Artifact name: ECLIPSE-windows-x64
@@ -10,6 +10,9 @@
 name: Windows desktop build
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
