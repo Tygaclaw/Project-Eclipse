@@ -35,8 +35,8 @@
 | RUN-03 | Truthful model lifecycle: load, generate, stop, unload, restart, failure cleanup and process ownership | `tests/test_runtime.py` proves ready/pids/stop process exit, missing-binary failure state, startup-crash cleanup and attach-mode ownership; no orphan on failed launch | IMPLEMENTED_LOCAL_TESTS |
 | RUN-04 | Context/KV-cache accepted-vs-requested reporting and actual allocation where backend exposes it | `/props` observed context is recorded and displayed; fake-server test asserts observed 2048 vs requested; requested/observed fields exist in status and UI. Real backend allocation reconciliation pending | IMPLEMENTED_LOCAL_TESTS |
 | RUN-05 | Supported CPU/GPU/hybrid placement, RAM/VRAM reserves and executable placement manifest | Profiles expose only backend-declared controls and validate them; a true executable layer-placement planner is still pending | IN_PROGRESS |
-| RUN-06 | Runtime profiles, last-known-good, restore/rollback, diagnostics and logs | Execution intents, explicit controls, validation, diagnostics and log tail implemented; durable saved-profile restore/rollback is not yet complete | IN_PROGRESS |
-| RUN-07 | Real telemetry and benchmark harness (TTFT, prompt processing, sustained rate, CPU/RAM/VRAM/disk/cache, quality) | Measured TTFT, completion tokens, tokens/second and process samples are recorded per generation (`tests/test_runtime.py`); repeated median/variance benchmark harness remains | IN_PROGRESS |
+| RUN-06 | Runtime profiles, last-known-good, restore/rollback, diagnostics and logs | Effective profile is persisted after a successful load and marked last-known-good only after a successful generation; desktop save/apply/restore controls and CLI `profiles list|delete` are implemented. `tests/test_runtime.py` covers save, mark-good and restore-after-stop. Real Windows rollback remains an owner gate | IMPLEMENTED_LOCAL_TESTS |
+| RUN-07 | Real telemetry and benchmark harness (TTFT, prompt processing, sustained rate, CPU/RAM/VRAM/disk/cache, quality) | Measured TTFT, completion tokens, tokens/second and process/host samples are recorded per generation. `src/eclipse/runtime/benchmark.py` runs warm-up plus repeated generations, reports min/median/mean/max/stdev and persists a benchmark run; CLI and desktop controls are wired. Prompt-processing, GPU/disk/cache sensors and quality comparison remain | IMPLEMENTED_LOCAL_TESTS |
 
 ## Priority 2 — Reversible model preparation and optimisation
 
@@ -85,11 +85,17 @@
 
 ## Local integration evidence — 7 November 2026
 
-- Full `python -m unittest discover -s tests` with `PYTHONPATH=src`, `QT_QPA_PLATFORM=offscreen` and the project PySide6 environment: **333 tests, OK**.
+- Full `python -m unittest discover -s tests` with `PYTHONPATH=src`, `QT_QPA_PLATFORM=offscreen` and the project PySide6 environment: **338 tests, OK**.
 - The runtime suite spawns the fake HTTP/SSE server as a real process, exercises managed load/stream/stop, startup failure cleanup, attach mode and measured telemetry.
 - The Capability suite executes real `compileall`/unittest verification and real argument-list commands; failing checks and denied approvals cannot produce `completed`.
 - The Agent suite exercises the same runtime/tool loop with persisted conversations and attachments.
 - A real CLI run (`eclipse chat --endpoint ... --json`) streamed an answer and reported state `ready` plus a generation run.
+- A real CLI benchmark (`eclipse benchmark --endpoint ... --runs 2 --warmup 1 --json`) returned `status=ok`, two measured samples, median TTFT `0.0016 s` and median throughput `122.645 tok/s` against the fake HTTP/SSE server. These are test-double measurements, not a model-performance claim.
+- `runtime-support` compares a real inspected GGUF atlas and host snapshot against the current backend declarations; `runtime_verified` stays false by design.
+
+## PR #16 reconciliation — 7 November 2026
+
+PR #16 is a stale static runtime-contract branch cut before the integrated runtime landed. Its `src/eclipse/core/runtime.py` would duplicate the current backend/profile interfaces. The useful model-specific declaration comparison was adapted into `src/eclipse/runtime/backends.py` as `evaluate_model_support(...)` and the `runtime-support` CLI, with tests. The PR itself was not merged; its controller/recovery changes are historical and do not belong in the product runtime.
 - Offscreen Qt tests construct the full window with a temporary `AppContext` and exercise navigation, real workspace controls and theme switching.
 
 These are local automated results on Linux. They do not replace the owner Windows 11 llama.cpp/Vulkan/Qwen, rebuilt-package, real-Obsidian or installer gates.

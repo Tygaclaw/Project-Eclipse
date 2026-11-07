@@ -92,6 +92,18 @@
 
 **Reason:** The model's own summary is not evidence. This is the core honesty rule of the Capability System and is enforced by tests that seed failing checks and denied approvals.
 
+## D-018 — Backend support remains a declaration comparison until measured
+
+**Decision:** `runtime-support` compares a model atlas and host snapshot against the backend's declared formats, architectures, tensor types, devices, placement modes and controls. It reports only `declared_supported`, `unsupported` or `unknown`, labels GPU hardware as `hardware_present_backend_unvalidated`, and always sets `runtime_verified` to false. Actual loading and telemetry are separate runtime evidence.
+
+**Reason:** A manifest cannot prove that a backend binary was compiled with the needed kernels or that a model will load. Keeping the static matrix explicitly separate prevents the UI or CLI from presenting a declaration as a successful runtime result.
+
+## D-019 — Mark profiles good only after a real generation
+
+**Decision:** Persist the effective execution profile after a successful model load, but mark it last-known-good only after a successful, non-cancelled generation. Restoring a saved profile re-validates it against the current model before starting. Benchmarks run warm-up plus repeated measured generations and report median, range and variance rather than a single best run.
+
+**Reason:** Loading alone does not prove the configuration produces usable output, and one fast run is not a benchmark. This makes rollback and performance claims depend on observed evidence, while still allowing a failed configuration to be replaced by the previously working profile.
+
 ## D-017 — Knowledge proposals are separated from trusted knowledge
 
 **Decision:** Model-generated notes are written to `06 - AI Inbox` with `status: inbox`. Approval copies them into a trusted folder with an approval record; rejection records the reason. An existing trusted note is never overwritten; a collision gets a numeric suffix.

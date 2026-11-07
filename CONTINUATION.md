@@ -7,13 +7,14 @@
 - Integration base: `84ce050`; implementation work is on `freebuff/938f3f76478afd5f73c65464` and is integrated into `main` on completion.
 - Autonomous bootstrap PRs #12/#13 and later controller work are merged. Every remote side branch was checked: the only unmerged branches were duplicate autonomous-controller attempts, not product code.
 - Mainline PRs #5, #6, #7, #10 and #11 are merged. PRs #8 and #9 are obsolete, closed and superseded.
-- The product now includes the previously missing shared Core, runtime, preparation, Capability System, knowledge workflow, Agent and full three-workspace integration described below.
+- The product now includes the previously missing shared Core, runtime, preparation, Capability System, knowledge workflow, Agent and full three-workspace integration described below, plus saved profiles with last-known-good restore, a model-specific support report and a repeated measured benchmark harness.
+- Latest local suite: **338 tests, OK**; a real CLI benchmark against the spawned HTTP/SSE test server completed with two measured samples.
 
 ## Product truth — 7 November 2026
 
 The three primary workspaces are now functional and share one `AppContext`: one SQLite store, runtime manager, event bus, knowledge base, correction memory, permission broker and agent. Model Intelligence retains the static inspectors and feasibility planner and adds a Prepare & run tab with registry/preparation, managed or attached inference, profiles, lifecycle, observed context, measured telemetry, diagnostics and a real generation test. Capability has a watchdog/planner, workspace-scoped tools, independent verification, a bounded repair loop, loop detection, correction memory and an Obsidian-compatible Inbox/approval workflow. Agent has persistent conversations, streaming, attachments, tools, approvals and Stop.
 
-The runtime and Capability/Agent orchestration have been exercised end to end against a real spawned HTTP/SSE inference double, real subprocess tool execution and the real SQLite store. The CLI `chat --endpoint` path was also run end to end and returned a real streamed answer and measured state. This is local automated evidence, not owner Windows/GPU acceptance. Original model files remain read-only; the permission boundary is application-level scoping, not an OS sandbox. The remaining gates are listed in `STATUS.md`.
+The runtime and Capability/Agent orchestration have been exercised end to end against a real spawned HTTP/SSE inference double, real subprocess tool execution and the real SQLite store. The CLI `chat --endpoint` path was also run end to end and returned a real streamed answer and measured state; the CLI `benchmark` path returned two measured samples with median TTFT and throughput. This is local automated evidence, not owner Windows/GPU acceptance. Original model files remain read-only; the permission boundary is application-level scoping, not an OS sandbox. The remaining gates are listed in `STATUS.md`.
 
 ## Autonomous controller bootstrap
 
@@ -44,6 +45,14 @@ Use `AUTONOMOUS_BACKLOG.md` as the canonical queue. The local implementation wor
 4. Complete the four model-agent evaluations with recorded evidence.
 5. Finish live provider route smoke tests and the live autonomous-workflow acceptance gates.
 6. Installer/update/uninstall, license/Qt LGPL compliance and security/dependency scans.
+
+## Runtime completion pass — 7 November 2026
+
+- `src/eclipse/runtime/backends.py` now exposes `evaluate_model_support(...)` and `runtime-support`, a model-specific declaration comparison covering format, architecture, tensor types, devices, placement and requested controls. It keeps `runtime_verified: false` and labels observed GPU hardware as unvalidated. This adapts the useful idea from stale PR #16 without merging its duplicate `core/runtime.py`.
+- `src/eclipse/runtime/profiles.py` and `manager.py` persist the effective profile after a successful load and mark it last-known-good after a successful generation. The desktop can apply, save and restore profiles; the CLI lists/deletes them. Restoring validates the saved profile against the current model and then starts it.
+- `src/eclipse/runtime/benchmark.py` runs configurable warm-up plus measured generations, reports min/median/mean/max/stdev and persists a `benchmark` run. The desktop has a Benchmark control; the CLI has `benchmark`.
+- Verification: full suite **338 tests, OK**; real CLI benchmark `status=ok`, 2 samples, TTFT median `0.0016 s`, throughput median `122.645 tok/s` against the fake server. The values are test-double evidence only.
+- PR #16 remains stale and unmerged; its unique static-contract value is now implemented against the live runtime. Its controller/recovery changes are not product requirements.
 
 ## Model order and free-only safety
 

@@ -2,7 +2,7 @@
 
 **Status:** `INTEGRATED_LOCAL_IMPLEMENTATION_COMPLETE — OWNER_WINDOWS_VALIDATION_PENDING`
 **Last updated:** 2026-11-07
-**Implementation base:** `84ce050` (`main`); integrated on `freebuff/938f3f76478afd5f73c65464`
+**Implementation base:** `84ce050` (`main`); integrated into `main` by fast-forward after local verification
 
 ## Mainline history — verified
 
@@ -33,7 +33,7 @@ The old stacked PR #8 (hardware increment) and PR #9 (free provider pool) are cl
 
 ## Integrated product implementation — 7 November 2026
 
-The previous placeholders and pending runtime layers have been replaced by working systems on the integration branch:
+The previous placeholders and pending runtime layers have been replaced by working systems in the integrated implementation:
 
 - **Shared Core** — one SQLite store for models, prepared variants, profiles, runs, conversations, messages, attachments, tasks, corrections, knowledge metadata and settings; one event bus; one home/config layout; one permission broker with canonical path scoping, approvals, command validation and redaction. The desktop, CLI and tests all use this Core.
 - **Reversible preparation** — index/copy packages with source and output identity, SHA-256 inventories, manifests, lineage, verification, safe removal and quantization gated on a real `llama-quantize`.
@@ -42,7 +42,14 @@ The previous placeholders and pending runtime layers have been replaced by worki
 - **Correction memory and knowledge** — candidates are promoted only with substantive evidence and a regression reference; model notes wait in an Obsidian-compatible AI Inbox and approval copies them to trusted folders without overwriting existing notes.
 - **Agent** — persistent/searchable conversations, streaming, model selection, text attachments, scoped project tools, approvals, activity reporting and Stop on the same runtime and permission boundary.
 - **Desktop** — all three workspaces are functional: Inspect & feasibility, Prepare & run (registry, prepare/verify/delete, backend/profile, start/stop/restart, telemetry, test, diagnostics), Capability (four tabs), Agent (chat), plus a persisted light/dark theme.
-- **CLI** — 20 commands covering inspection, registry/preparation, runtime/chat, tasks, knowledge, corrections, status, diagnostics and check detection.
+- **CLI** — 23 commands covering inspection, registry/preparation, runtime support/chat/benchmark/profiles, tasks, knowledge, corrections, status, diagnostics and check detection.
+
+### Runtime completion pass — 7 November 2026
+
+- **Model-specific support report** — `runtime-support` compares an inspected atlas and host snapshot against the selected backend's declared formats, architectures, tensor types, devices, placement modes and controls. Every dimension is `declared_supported`, `unsupported` or `unknown`; GPU hardware is `hardware_present_backend_unvalidated`. `runtime_verified` is always `false`. This adapts the useful part of PR #16 to the current runtime instead of merging its duplicate `core/runtime.py` interface.
+- **Saved profiles and last-known-good restore** — a successful load persists the effective profile; a successful (non-cancelled) generation marks that profile last-known-good. The desktop can save, apply and restore profiles, and the CLI can list/delete them. Restoring a saved profile validates it against the current model before starting.
+- **Measured benchmark harness** — `benchmark` performs configurable warm-up and measured generations, records every sample, and reports min/median/mean/max/stdev for TTFT, tokens/second, total time and completion tokens. It persists a `benchmark` run and labels the result as local wall-clock evidence, not a quality score.
+- **Verification** — the complete suite now runs **338 tests, OK**. A real CLI benchmark against a spawned HTTP/SSE server returned `status=ok`, 2 measured samples, median TTFT `0.0016 s` and median throughput `122.645 tok/s`; the numbers are test-double measurements, not a model benchmark.
 
 A static feasibility estimate is still not an executable placement plan or proof of inference. The application-level permission boundary is not an OS container sandbox. The runtime has been exercised against a real spawned HTTP/SSE test server, but not yet against the owner's real Windows llama.cpp/Vulkan/Qwen installation.
 
@@ -76,7 +83,8 @@ Because this milestone changes the protected controller, its PR remains draft fo
 ## What still requires real-world validation
 
 - Real Windows llama.cpp/Vulkan/Qwen load, generation, stop and restart through the packaged app, including observed context and actual VRAM/RAM telemetry.
-- Rebuilding the PyInstaller Windows package with the new Core/runtime/capability/agent hidden imports and smoke-testing the packaged executable.
+- Real benchmark runs and last-known-good restore/rollback on the owner's backend; GPU/disk/cache sensors and quality evidence are not implemented.
+- Rebuilding the PyInstaller Windows package with the new Core/runtime/capability/agent/benchmark hidden imports and smoke-testing the packaged executable.
 - Owner walkthrough of the rebuilt three-workspace UI and the real Obsidian vault.
 - Real Safetensors and multi-shard Hugging Face folder validation on Windows.
 - Executable CPU/GPU/hybrid placement planning and allocation reconciliation (profiles exist; placement is still configuration-based).
@@ -109,6 +117,7 @@ Keep these gates `WAITING_FOR_OWNER_VALIDATION` until real evidence exists. Do n
 - [ ] First live autonomous run verified end-to-end (milestone PR merged by the controller).
 - [ ] Each API route passes live non-confidential text and tool-call smoke tests.
 - [x] Shared Core, managed/attached runtime, Capability System, knowledge workflow and Agent implemented and locally tested.
+- [x] Model-specific support matrix, saved profiles with last-known-good restore, and repeated measured benchmark harness implemented and locally tested.
 - [x] File tools are workspace-scoped and require explicit approval for writes and commands.
 - [x] A failed load, denied action or failed check is recorded as a failure, never converted into success.
 - [x] AI knowledge proposals remain in an Inbox until human approval; trusted notes are never overwritten.
