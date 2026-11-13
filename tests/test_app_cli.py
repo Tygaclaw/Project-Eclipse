@@ -123,6 +123,34 @@ class CliTests(unittest.TestCase):
         keys = [backend["key"] for backend in payload["backends"]]
         self.assertEqual(keys, ["llamacpp_server", "openai_compatible"])
 
+    def test_runtime_support_reports_a_static_matrix(self) -> None:
+        code, out, err = self.run_cli(
+            "runtime-support", str(self.gguf), "--backend", "llamacpp_server",
+            "--placement", "hybrid", "--control", "context_tokens", "--compact",
+        )
+        self.assertEqual(code, 0, err)
+        report = json.loads(out)
+        self.assertEqual(report["format"], "eclipse_runtime_support")
+        self.assertFalse(report["runtime_verified"])
+        self.assertIn(report["overall_status"], {"unsupported", "unknown", "declared_compatible_not_runtime_verified"})
+        self.assertEqual(report["dimensions"]["format"]["status"], "declared_supported")
+        self.assertEqual(report["controls"]["context_tokens"]["status"], "declared_supported")
+
+    def test_profiles_list_and_delete(self) -> None:
+        from eclipse.core.config import AppPaths
+        from eclipse.core.storage import Store
+
+        paths = AppPaths.discover(self.home).ensure()
+        store = Store(paths.database_path)
+        record = store.add_profile(name="Saved", intent="balanced", payload={"context_tokens": 2048})
+        store.close()
+        code, out, err = self.run_cli("profiles", "list", "--compact")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(json.loads(out)["profiles"][0]["id"], record["id"])
+        code, out, err = self.run_cli("profiles", "delete", record["id"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(json.loads(out)["deleted"], record["id"])
+
     def test_quantize_without_tool_fails_cleanly(self) -> None:
         code, out, err = self.run_cli("quantize", str(self.gguf), "--type", "Q4_K_M")
         self.assertEqual(code, 2)

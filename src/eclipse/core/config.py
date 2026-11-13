@@ -118,6 +118,7 @@ _DEFAULTS: dict[str, Any] = {
     "approve_writes": True,
     "approve_commands": True,
     "onboarding_complete": False,
+    "ui_activity_logging_enabled": True,
 }
 
 

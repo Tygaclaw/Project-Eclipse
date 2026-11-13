@@ -30,7 +30,14 @@ from .client import (
     ping_endpoint,
 )
 from .llamacpp import LlamaCppServer, tail_text
-from .profiles import ProfileSpec, validate_profile
+from .profiles import (
+    ProfileSpec,
+    find_matching_profile,
+    last_known_good_profile,
+    restore_profile,
+    save_profile,
+    validate_profile,
+)
 from .telemetry import ResourceSampler, StreamMetrics, process_snapshot
 
 
@@ -132,6 +139,8 @@ class RuntimeManager:
         self._server: LlamaCppServer | None = None
         self._sampler: ResourceSampler | None = None
         self._load_metrics: dict[str, Any] = {}
+        self._profile_id: str | None = None
+        self._last_generation_metrics: dict[str, Any] = {}
         self._generation_lock = threading.Lock()
 
     # -- introspection ---------------------------------------------------
@@ -223,6 +232,7 @@ class RuntimeManager:
             self._spec = spec
             self._client = None
             self._server = None
+            self._profile_id = None
         self.events.emit("runtime.state", **self.status.to_dict())
 
         started_clock = time.monotonic()
@@ -256,14 +266,96 @@ class RuntimeManager:
         if self._sampler is None:
             self._sampler = ResourceSampler(interval_seconds=1.0)
         self._sampler.start(result.get("pid"))
+        self._remember_profile(model)
         self.store.record_run(
             kind="model_load",
             model_id=self._status.model_id,
+            profile_id=self._profile_id,
             metrics=dict(self._load_metrics),
             status="ok",
         )
         self._set_state(RuntimeState.READY, "Model loaded and accepting requests.")
         return LoadResult(status=self.status.to_dict(), spec=spec.to_payload(), warnings=warnings)
+
+    def _remember_profile(self, model: Mapping[str, Any]) -> None:
+        """Persist the effective profile after a successful load.
+
+        Profile persistence must never turn a healthy model into a failed load,
+        so storage errors are deliberately contained here.
+        """
+
+        with self._lock:
+            spec = self._spec
+            model_id = self._status.model_id
+            model_name = self._status.model_name or "Model"
+        if spec is None or not model_id:
+            return
+        try:
+            record = find_matching_profile(self.store, model_id, spec)
+            if record is None:
+                record = save_profile(
+                    self.store,
+                    spec,
+                    model_id=model_id,
+                    name=f"{model_name} · {spec.intent}",
+                )
+            self._profile_id = str(record["id"])
+        except Exception:  # noqa: BLE001 - persistence is advisory, not runtime state
+            self._profile_id = None
+
+    def save_current_profile(
+        self,
+        name: str | None = None,
+        *,
+        mark_good: bool = False,
+    ) -> dict[str, Any] | None:
+        """Save the profile of the currently loaded model, if there is one."""
+
+        with self._lock:
+            spec = self._spec
+            model_id = self._status.model_id
+            status = self._status.state
+        if spec is None or not model_id or status not in {
+            RuntimeState.READY,
+            RuntimeState.GENERATING,
+            RuntimeState.RESTART_REQUIRED,
+        }:
+            return None
+        record = save_profile(
+            self.store,
+            spec,
+            model_id=model_id,
+            name=name,
+            mark_good=mark_good,
+        )
+        self._profile_id = str(record["id"])
+        return record
+
+    def restore_last_known_good(
+        self,
+        model: Mapping[str, Any] | None = None,
+    ) -> LoadResult:
+        """Load the newest saved last-known-good profile for the selected model."""
+
+        model_id = str(model.get("id") or "") if isinstance(model, Mapping) else None
+        record = last_known_good_profile(self.store, model_id or None)
+        if record is None:
+            raise RuntimeError("No last-known-good profile has been recorded yet")
+        target_model = model
+        if target_model is None:
+            target_model = self.store.get_model(str(record.get("model_id") or ""))
+        if not target_model:
+            raise RuntimeError("The model for the saved profile is no longer registered")
+        atlas = dict(target_model.get("atlas") or {})
+        if target_model.get("source_kind") and not atlas.get("source_kind"):
+            atlas["source_kind"] = target_model["source_kind"]
+        spec = restore_profile(self.store, str(record["id"]), atlas=atlas)
+        return self.start(target_model, spec.to_payload())
+
+    @property
+    def last_generation_metrics(self) -> dict[str, Any]:
+        with self._lock:
+            return dict(self._last_generation_metrics)
 
     def _start_managed(
         self,
@@ -370,6 +462,7 @@ class RuntimeManager:
             self._status.detail = "Stopping the model process."
         self.events.emit("runtime.state", **self.status.to_dict())
         stopped: dict[str, Any] = {"stopped": True}
+        profile_id = self._profile_id
         try:
             if server is not None:
                 stopped = server.stop()
@@ -383,6 +476,8 @@ class RuntimeManager:
                 self._client = None
                 self._sampler = None
                 self._spec = None
+                self._profile_id = None
+                self._last_generation_metrics = {}
                 self._status = RuntimeStatus(
                     state=RuntimeState.UNLOADING,
                     detail="Releasing runtime resources.",
@@ -396,6 +491,7 @@ class RuntimeManager:
         self.store.record_run(
             kind="model_stop",
             model_id=previous.get("model_id"),
+            profile_id=profile_id,
             metrics={
                 "resources": _summarise_samples(samples),
                 "stop": {key: value for key, value in stopped.items() if key != "log_excerpt"},
@@ -469,6 +565,7 @@ class RuntimeManager:
 
         metrics = StreamMetrics()
         created_run = None
+        completed = False
         try:
             for chunk in client.stream_chat(
                 messages,
@@ -500,6 +597,7 @@ class RuntimeManager:
                 if chunk.finish_reason:
                     metrics.finish_reason = chunk.finish_reason
                 yield chunk
+            completed = True
             metrics.finish()
         except ChatCancelled:
             metrics.cancelled = True
@@ -523,12 +621,23 @@ class RuntimeManager:
                 "process": process_snapshot(self._status.pid),
                 "samples": _summarise_samples(self._sampler.samples() if self._sampler else []),
             }
+            with self._lock:
+                self._last_generation_metrics = dict(payload)
+                profile_id = self._profile_id
             created_run = self.store.record_run(
                 kind="generation",
                 model_id=self._status.model_id,
+                profile_id=profile_id,
                 metrics={**payload, "resources": resources},
                 status="cancelled" if metrics.cancelled else "ok",
             )
+            if completed and not metrics.cancelled and profile_id:
+                try:
+                    profile = self.store.get_profile(profile_id)
+                    if profile is not None:
+                        self.store.mark_last_known_good(profile)
+                except Exception:  # noqa: BLE001 - telemetry/evidence persistence is advisory
+                    pass
             self.events.emit(
                 "runtime.metrics",
                 metrics=payload,
@@ -559,6 +668,7 @@ class RuntimeManager:
             "format": "eclipse_runtime_diagnostics",
             "status": status,
             "profile": spec.to_payload() if spec else None,
+            "profile_id": self._profile_id,
             "load_metrics": dict(self._load_metrics),
             "log_excerpt": log_excerpt,
             "host": {

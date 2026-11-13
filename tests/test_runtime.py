@@ -7,6 +7,7 @@ from tests import _bootstrap  # noqa: F401
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -25,8 +26,10 @@ from eclipse.runtime import (
     OpenAICompatibleClient,
     RuntimeManager,
     RuntimeState,
+    find_free_port,
     find_server_binary,
     resolve_profile,
+    run_benchmark,
 )
 from tests.test_model_atlas import build_gguf
 
@@ -35,6 +38,24 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 def fake_server_script() -> Path:
     return FIXTURES / "fake_llama_server.py"
+
+
+def process_is_alive(pid: int) -> bool:
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        return str(pid) in completed.stdout
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
 
 
 class RuntimeTests(unittest.TestCase):
@@ -140,9 +161,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.runtime.status.state, RuntimeState.NOT_LOADED)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
-            try:
-                os.kill(pid, 0)
-            except OSError:
+            if not process_is_alive(pid):
                 break
             time.sleep(0.05)
         else:
@@ -176,9 +195,7 @@ class RuntimeTests(unittest.TestCase):
             list(stream)
 
     def test_attach_mode_does_not_own_the_external_server(self) -> None:
-        import subprocess
-
-        port = 18771
+        port = find_free_port()
         process = subprocess.Popen(
             [sys.executable, str(fake_server_script()), "--port", str(port)],
             stdout=subprocess.DEVNULL,
@@ -226,6 +243,49 @@ class RuntimeTests(unittest.TestCase):
 
     def test_binary_discovery_accepts_an_explicit_executable(self) -> None:
         self.assertEqual(find_server_binary(str(fake_server_script())), fake_server_script())
+
+    def test_python_script_launcher_uses_the_python_interpreter(self) -> None:
+        server = LlamaCppServer(
+            self.model_path,
+            executable=fake_server_script(),
+            port=find_free_port(),
+        )
+        launch = server.build_launch()
+        self.assertEqual(launch.argv[:2], [sys.executable, str(fake_server_script())])
+
+    def test_successful_generation_saves_a_last_known_good_profile(self) -> None:
+        self.start_managed()
+        list(self.runtime.stream_chat([ChatMessage(role="user", content="hi")]))
+        profiles = self.store.list_profiles("model_test")
+        self.assertEqual(len(profiles), 1)
+        self.assertTrue(profiles[0]["last_known_good"])
+        self.assertEqual(profiles[0]["intent"], "balanced")
+        self.assertEqual(profiles[0]["payload"]["context_tokens"], 2048)
+        self.assertEqual(self.runtime.diagnostics()["profile_id"], profiles[0]["id"])
+        self.assertIsNotNone(self.runtime.last_generation_metrics["tokens_per_second"])
+
+    def test_benchmark_reports_measured_median_and_variance(self) -> None:
+        self.start_managed()
+        result = run_benchmark(self.runtime, runs=2, warmup=1, max_tokens=16)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(len(result["samples"]), 2)
+        self.assertEqual(result["summary"]["tokens_per_second"]["count"], 2)
+        self.assertIsNotNone(result["summary"]["tokens_per_second"]["median"])
+        self.assertIsNotNone(result["summary"]["time_to_first_token_seconds"]["median"])
+        self.assertEqual(result["summary"]["tokens_per_second"]["stdev"] >= 0, True)
+        self.assertIn("run_id", result)
+        benchmark_runs = [run for run in self.store.list_runs() if run["kind"] == "benchmark"]
+        self.assertEqual(len(benchmark_runs), 1)
+        self.assertEqual(benchmark_runs[0]["status"], "ok")
+
+    def test_last_known_good_profile_can_be_restored_after_stop(self) -> None:
+        self.start_managed()
+        list(self.runtime.stream_chat([ChatMessage(role="user", content="hi")]))
+        self.runtime.stop()
+        restored = self.runtime.restore_last_known_good(self.model_record())
+        self.assertEqual(restored.status["state"], "ready")
+        self.assertEqual(restored.spec["context_tokens"], 2048)
+        self.assertEqual(self.runtime.status.observed_context, 2048)
 
 
 if __name__ == "__main__":

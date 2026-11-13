@@ -3,10 +3,9 @@
 The Windows desktop workflow (``.github/workflows/desktop.yml``) builds
 ``packaging/eclipse-desktop.spec`` with PyInstaller; a ``hiddenimport`` that does
 not resolve to a real module fails the whole Windows build and blocks the PR
-merge gate. The PR #16 recovery added ``src/eclipse/core/runtime.py``, which
-``eclipse.core`` imports, so the spec must list it explicitly. These tests pin
-that every hiddenimport in the spec resolves to a real module under ``src/`` and
-that the branch-added module is packaged.
+merge gate. These tests pin that every hiddenimport in the spec resolves to a
+real module under ``src/`` and that the integrated runtime and desktop modules
+that ship in the packaged app are listed explicitly.
 """
 
 from __future__ import annotations
@@ -55,8 +54,16 @@ class PackagingSpecTests(unittest.TestCase):
                     f"hiddenimport {module!r} does not resolve under src/",
                 )
 
-    def test_branch_added_core_runtime_is_packaged(self) -> None:
-        self.assertIn("eclipse.core.runtime", hiddenimports_from_spec(SPEC))
+    def test_integrated_runtime_and_diagnostics_modules_are_packaged(self) -> None:
+        hiddenimports = hiddenimports_from_spec(SPEC)
+        for module in (
+            "eclipse.runtime",
+            "eclipse.runtime.backends",
+            "eclipse.runtime.benchmark",
+            "eclipse.desktop.diagnostics",
+        ):
+            with self.subTest(module=module):
+                self.assertIn(module, hiddenimports)
 
 
 if __name__ == "__main__":

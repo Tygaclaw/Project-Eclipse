@@ -1,39 +1,48 @@
+"""Unit coverage for the static model/backend support matrix.
+
+``evaluate_model_support`` and ``evaluate_controls`` in
+``eclipse.runtime.backends`` produce the evidence-labelled compatibility report
+behind the ``runtime-support`` CLI. The CLI path is covered by
+``tests/test_app_cli.py``; these tests exercise the report's dimensions directly
+so unsupported and unknown results can never be silently presented as supported.
+The report is a declaration comparison only, so ``runtime_verified`` must stay
+``False``.
+"""
+
 from __future__ import annotations
 
 from tests import _bootstrap  # noqa: F401
 
 import unittest
 
-from eclipse.core.runtime import (
+from eclipse.runtime.backends import (
+    BackendError,
+    BackendUnsupported,
     BackendCapabilities,
-    ControlSupport,
-    DeviceSupport,
-    RuntimeContractError,
+    backend_capabilities,
     evaluate_controls,
     evaluate_model_support,
+    support_matrix_report,
 )
-
-
-CPU_DEVICE = DeviceSupport(kind="cpu", api="cpu")
-CUDA_DEVICE = DeviceSupport(kind="gpu", api="cuda")
 
 
 def capabilities(**overrides) -> BackendCapabilities:
     values = {
-        "backend_id": "test-backend",
+        "key": "test_backend",
         "display_name": "Test Backend",
-        "integration_status": "integrated",
-        "model_formats": frozenset({"gguf"}),
-        "architectures": frozenset({"llama"}),
-        "quantization_types": frozenset({"f16", "q4_k"}),
-        "devices": (CPU_DEVICE,),
-        "placement_modes": frozenset({"cpu_only"}),
-        "controls": {
-            "context_length": ControlSupport(supported=True, requires_restart=True),
-            "gpu_layer_offload": ControlSupport(supported=False),
-        },
-        "telemetry": frozenset({"process_state"}),
-        "max_context_tokens": 32768,
+        "connection_modes": ("managed_process",),
+        "formats": ("gguf",),
+        "architectures": ("llama",),
+        "quantizations": ("F16", "Q4_K_M"),
+        "devices": ("cpu",),
+        "placement_modes": ("cpu",),
+        "streaming": True,
+        "tool_calling": False,
+        "context_control": True,
+        "kv_cache_dtypes": ("f16",),
+        "parallel_slots": False,
+        "telemetry": ("stream_timing",),
+        "ownership": "eclipse",
     }
     values.update(overrides)
     return BackendCapabilities(**values)
@@ -41,18 +50,18 @@ def capabilities(**overrides) -> BackendCapabilities:
 
 def atlas(
     *,
-    source_kind: str = "gguf",
+    source_kind: str | None = "gguf",
     architecture: str | None = "llama",
     counts: dict | None = None,
 ) -> dict:
     return {
-        "format": "eclipse_model_atlas",
-        "atlas_version": 1,
         "source_kind": source_kind,
-        "source_name": "test-model.gguf",
         "architecture": {"architecture": architecture, "evidence": "observed"},
         "summary": {
-            "distribution": {"label": "ggml_type", "counts": counts if counts is not None else {"F16": 4}},
+            "distribution": {
+                "label": "ggml_type",
+                "counts": counts if counts is not None else {"F16": 4},
+            }
         },
     }
 
@@ -61,186 +70,101 @@ def host(*, gpu_vendor: str | None = None) -> dict:
     gpus = []
     if gpu_vendor is not None:
         gpus.append({"vendor": gpu_vendor, "name": "Test GPU"})
-    return {"schema_version": 1, "gpus": gpus}
+    return {"gpus": gpus}
 
 
-class CapabilityContractTests(unittest.TestCase):
-    def test_to_dict_and_from_dict_round_trip(self) -> None:
-        original = capabilities()
-        restored = BackendCapabilities.from_dict(original.to_dict())
-        self.assertEqual(restored, original)
-        self.assertEqual(restored.controls["context_length"].requires_restart, True)
-        self.assertEqual(restored.architectures, frozenset({"llama"}))
-
-    def test_from_dict_normalizes_case_and_accepts_boolean_control(self) -> None:
-        restored = BackendCapabilities.from_dict(
-            {
-                "backend_id": "b",
-                "display_name": "B",
-                "model_formats": ["GGUF"],
-                "architectures": ["LLaMA"],
-                "devices": [{"kind": "GPU", "api": "Vulkan"}],
-                "placement_modes": ["Hybrid"],
-                "controls": {"flash_attention": True},
-                "telemetry": ["VRAM_Usage"],
-            }
-        )
-        self.assertEqual(restored.model_formats, frozenset({"gguf"}))
-        self.assertEqual(restored.architectures, frozenset({"llama"}))
-        self.assertEqual(restored.devices[0].api, "vulkan")
-        self.assertEqual(restored.controls["flash_attention"], ControlSupport(supported=True))
-
-    def test_from_dict_rejects_unknown_fields(self) -> None:
-        with self.assertRaises(RuntimeContractError) as caught:
-            BackendCapabilities.from_dict(
-                {"backend_id": "b", "display_name": "B", "mystery": 1}
-            )
-        self.assertIn("unknown capability field", str(caught.exception))
-
-    def test_from_dict_rejects_non_list_devices(self) -> None:
-        with self.assertRaises(RuntimeContractError):
-            BackendCapabilities.from_dict({"backend_id": "b", "display_name": "B", "devices": "cpu"})
-
-    def test_requires_at_least_one_device_and_format_and_placement(self) -> None:
-        with self.assertRaises(RuntimeContractError):
-            capabilities(devices=())
-        with self.assertRaises(RuntimeContractError):
-            capabilities(model_formats=frozenset())
-        with self.assertRaises(RuntimeContractError):
-            capabilities(placement_modes=frozenset())
-
-    def test_rejects_invalid_tokens(self) -> None:
-        with self.assertRaises(RuntimeContractError):
-            capabilities(model_formats=frozenset({"onnx"}))
-        with self.assertRaises(RuntimeContractError):
-            capabilities(placement_modes=frozenset({"magic"}))
-        with self.assertRaises(RuntimeContractError):
-            capabilities(telemetry=frozenset({"vibes"}))
-        with self.assertRaises(RuntimeContractError):
-            capabilities(controls={"warp_drive": ControlSupport()})
-
-    def test_rejects_invalid_identity_and_status(self) -> None:
-        with self.assertRaises(RuntimeContractError):
-            capabilities(backend_id="  ")
-        with self.assertRaises(RuntimeContractError):
-            capabilities(display_name="")
-        with self.assertRaises(RuntimeContractError):
-            capabilities(integration_status="maybe")
-
-    def test_rejects_invalid_max_context(self) -> None:
-        with self.assertRaises(RuntimeContractError):
-            capabilities(max_context_tokens=0)
-        with self.assertRaises(RuntimeContractError):
-            capabilities(max_context_tokens=True)
-
-    def test_device_validation(self) -> None:
-        with self.assertRaises(RuntimeContractError):
-            DeviceSupport(kind="cpu", api="cuda")
-        with self.assertRaises(RuntimeContractError):
-            DeviceSupport(kind="gpu", api="cpu")
-        with self.assertRaises(RuntimeContractError):
-            DeviceSupport(kind="tpu", api="cuda")
-        with self.assertRaises(RuntimeContractError):
-            DeviceSupport(kind="gpu", api="cuda", evidence="guessed")
-
-
-class SupportMatrixTests(unittest.TestCase):
-    def test_supported_format_when_integrated_is_declared_compatible(self) -> None:
+class FormatDimensionTests(unittest.TestCase):
+    def test_supported_format_is_declared_and_not_runtime_verified(self) -> None:
         result = evaluate_model_support(capabilities(), atlas(), host())
+        self.assertEqual(result["format"], "eclipse_runtime_support")
         self.assertEqual(result["dimensions"]["format"]["status"], "declared_supported")
         self.assertEqual(result["overall_status"], "declared_compatible_not_runtime_verified")
         self.assertFalse(result["runtime_verified"])
 
     def test_unsupported_format_dominates_overall(self) -> None:
-        result = evaluate_model_support(
-            capabilities(model_formats=frozenset({"safetensors"})), atlas(), host()
-        )
+        result = evaluate_model_support(capabilities(formats=("safetensors",)), atlas(), host())
         self.assertEqual(result["dimensions"]["format"]["status"], "unsupported")
         self.assertEqual(result["overall_status"], "unsupported")
 
-    def test_unknown_format_is_reported_unknown(self) -> None:
-        result = evaluate_model_support(capabilities(), atlas(source_kind="unknown_kind"), host())
+    def test_missing_source_kind_is_unknown(self) -> None:
+        result = evaluate_model_support(capabilities(), atlas(source_kind=None), host())
         self.assertEqual(result["dimensions"]["format"]["status"], "unknown")
-        self.assertIsNone(result["model"]["model_format"])
+        self.assertIsNone(result["dimensions"]["format"]["model_format"])
 
-    def test_not_integrated_backend_never_reports_declared_compatible(self) -> None:
-        result = evaluate_model_support(
-            capabilities(integration_status="not_integrated"), atlas(), host()
-        )
-        self.assertEqual(result["overall_status"], "not_integrated")
 
-    def test_architecture_supported_unsupported_and_unknown(self) -> None:
+class ArchitectureDimensionTests(unittest.TestCase):
+    def test_supported_unsupported_and_unknown(self) -> None:
         supported = evaluate_model_support(capabilities(), atlas(), host())
         self.assertEqual(supported["dimensions"]["architecture"]["status"], "declared_supported")
 
         unsupported = evaluate_model_support(
-            capabilities(architectures=frozenset({"mistral"})), atlas(), host()
+            capabilities(architectures=("mistral",)), atlas(), host()
         )
         self.assertEqual(unsupported["dimensions"]["architecture"]["status"], "unsupported")
 
-        undeclared = evaluate_model_support(
-            capabilities(architectures=None), atlas(), host()
-        )
+        undeclared = evaluate_model_support(capabilities(architectures=None), atlas(), host())
         self.assertEqual(undeclared["dimensions"]["architecture"]["status"], "unknown")
 
         absent = evaluate_model_support(capabilities(), atlas(architecture=None), host())
         self.assertEqual(absent["dimensions"]["architecture"]["status"], "unknown")
 
-    def test_quantization_supported_unsupported_and_unknown(self) -> None:
+
+class QuantizationDimensionTests(unittest.TestCase):
+    def test_supported_unsupported_and_unknown(self) -> None:
         supported = evaluate_model_support(capabilities(), atlas(), host())
         self.assertEqual(supported["dimensions"]["quantization"]["status"], "declared_supported")
 
         unsupported = evaluate_model_support(
-            capabilities(quantization_types=frozenset({"f16"})),
-            atlas(counts={"Q4_K": 4}),
-            host(),
+            capabilities(quantizations=("F16",)), atlas(counts={"Q4_K": 4}), host()
         )
         self.assertEqual(unsupported["dimensions"]["quantization"]["status"], "unsupported")
-        self.assertEqual(
-            unsupported["dimensions"]["quantization"]["unsupported_types"], ["q4_k"]
-        )
+        self.assertEqual(unsupported["dimensions"]["quantization"]["unsupported_types"], ["Q4_K"])
 
-        unknown = evaluate_model_support(capabilities(quantization_types=None), atlas(), host())
-        self.assertEqual(unknown["dimensions"]["quantization"]["status"], "unknown")
+        undeclared = evaluate_model_support(capabilities(quantizations=None), atlas(), host())
+        self.assertEqual(undeclared["dimensions"]["quantization"]["status"], "unknown")
 
         none_observed = evaluate_model_support(capabilities(), atlas(counts={}), host())
         self.assertEqual(none_observed["dimensions"]["quantization"]["status"], "unknown")
 
-    def test_cpu_device_is_declared_supported(self) -> None:
-        result = evaluate_model_support(capabilities(), atlas(), host())
+
+class DeviceDimensionTests(unittest.TestCase):
+    def test_cpu_is_declared_supported(self) -> None:
+        result = evaluate_model_support(capabilities(devices=("cpu",)), atlas(), host())
         self.assertEqual(result["dimensions"]["devices"]["status"], "declared_supported")
 
-    def test_cuda_device_with_nvidia_hardware_is_unvalidated(self) -> None:
+    def test_cuda_with_nvidia_hardware_is_unvalidated(self) -> None:
         result = evaluate_model_support(
-            capabilities(devices=(CUDA_DEVICE,)), atlas(), host(gpu_vendor="nvidia")
+            capabilities(devices=("cuda",)), atlas(), host(gpu_vendor="nvidia")
         )
         self.assertEqual(
             result["dimensions"]["devices"]["status"], "hardware_present_backend_unvalidated"
         )
         self.assertEqual(result["overall_status"], "unknown")
 
-    def test_cuda_device_without_nvidia_is_unsupported(self) -> None:
-        result = evaluate_model_support(
-            capabilities(devices=(CUDA_DEVICE,)), atlas(), host(gpu_vendor="amd")
-        )
+    def test_cuda_without_any_gpu_is_unsupported(self) -> None:
+        result = evaluate_model_support(capabilities(devices=("cuda",)), atlas(), host())
         self.assertEqual(result["dimensions"]["devices"]["status"], "unsupported")
         self.assertEqual(result["overall_status"], "unsupported")
 
-    def test_vulkan_device_with_gpu_is_unknown(self) -> None:
+    def test_cuda_with_non_nvidia_gpu_is_unknown(self) -> None:
         result = evaluate_model_support(
-            capabilities(devices=(DeviceSupport(kind="gpu", api="vulkan"),)),
-            atlas(),
-            host(gpu_vendor="nvidia"),
+            capabilities(devices=("cuda",)), atlas(), host(gpu_vendor="amd")
         )
         self.assertEqual(result["dimensions"]["devices"]["status"], "unknown")
 
     def test_missing_host_snapshot_leaves_gpu_unknown(self) -> None:
-        result = evaluate_model_support(capabilities(devices=(CUDA_DEVICE,)), atlas(), None)
+        result = evaluate_model_support(capabilities(devices=("cuda",)), atlas(), None)
         self.assertEqual(result["dimensions"]["devices"]["status"], "unknown")
 
-    def test_placement_mode_checks(self) -> None:
+    def test_remote_backend_is_declared_supported(self) -> None:
+        result = evaluate_model_support(capabilities(devices=("remote",)), atlas(), None)
+        self.assertEqual(result["dimensions"]["devices"]["status"], "declared_supported")
+
+
+class PlacementDimensionTests(unittest.TestCase):
+    def test_supported_unsupported_and_unknown(self) -> None:
         supported = evaluate_model_support(
-            capabilities(placement_modes=frozenset({"cpu_only", "hybrid"})),
+            capabilities(placement_modes=("cpu", "hybrid")),
             atlas(),
             host(),
             placement_mode="hybrid",
@@ -248,38 +172,81 @@ class SupportMatrixTests(unittest.TestCase):
         self.assertEqual(supported["dimensions"]["placement"]["status"], "declared_supported")
 
         unsupported = evaluate_model_support(
-            capabilities(placement_modes=frozenset({"cpu_only"})),
-            atlas(),
-            host(),
-            placement_mode="gpu_offload",
+            capabilities(placement_modes=("cpu",)), atlas(), host(), placement_mode="gpu"
         )
         self.assertEqual(unsupported["dimensions"]["placement"]["status"], "unsupported")
 
-    def test_controls_report_supported_unsupported_and_restart(self) -> None:
+        unknown = evaluate_model_support(
+            capabilities(), atlas(), host(), placement_mode="magic"
+        )
+        self.assertEqual(unknown["dimensions"]["placement"]["status"], "unknown")
+
+    def test_omitted_placement_is_not_evaluated(self) -> None:
+        result = evaluate_model_support(capabilities(), atlas(), host())
+        self.assertIsNone(result["dimensions"]["placement"])
+
+
+class ControlTests(unittest.TestCase):
+    def test_controls_are_validated_against_the_declaration(self) -> None:
         controls = evaluate_controls(
             capabilities(),
-            {"context_length": 8192, "gpu_layer_offload": 33, "warp_drive": 1},
+            {"context_tokens": 8192, "gpu_layers": 0, "kv_cache_dtype": "f16", "mystery": 1},
         )
-        self.assertEqual(controls["context_length"]["status"], "declared_supported")
-        self.assertTrue(controls["context_length"]["requires_restart"])
-        self.assertEqual(controls["gpu_layer_offload"]["status"], "unsupported")
-        self.assertEqual(controls["warp_drive"]["status"], "unknown")
+        self.assertEqual(controls["context_tokens"]["status"], "declared_supported")
+        self.assertEqual(controls["gpu_layers"]["status"], "unsupported")
+        self.assertEqual(controls["kv_cache_dtype"]["status"], "declared_supported")
+        self.assertEqual(controls["mystery"]["status"], "unknown")
 
-    def test_evaluate_model_support_includes_controls(self) -> None:
+    def test_llamacpp_declares_gpu_layers_and_extra_args(self) -> None:
+        controls = evaluate_controls(
+            backend_capabilities("llamacpp_server"), {"gpu_layers": 33, "extra_args": ["--x"]}
+        )
+        self.assertEqual(controls["gpu_layers"]["status"], "declared_supported")
+        self.assertEqual(controls["extra_args"]["status"], "declared_supported")
+
+    def test_controls_are_included_in_the_support_report(self) -> None:
         result = evaluate_model_support(
-            capabilities(), atlas(), host(), requested_controls={"context_length": 4096}
+            capabilities(), atlas(), host(), requested_controls={"context_tokens": 4096}
         )
-        self.assertIn("context_length", result["controls"])
+        self.assertIn("context_tokens", result["controls"])
 
-    def test_rejects_invalid_inputs(self) -> None:
-        with self.assertRaises(RuntimeContractError):
-            evaluate_model_support(capabilities(), {"format": "not_atlas"}, host())
-        with self.assertRaises(RuntimeContractError):
-            evaluate_model_support("not a backend", atlas(), host())
-        with self.assertRaises(RuntimeContractError):
-            evaluate_model_support(capabilities(), atlas(), host="not a snapshot")
-        with self.assertRaises(RuntimeContractError):
+
+class InputValidationTests(unittest.TestCase):
+    def test_unknown_backend_key_is_rejected(self) -> None:
+        with self.assertRaises(BackendUnsupported):
+            evaluate_model_support("not-a-backend", atlas(), host())
+
+    def test_non_mapping_atlas_is_rejected(self) -> None:
+        with self.assertRaises(BackendError):
+            evaluate_model_support(capabilities(), "not an atlas", host())
+
+    def test_non_mapping_host_is_rejected(self) -> None:
+        with self.assertRaises(BackendError):
+            evaluate_model_support(capabilities(), atlas(), "not a snapshot")
+
+    def test_non_mapping_requested_controls_are_rejected(self) -> None:
+        with self.assertRaises(BackendError):
             evaluate_controls(capabilities(), "not a mapping")
+
+    def test_unknown_backend_capabilities_lookup_is_rejected(self) -> None:
+        with self.assertRaises(BackendUnsupported):
+            backend_capabilities("no-such-backend")
+
+
+class SupportMatrixReportTests(unittest.TestCase):
+    def test_report_lists_both_configured_backends(self) -> None:
+        report = support_matrix_report()
+        self.assertEqual(report["format"], "eclipse_backend_support_matrix")
+        keys = {backend["key"] for backend in report["backends"]}
+        self.assertEqual(keys, {"llamacpp_server", "openai_compatible"})
+
+    def test_openai_compatible_declares_unknown_architectures_and_quantizations(self) -> None:
+        openai = backend_capabilities("openai_compatible")
+        self.assertIsNone(openai.architectures)
+        self.assertIsNone(openai.quantizations)
+        result = evaluate_model_support(openai, atlas(), None)
+        self.assertEqual(result["dimensions"]["architecture"]["status"], "unknown")
+        self.assertEqual(result["dimensions"]["quantization"]["status"], "unknown")
 
 
 if __name__ == "__main__":

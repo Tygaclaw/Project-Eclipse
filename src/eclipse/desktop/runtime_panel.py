@@ -40,8 +40,11 @@ from eclipse.runtime import (
     CancellationToken,
     ChatError,
     ChatMessage,
+    ProfileSpec,
     intent_choices,
+    last_known_good_profile,
     resolve_profile,
+    run_benchmark,
 )
 
 from .context import AppContext
@@ -210,6 +213,42 @@ class _TestWorker(QThread):
         self.cancel.cancel()
 
 
+class _BenchmarkWorker(QThread):
+    finished_with = Signal(dict)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        context: AppContext,
+        prompt: str,
+        runs: int = 3,
+        warmup: int = 1,
+        max_tokens: int = 32,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.context = context
+        self.prompt = prompt
+        self.runs = runs
+        self.warmup = warmup
+        self.max_tokens = max_tokens
+
+    def run(self) -> None:
+        try:
+            result = run_benchmark(
+                self.context.runtime,
+                prompt=self.prompt,
+                runs=self.runs,
+                warmup=self.warmup,
+                max_tokens=self.max_tokens,
+                temperature=0.0,
+            )
+        except Exception as exc:  # noqa: BLE001 - reported to the UI
+            self.failed.emit(str(exc))
+            return
+        self.finished_with.emit(result)
+
+
 class ModelRuntimePanel(QWidget):
     """Real model loading, generation, preparation and telemetry."""
 
@@ -220,6 +259,7 @@ class ModelRuntimePanel(QWidget):
         self.context = context
         self._workers: list[QThread] = []
         self._test_worker: _TestWorker | None = None
+        self._benchmark_worker: _BenchmarkWorker | None = None
         self._selected_model: dict[str, Any] | None = None
         self._register_worker: _RegisterWorker | None = None
         self.setObjectName("ModelRuntimePanel")
@@ -399,6 +439,23 @@ class ModelRuntimePanel(QWidget):
         form.addRow("llama-server", binary_row)
         profile_layout.addLayout(form)
         self._profile_note = add_text(profile_layout, "", "Faint")
+
+        profile_row = QHBoxLayout()
+        self._profile_combo = QComboBox()
+        self._profile_combo.setObjectName("SavedProfileCombo")
+        self._profile_combo.setAccessibleName("Saved execution profiles")
+        self._profile_combo.setToolTip("Profiles are saved after a successful load and marked good after a successful generation.")
+        self._apply_profile_button = QPushButton("Apply saved")
+        self._apply_profile_button.clicked.connect(self._apply_saved_profile)
+        self._save_profile_button = QPushButton("Save profile")
+        self._save_profile_button.clicked.connect(self._save_current_profile)
+        self._restore_profile_button = QPushButton("Restore last good")
+        self._restore_profile_button.clicked.connect(self._restore_last_good)
+        profile_row.addWidget(self._profile_combo, 1)
+        profile_row.addWidget(self._apply_profile_button)
+        profile_row.addWidget(self._save_profile_button)
+        profile_row.addWidget(self._restore_profile_button)
+        profile_layout.addLayout(profile_row)
         right_layout.addWidget(profile_card)
 
         telemetry_card, telemetry_layout = make_card(
@@ -430,6 +487,10 @@ class ModelRuntimePanel(QWidget):
         self._test_stop.clicked.connect(self._stop_test)
         self._test_stop.setEnabled(False)
         test_row.addWidget(self._test_button)
+        self._benchmark_button = QPushButton("Benchmark 3×")
+        self._benchmark_button.setToolTip("Three measured runs plus one warm-up; this is not a quality score.")
+        self._benchmark_button.clicked.connect(self._run_benchmark)
+        test_row.addWidget(self._benchmark_button)
         test_row.addWidget(self._test_stop)
         test_layout.addLayout(test_row)
         self._test_output = QPlainTextEdit()
@@ -450,6 +511,7 @@ class ModelRuntimePanel(QWidget):
         self.context.events.subscribe("runtime.state", self._on_runtime_event)
         self.context.events.subscribe("runtime.metrics", self._on_metrics_event)
         self.refresh_models()
+        self.refresh_profiles()
         self._render_status()
 
     # -- model registry --------------------------------------------------
@@ -503,6 +565,104 @@ class ModelRuntimePanel(QWidget):
             self.refresh_variants()
         else:
             self.refresh_variants()
+        self.refresh_profiles()
+
+    def refresh_profiles(self) -> None:
+        self._profile_combo.blockSignals(True)
+        self._profile_combo.clear()
+        model_id = self._selected_model["id"] if self._selected_model else None
+        profiles = self.context.store.list_profiles(model_id) if model_id else []
+        for profile in profiles:
+            marker = " · last good" if profile.get("last_known_good") else ""
+            self._profile_combo.addItem(
+                f"{profile['name']} ({profile['intent']}){marker}",
+                profile["id"],
+            )
+        self._profile_combo.blockSignals(False)
+        has_profiles = bool(profiles)
+        self._apply_profile_button.setEnabled(has_profiles)
+        self._restore_profile_button.setEnabled(
+            any(profile.get("last_known_good") for profile in profiles)
+        )
+        self._save_profile_button.setEnabled(self._selected_model is not None)
+
+    def _apply_record(self, record: dict[str, Any]) -> None:
+        spec = ProfileSpec.from_payload(record.get("payload") or {})
+        index = self._backend_combo.findData(spec.backend)
+        if index >= 0:
+            self._backend_combo.setCurrentIndex(index)
+        intent_index = self._intent_combo.findData(spec.intent)
+        if intent_index >= 0:
+            self._intent_combo.setCurrentIndex(intent_index)
+        self._context_spin.setValue(spec.context_tokens)
+        self._gpu_layers.setValue(spec.gpu_layers)
+        self._threads.setValue(spec.threads or 0)
+        self._temperature.setValue(spec.temperature)
+        self._max_tokens.setValue(spec.max_tokens)
+        self._endpoint_edit.setText(spec.endpoint or "")
+        self._model_name_edit.setText(spec.model_name or "")
+        self._binary_edit.setText(spec.binary or "")
+        self._profile_note.setText(
+            f"Applied '{record['name']}'. Review the values, then Load selected model."
+        )
+
+    def _apply_saved_profile(self) -> None:
+        profile_id = self._profile_combo.currentData()
+        if not profile_id:
+            return
+        record = self.context.store.get_profile(str(profile_id))
+        if record is None:
+            QMessageBox.warning(self, "Profile", "The saved profile no longer exists.")
+            self.refresh_profiles()
+            return
+        try:
+            self._apply_record(record)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Profile", str(exc))
+
+    def _save_current_profile(self) -> None:
+        if self._selected_model is None:
+            return
+        from PySide6.QtWidgets import QInputDialog
+
+        name, ok = QInputDialog.getText(
+            self,
+            "Save profile",
+            "Profile name",
+            text=f"{self._selected_model['name']} · {self._intent_combo.currentData()}",
+        )
+        if not ok or not name.strip():
+            return
+        try:
+            payload = self._profile_payload()
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Profile", str(exc))
+            return
+        record = self.context.store.add_profile(
+            name=name.strip(),
+            intent=str(payload.get("intent") or "custom"),
+            payload=payload,
+            model_id=self._selected_model["id"],
+        )
+        self.refresh_profiles()
+        index = self._profile_combo.findData(record["id"])
+        if index >= 0:
+            self._profile_combo.setCurrentIndex(index)
+
+    def _restore_last_good(self) -> None:
+        model_id = self._selected_model["id"] if self._selected_model else None
+        record = last_known_good_profile(self.context.store, model_id or None)
+        if record is None:
+            QMessageBox.information(
+                self,
+                "Restore last good",
+                "No profile has completed a successful generation yet.",
+            )
+            return
+        try:
+            self._apply_record(record)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Profile", str(exc))
 
     def refresh_variants(self) -> None:
         self._variant_list.clear()
@@ -767,6 +927,7 @@ class ModelRuntimePanel(QWidget):
         self._state_detail.setText(
             "Ready. " + ("; ".join(warnings) if warnings else "The backend accepted the load.")
         )
+        self.refresh_profiles()
         self._render_status()
         self._start_button.setEnabled(False)
         self._stop_button.setEnabled(True)
@@ -856,6 +1017,7 @@ class ModelRuntimePanel(QWidget):
         running = status.state.value in {"ready", "generating", "restart_required"}
         self._stop_button.setEnabled(running or status.state.value in {"starting", "loading"})
         self._test_button.setEnabled(running)
+        self._benchmark_button.setEnabled(running)
         self._test_prompt.setEnabled(running)
         self._start_button.setEnabled(not running and status.state.value != "loading")
 
@@ -906,6 +1068,53 @@ class ModelRuntimePanel(QWidget):
         if runs:
             metrics = (runs[0].get("metrics") or {})
             self._render_metrics(metrics, metrics.get("resources") or {})
+        self.refresh_profiles()
+
+    # -- benchmark -------------------------------------------------------
+
+    def _run_benchmark(self) -> None:
+        if self._test_worker is not None or self._benchmark_worker is not None:
+            return
+        prompt = self._test_prompt.text().strip() or "Reply with one short sentence confirming you are ready."
+        self._test_output.setPlainText("Running one warm-up and three measured generations…")
+        self._test_button.setEnabled(False)
+        self._benchmark_button.setEnabled(False)
+        self._test_stop.setEnabled(False)
+        worker = _BenchmarkWorker(self.context, prompt, parent=self)
+        self._benchmark_worker = worker
+        worker.finished_with.connect(self._benchmark_finished)
+        worker.failed.connect(self._benchmark_failed)
+        worker.finished.connect(self._benchmark_cleanup)
+        worker.start()
+
+    def _benchmark_finished(self, result: dict[str, Any]) -> None:
+        summary = result.get("summary") or {}
+        ttft = summary.get("time_to_first_token_seconds") or {}
+        tps = summary.get("tokens_per_second") or {}
+        total = summary.get("total_seconds") or {}
+        self._render_metrics(
+            {
+                "time_to_first_token_seconds": ttft.get("median"),
+                "tokens_per_second": tps.get("median"),
+                "completion_tokens": (summary.get("completion_tokens") or {}).get("median"),
+            },
+            {},
+        )
+        self._test_output.setPlainText(
+            f"Benchmark {result.get('status')}: {len(result.get('samples') or [])} samples\n"
+            f"TTFT median {ttft.get('median')} s (range {ttft.get('min')}–{ttft.get('max')})\n"
+            f"Tokens/s median {tps.get('median')} (stdev {tps.get('stdev')})\n"
+            f"Total median {total.get('median')} s\n\n{result.get('note', '')}"
+        )
+        self.refresh_profiles()
+
+    def _benchmark_failed(self, message: str) -> None:
+        self._test_output.setPlainText(f"Benchmark failed: {message}")
+
+    def _benchmark_cleanup(self) -> None:
+        self._benchmark_worker = None
+        self._test_button.setEnabled(True)
+        self._benchmark_button.setEnabled(True)
 
     def _test_failed(self, message: str) -> None:
         self._test_output.setPlainText(f"Generation failed: {message}")
@@ -918,6 +1127,7 @@ class ModelRuntimePanel(QWidget):
     def _test_cleanup(self) -> None:
         self._test_worker = None
         self._test_button.setEnabled(True)
+        self._benchmark_button.setEnabled(True)
         self._test_stop.setEnabled(False)
 
     # -- misc ------------------------------------------------------------
@@ -934,5 +1144,7 @@ class ModelRuntimePanel(QWidget):
         if worker is not None:
             worker.stop()
             worker.wait(3000)
+        if self._benchmark_worker is not None:
+            self._benchmark_worker.wait(5000)
         if self._register_worker is not None:
             self._register_worker.wait(5000)

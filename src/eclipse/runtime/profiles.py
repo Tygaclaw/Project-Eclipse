@@ -292,3 +292,84 @@ def resolve_profile(
     )
     validate_profile(spec, atlas=atlas, capabilities=capabilities)
     return spec
+
+
+# -- saved profiles and last-known-good restore -------------------------
+
+_PROFILE_KEYS = (
+    "backend",
+    "intent",
+    "context_tokens",
+    "gpu_layers",
+    "threads",
+    "parallel_slots",
+    "kv_cache_dtype",
+    "temperature",
+    "max_tokens",
+    "endpoint",
+    "model_name",
+    "binary",
+    "extra_args",
+)
+
+
+def _profile_signature(payload: Mapping[str, Any]) -> tuple[tuple[str, Any], ...]:
+    values: list[tuple[str, Any]] = []
+    for key in _PROFILE_KEYS:
+        value = payload.get(key)
+        if isinstance(value, list):
+            value = tuple(value)
+        values.append((key, value))
+    return tuple(values)
+
+
+def find_matching_profile(store: Any, model_id: str, spec: ProfileSpec) -> dict[str, Any] | None:
+    """Find the stored profile with the same effective settings."""
+
+    target = _profile_signature(spec.to_payload())
+    for record in store.list_profiles(model_id):
+        payload = record.get("payload") if isinstance(record.get("payload"), Mapping) else {}
+        if _profile_signature(payload) == target:
+            return record
+    return None
+
+
+def save_profile(
+    store: Any,
+    spec: ProfileSpec,
+    *,
+    model_id: str,
+    name: str | None = None,
+    mark_good: bool = False,
+) -> dict[str, Any]:
+    """Persist a resolved profile once; mark it last-known-good when requested."""
+
+    existing = find_matching_profile(store, model_id, spec)
+    if existing is not None:
+        return store.mark_last_known_good(existing) if mark_good else existing
+    record = store.add_profile(
+        name=name or f"{spec.intent.title()} profile",
+        intent=spec.intent,
+        payload=spec.to_payload(),
+        model_id=model_id,
+        last_known_good=mark_good,
+    )
+    return record
+
+
+def last_known_good_profile(store: Any, model_id: str | None = None) -> dict[str, Any] | None:
+    for record in store.list_profiles(model_id):
+        if record.get("last_known_good"):
+            return record
+    return None
+
+
+def restore_profile(store: Any, profile_id: str, *, atlas: Mapping[str, Any] | None = None) -> ProfileSpec:
+    """Load a saved profile and validate it before it is applied."""
+
+    record = store.get_profile(profile_id)
+    if record is None:
+        raise ValueError(f"No saved profile has id '{profile_id}'")
+    spec = ProfileSpec.from_payload(record.get("payload") or {})
+    validate_profile(spec, atlas=atlas)
+    return spec

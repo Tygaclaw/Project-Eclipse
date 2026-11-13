@@ -4,16 +4,18 @@
 
 - Repository: `Tygaclaw/Project-Eclipse`.
 - Default branch: `main`.
-- Integration base: `84ce050`; implementation work is on `freebuff/938f3f76478afd5f73c65464` and is integrated into `main` on completion.
+- Integration base: `84ce050`; implementation work was done on `freebuff/938f3f76478afd5f73c65464` and is integrated into `main`. Windows CI and the portable package passed on code head `e27fec7`.
 - Autonomous bootstrap PRs #12/#13 and later controller work are merged. Every remote side branch was checked: the only unmerged branches were duplicate autonomous-controller attempts, not product code.
 - Mainline PRs #5, #6, #7, #10 and #11 are merged. PRs #8 and #9 are obsolete, closed and superseded.
-- The product now includes the previously missing shared Core, runtime, preparation, Capability System, knowledge workflow, Agent and full three-workspace integration described below.
+- The product now includes the previously missing shared Core, runtime, preparation, Capability System, knowledge workflow, Agent and full three-workspace integration described below, plus saved profiles with last-known-good restore, a model-specific support report and a repeated measured benchmark harness.
+- Latest local suite: **340 tests, OK**; a real CLI benchmark against the spawned HTTP/SSE test server completed with two measured samples.
+- Windows Python 3.11–3.14 checks passed in [run #42330519701](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519701); the Windows desktop package passed in [run #42330519740](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519740), including PyInstaller, packaged-backend smoke test and artifact upload.
 
 ## Product truth — 7 November 2026
 
 The three primary workspaces are now functional and share one `AppContext`: one SQLite store, runtime manager, event bus, knowledge base, correction memory, permission broker and agent. Model Intelligence retains the static inspectors and feasibility planner and adds a Prepare & run tab with registry/preparation, managed or attached inference, profiles, lifecycle, observed context, measured telemetry, diagnostics and a real generation test. Capability has a watchdog/planner, workspace-scoped tools, independent verification, a bounded repair loop, loop detection, correction memory and an Obsidian-compatible Inbox/approval workflow. Agent has persistent conversations, streaming, attachments, tools, approvals and Stop.
 
-The runtime and Capability/Agent orchestration have been exercised end to end against a real spawned HTTP/SSE inference double, real subprocess tool execution and the real SQLite store. The CLI `chat --endpoint` path was also run end to end and returned a real streamed answer and measured state. This is local automated evidence, not owner Windows/GPU acceptance. Original model files remain read-only; the permission boundary is application-level scoping, not an OS sandbox. The remaining gates are listed in `STATUS.md`.
+The runtime and Capability/Agent orchestration have been exercised end to end against a real spawned HTTP/SSE inference double, real subprocess tool execution and the real SQLite store. The CLI `chat --endpoint` path was also run end to end and returned a real streamed answer and measured state; the CLI `benchmark` path returned two measured samples with median TTFT and throughput. This is local automated evidence, not owner Windows/GPU acceptance. Original model files remain read-only; the permission boundary is application-level scoping, not an OS sandbox. The remaining gates are listed in `STATUS.md`.
 
 ## Autonomous controller bootstrap
 
@@ -38,12 +40,35 @@ The workflow has manual dispatch, main-branch push and six-hour scheduled entry 
 ## Next autonomous work order
 
 Use `AUTONOMOUS_BACKLOG.md` as the canonical queue. The local implementation work is complete; the remaining order is:
-1. Rebuild and smoke-test the Windows PyInstaller package with the new hidden imports.
+1. Owner-install or launch the CI-built Windows package and smoke-test all three workspaces plus the packaged backend.
 2. Verify the real Windows llama.cpp/Vulkan/Qwen connection, load/generate/stop/restart, observed context, telemetry and resource recovery.
 3. Walk through all three workspaces and the real Obsidian vault on Windows; run one Capability task and one Agent tool task with approvals.
 4. Complete the four model-agent evaluations with recorded evidence.
 5. Finish live provider route smoke tests and the live autonomous-workflow acceptance gates.
-6. Installer/update/uninstall, license/Qt LGPL compliance and security/dependency scans.
+6. Installer/update/uninstall, license/Qt LGPL compliance and the remaining binary/Qt security review (the Python dependency audit is already recorded in `LICENSES.md`).
+
+## Windows CI/package close-out — 7 November 2026
+
+- Code head `e27fec7` passed Windows Python checks 3.11–3.14 ([run #42330519701](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519701)).
+- The Windows desktop workflow passed the full Qt/offscreen suite, PyInstaller onedir build, packaged `ECLIPSE.exe --atlas-backend --help` smoke test, ZIP creation and artifact upload ([run #42330519740](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519740)). Artifact `ECLIPSE-windows-x64`, ID `13556659342`, 52,935,974 bytes, SHA-256 `2ff2029fc52363a2ad6d399807417708f02671ee4fd8d80bcea50a811c3c40cc`.
+- The first push-triggered run caught three real Windows defects: `.py` server scripts were launched without the interpreter, message ordering used SQLite `rowid`, and one test deleted a temp SQLite directory before closing it. Fixed in `edc02e7`, `1aeff21` and `e27fec7`; local Python 3.11.16 and 3.12 suites pass 340 tests.
+- This does not verify the owner's GPU-backed model runtime, installed-app launch or Obsidian vault. Those remain owner gates.
+
+## Runtime completion pass — 7 November 2026
+
+- `src/eclipse/runtime/backends.py` now exposes `evaluate_model_support(...)` and `runtime-support`, a model-specific declaration comparison covering format, architecture, tensor types, devices, placement and requested controls. It keeps `runtime_verified: false` and labels observed GPU hardware as unvalidated. This adapts the useful idea from stale PR #16 without merging its duplicate `core/runtime.py`.
+- `src/eclipse/runtime/profiles.py` and `manager.py` persist the effective profile after a successful load and mark it last-known-good after a successful generation. The desktop can apply, save and restore profiles; the CLI lists/deletes them. Restoring validates the saved profile against the current model and then starts it.
+- `src/eclipse/runtime/benchmark.py` runs configurable warm-up plus measured generations, reports min/median/mean/max/stdev and persists a `benchmark` run. The desktop has a Benchmark control; the CLI has `benchmark`.
+- Verification: full suite **340 tests, OK**; real CLI benchmark `status=ok`, 2 samples, TTFT median `0.0016 s`, throughput median `122.645 tok/s` against the fake server. The values are test-double evidence only.
+- PR #16 remains stale and unmerged; its unique static-contract value is now implemented against the live runtime. Its controller/recovery changes are not product requirements.
+
+## PR #16 recovery — reconciled with the integrated mainstream — 13 November 2026
+
+The recovered PR #16 branch (`feature/eclipse-autonomous-42307488690-1`) was cut before the integrated implementation and before the runtime completion and UI-diagnostics work, and its last resync stopped at `ed07f38`. The controller's independent review gate compares the worktree with `origin/main`, so the stale branch appeared to delete `main`'s newer `tests/test_diagnostics.py` (plus the non-test `src/eclipse/desktop/diagnostics.py`, `src/eclipse/runtime/benchmark.py` and `.github/scripts/run_tests.py`) and rejected the change set; the same divergence left the PR unmergeable.
+
+Fix: the worktree was resynchronised with `origin/main` by taking `main`'s version of every tracked file, restoring those files and un-reverting `main`'s newer work. The branch's RUN-01 static runtime contract was not re-introduced as a duplicate: `main` commit `906222c` already adapted `evaluate_model_support(...)` and the production `runtime-support` CLI into `src/eclipse/runtime/backends.py` and recorded that PR #16's `core/runtime.py` would not be merged. The branch's unique, still-valuable regression coverage was preserved and strengthened: `tests/test_runtime_contract.py` was ported onto `main`'s production evaluator (direct support-matrix unit coverage `main` previously lacked), `tests/test_recovery.py` pins the stale-base reviewer behaviour, and `tests/test_packaging_spec.py` guards every PyInstaller `hiddenimport` (including `eclipse.runtime.benchmark` and `eclipse.desktop.diagnostics`) against the Windows desktop build.
+
+Local gates (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`): `python -m unittest discover -s tests` = **377 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed; `python -m compileall -q src tests scripts .github/scripts` OK; `python .github/scripts/validate_provider_pool.py` OK; `scripts/eclipse_review.py --base origin/main` accepted; `git diff --check origin/main` clean. This recovery started no new backlog item, changed no milestone status and did not touch the protected controller or workflow files. Windows CI and the owner Windows/GPU/Obsidian gates remain unresolved.
 
 ## Model order and free-only safety
 
@@ -89,19 +114,4 @@ Second live validation repeated the same import failure because the already-runn
 Verification actually run locally (Linux, Python 3.12.16, no PySide6): focused `tests.test_review` + `tests.test_autonomous_runner` + `tests.test_test_bootstrap` = 49 tests OK. Full portable suite result is recorded in `TESTING.md`.
 
 The controller change is protected, so the milestone PR must remain draft for owner review and Windows CI. AUTO-04 stays `IN_PROGRESS` until that merge and CI are confirmed. Next READY milestone after AUTO-04 is RUN-01 (runtime adapter/backend capability contract and support matrix).
-
-## PR #16 recovery — resynchronised with the integrated `main` — 7 November 2026
-
-Recovered process, not a new backlog milestone. The existing PR #16 branch (`feature/eclipse-autonomous-42307488690-1`) was cut from `main` before PR #15 (`84ce050`) and before the integrated-implementation commits (`8dddf39`, `5ee46bf`, `ed07f38`) that added the shared Core, runtime, Capability System, Agent and three-workspace desktop integration. The controller's independent review gate (`scripts/eclipse_review.py --base origin/main`) compares the worktree against `origin/main`, so the stale branch appeared to delete main's new test modules and fixture and the whole change set was rejected. The branch was therefore also unmergeable with `main`.
-
-Fix: resynchronised the worktree with `origin/main` by taking main's version of every file main added or changed, then reconciled the branch's own RUN-01 work:
-
-- kept `src/eclipse/core/runtime.py` — the manifest-driven capability contract and evidence-labelled support evaluator that main's `runtime/backends.py` does not provide;
-- kept `tests/test_runtime_cli.py` and moved the branch's contract tests to `tests/test_runtime_contract.py` so they coexist with main's real runtime suite `tests/test_runtime.py`, which was taken from main unchanged;
-- merged `src/eclipse/__main__.py` so it keeps main's `app_cli` dispatch and re-adds the `runtime-support` command;
-- kept and updated `.eclipse/AUTONOMOUS_SESSION_HANDOFF.md`.
-
-No product behaviour or test was weakened. `tests/test_recovery.py` gained a regression case that reproduces the multi-file stale-base shape and proves the resynchronisation accepts the identical additive change.
-
-Local gates (Linux, Python 3.12.16, PySide6 not installed): `python -m unittest discover -s tests` = **370 tests OK, 13 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed; `python -m compileall -q src tests scripts .github/scripts` OK; `python .github/scripts/validate_provider_pool.py` OK; `scripts/eclipse_review.py --base origin/main` accepted; `git diff --check` clean. `packaging/eclipse-desktop.spec` now lists the branch-added `eclipse.core.runtime` in `hiddenimports`, and `tests/test_packaging_spec.py` guards every hiddenimport. Because the recovery touches controller/test paths, the PR is expected to remain owner-review only; the remote Windows CI runs are approval-gated and must be approved and run by the owner.
 

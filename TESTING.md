@@ -20,16 +20,15 @@ The core inspection suite uses only Python's standard library and synthetic bina
 - Desktop smoke (`tests/test_desktop_smoke.py`): offscreen Qt startup with a temporary `AppContext`, all three navigation destinations, real Capability tabs and controls, Agent composer/conversation state, Prepare & run panel state, persisted light/dark toggle, empty state and Atlas section rendering, including the "Tokenizer and chat format" card and the `Declared` evidence label.
 - Shared Core foundation (`tests/test_core_foundation.py`): settings/home layout, event bus ordering and failure isolation, path scoping/approval/redaction/command validation, SQLite models/variants/runs/conversations/attachments/tasks/corrections/knowledge metadata and settings persistence.
 - Preparation (`tests/test_preparation.py`): index/copy packages, hashes and lineage, source identity, idempotence, corruption detection, safe removal and quantization unavailability without a real tool.
-- Runtime (`tests/test_runtime.py` + `tests/fixtures/fake_llama_server.py`): a real spawned HTTP/SSE server process, streamed text and usage, tool-call assembly, cancellation, managed lifecycle, observed context, measured telemetry, stop/process exit, startup failure cleanup, attach-mode ownership and binary discovery.
+- Runtime (`tests/test_runtime.py` + `tests/fixtures/fake_llama_server.py`): a real spawned HTTP/SSE server process, streamed text and usage, tool-call assembly, cancellation, managed lifecycle, observed context, measured telemetry, stop/process exit, startup failure cleanup, attach-mode ownership, binary discovery, saved profiles, last-known-good marking, restore after stop and repeated benchmark aggregation.
 - Capability (`tests/test_capability.py`): watchdog routing, plans/acceptance criteria/drift, path escape rejection, approval-denied writes, real command/verification subprocesses, verification failure reporting, loop detection, task completion only with passing verification, missing-runtime handling, correction promotion evidence gates and the knowledge Inbox/approval/no-overwrite workflow.
 - Agent (`tests/test_agent.py`): conversation persistence/search/rename/delete, streaming deltas, attachment copy and one-time context inclusion, tool execution with persisted metadata, honest runtime-error messages and workspace-free chat.
-- CLI (`tests/test_app_cli.py`): registry, prepare/verify, knowledge propose/approve/search, correction evidence gates, app status, check detection, task plan creation, backend matrix and quantization failure path.
+- CLI (`tests/test_app_cli.py`): registry, prepare/verify, knowledge propose/approve/search, correction evidence gates, app status, check detection, task plan creation, backend matrix, model-specific `runtime-support`, saved-profile list/delete and quantization failure path.
 - Independent review (`tests/test_review.py`): backlog table parsing, seeded-regression rejection (deleted test file, newly added test skip), false completion-claim rejection (placeholder evidence, missing referenced test, no changed test/CI record, completion claim while work remains), acceptance of legitimate verification, and real temporary-Git working-tree integration plus CLI exit codes.
 - Controller review wiring (`tests/test_autonomous_runner.py`): `validation_commands()` includes a separate `scripts/eclipse_review.py` gate distinct from the implementing controller.
-- Runtime contract (`tests/test_runtime_contract.py`): the manifest-driven `BackendCapabilities`/`DeviceSupport`/`ControlSupport` contract, JSON round-trip and validation, and the evidence-labelled support matrix (supported/unsupported/unknown formats, architectures, tensor types, CPU/CUDA/Vulkan devices, placement modes and controls). Distinct from the real adapter suite in `tests/test_runtime.py`.
-- Runtime-support CLI (`tests/test_runtime_cli.py`): the `runtime-support` command emits the support matrix, validates the capability manifest, and reports invalid manifests, missing files, atlas errors and bad placement choices without a traceback.
-- Recovery (`tests/test_recovery.py`): the stale-base shape is reproduced in a temporary Git repository and the independent reviewer rejects the apparent deleted test until the base advance is incorporated, including the multi-file shape that the PR #16 resynchronisation fixed.
-- Windows packaging guard (`tests/test_packaging_spec.py`): every PyInstaller `hiddenimport` in `packaging/eclipse-desktop.spec` must resolve to a real module under `src/`, and the branch-added `eclipse.core.runtime` must be listed, so a broken packaging spec fails fast instead of failing the remote Windows desktop build.
+- Runtime support contract (`tests/test_runtime_contract.py`): direct unit coverage of `evaluate_model_support`/`evaluate_controls` in `eclipse.runtime.backends` — supported/unsupported/unknown format, architecture, tensor-type, device (CPU/CUDA/ROCm/Vulkan/remote) and placement dimensions, the `hardware_present_backend_unvalidated` and `runtime_verified: false` guarantees, control validation against the declaration, invalid-input rejection and the two-backend support matrix report.
+- Recovery (`tests/test_recovery.py`): the stale-base shape is reproduced in a temporary Git repository and the independent reviewer rejects the apparent deleted test until the base advance is incorporated, including the multi-file shape that the PR #16 resynchronisations fixed.
+- Windows packaging guard (`tests/test_packaging_spec.py`): every PyInstaller `hiddenimport` in `packaging/eclipse-desktop.spec` must resolve to a real module under `src/`, and the integrated `eclipse.runtime`, `eclipse.runtime.backends`, `eclipse.runtime.benchmark` and `eclipse.desktop.diagnostics` modules must be listed, so a broken packaging spec fails fast instead of failing the remote Windows desktop build.
 
 Run (desktop tests need PySide6; use an offscreen platform on headless machines):
 
@@ -44,7 +43,10 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m unittest discover -s tests -v
 
 ## Local verification evidence
 
-- Integrated product implementation, local sandbox (Linux, Python 3.12, PySide6 `6.12.0` in the project virtual environment): `QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m unittest discover -s tests` ran **333 tests, OK**, including the real spawned inference server, capability/agent execution, CLI and Qt smoke tests. A separate CLI run started a real fake HTTP server, ran `eclipse chat --endpoint ... --json`, and received `Hello from the fake server.` with state `ready`; metrics are recorded as generation runs. `eclipse backends` and the full CLI help were also exercised. This is not a substitute for the owner's real Windows/GPU validation.
+- Windows CI close-out `e27fec7`: Python checks [#42330519701](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519701) succeeded on Windows Python 3.11, 3.12, 3.13 and 3.14; Windows desktop build [#42330519740](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519740) passed the full Qt/offscreen suite, PyInstaller build, packaged backend smoke test, ZIP creation and artifact upload. Artifact `ECLIPSE-windows-x64` ID `13556659342`, 52,935,974 bytes, SHA-256 `2ff2029fc52363a2ad6d399807417708f02671ee4fd8d80bcea50a811c3c40cc`, expires 2026-11-21.
+- Local Python 3.11.16 (Linux, no PySide6): **340 tests, OK, 13 skipped** (optional Qt tests). Python 3.12 with PySide6 `6.12.0`: **340 tests, OK**. The first Windows push-triggered run exposed Python-script launch, SQLite `rowid` ordering and SQLite cleanup failures; those were fixed and the final Windows runs above passed.
+- Dependency audit (Linux sandbox, 7 November 2026): `pip-audit 2.10.1 -r requirements-desktop.txt` audited PySide6 6.12.0, its module wheels/shiboken6, PyInstaller 6.22.3 and pyinstaller-hooks-contrib 2026.9 with **no known vulnerabilities**. Scanning the dev venv surfaced 12 advisories for `pip` 24.0; upgrading that tooling to `pip` 26.3 and re-scanning gave no known vulnerabilities. This is advisory matching only, not a binary/malware or Qt CVE review.
+- Integrated product implementation, local sandbox (Linux, Python 3.12, PySide6 `6.12.0` in the project virtual environment): `QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m unittest discover -s tests` ran **340 tests, OK**, including the real spawned inference server, capability/agent execution, CLI and Qt smoke tests. A separate CLI run started a real fake HTTP server, ran `eclipse chat --endpoint ... --json`, and received `Hello from the fake server.` with state `ready`; metrics are recorded as generation runs. A second real CLI run ran `eclipse benchmark --endpoint ... --runs 2 --warmup 1 --json` and returned `status=ok`, two samples, median TTFT `0.0016 s` and median throughput `122.645 tok/s` against the test double. `eclipse backends`, `runtime-support` and the full CLI help were also exercised. These test-double numbers are not a model benchmark and not a substitute for the owner's real Windows/GPU validation.
 - AUTO-04 review stage, local sandbox (Linux, Python 3.12.16, PySide6 not installed): focused `tests.test_review` + `tests.test_autonomous_runner` + `tests.test_test_bootstrap` ran **49 tests, OK** (20 reviewer + 28 controller + 1 import-bootstrap); full `python -m unittest discover -s tests` ran **239 tests, OK, 11 skipped** (the optional Qt desktop smoke tests) both with `PYTHONPATH=src` and with `PYTHONPATH` removed; `python -m compileall -q src tests .github/scripts scripts` passed. The reviewer also accepted this milestone's own working-tree change set against `origin/main`.
 - First live controller validation exposed a real regression in the controller, not the product: `validation_environment()` used an allowlist without `PYTHONPATH`, so `unittest discover` failed to import every `eclipse.*` test module (10 errors). The fix sets `PYTHONPATH=<repo>/src`; re-running the controller's own environment against `tests.test_hardware` with an empty parent `PYTHONPATH` gave **14 tests, OK**.
 - Second live validation repeated the failure because the already-running controller process held the pre-fix function in memory. Test-level robustness added: `tests/_bootstrap.py` inserts `<repo>/src` into `sys.path` when `PYTHONPATH` is absent, and every `eclipse`-importing test module imports it. The no-`PYTHONPATH` child process scenario is regression-tested by `tests/test_test_bootstrap.py`. Full suite without `PYTHONPATH`: **239 tests, OK, 11 skipped**.
@@ -52,6 +54,18 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m unittest discover -s tests -v
 - Historical pre-review local result: **131 tests passed** on Python 3.14.4 with PySide6 `6.12.0`; historical only.
 - Corrected PR #5 code head `ce8fcb679373129365a4fb067a50b4777570330f`: Python checks [#42198091790](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198091790) passed Python 3.11, 3.12, 3.13 and 3.14, **145 tests per job**, with 8 Qt tests skipped in this core-only matrix.
 - The same corrected code head's Windows desktop run [#42198092066](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42198092066) passed **145 tests including Qt**, PyInstaller build, packaged backend smoke test, ZIP creation and artifact upload. Artifact ID `13493741785`, 50,965,917 bytes, SHA-256 `3d6220bbf9736d39fd840fc65b3b9c82eb99f6d779af4632b0ef49aa603f1a49`.
+
+## PR #16 recovery evidence — 13 November 2026
+
+The recovered PR #16 branch (`feature/eclipse-autonomous-42307488690-1`) was stale against the integrated `main`; the independent reviewer compares the worktree with `origin/main` and rejected the branch as deleting `main`'s newer `tests/test_diagnostics.py`. The worktree was resynchronised with `origin/main`; the branch's superseded duplicate static runtime contract was dropped in favour of `main`'s adapted `evaluate_model_support(...)`/`runtime-support` in `src/eclipse/runtime/backends.py`, and the branch's contract tests were ported onto that production evaluator. The following was actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
+
+- `python -m unittest discover -s tests` — **377 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
+- `python -m compileall -q src tests scripts .github/scripts` — OK.
+- `python .github/scripts/validate_provider_pool.py` — OK.
+- `python scripts/eclipse_review.py --base origin/main` — accepted.
+- `git diff --check origin/main` — clean.
+
+Windows Qt/PyInstaller CI and the owner Windows/GPU/Obsidian gates remain the unresolved acceptance gates.
 
 ## Verified GitHub Actions evidence
 
@@ -72,7 +86,7 @@ Synthetic tests prove parser behavior for the cases represented by their fixture
 
 ## Next tests
 
-1. Rebuild the Windows package and smoke-test all three workspaces plus the packaged backend.
+1. Owner-install or launch the CI-built Windows package and smoke-test all three workspaces plus the packaged backend.
 2. Run real llama.cpp/Vulkan/Qwen load/generate/stop/restart and compare observed context/telemetry with the backend.
 3. Real Capability and Agent tool tasks with approvals and Stop on Windows; real Obsidian vault walkthrough.
 4. Real GGUF files from additional architectures and quantization types.
@@ -82,14 +96,11 @@ Synthetic tests prove parser behavior for the cases represented by their fixture
 5. Run the tokenizer/chat-format card against a real multi-file Hugging Face folder (including `additional_chat_templates/*.jinja`) and a real GGUF with embedded `tokenizer.chat_template`.
 6. Owner Windows 11 validation of `inspect-host`, `plan-feasibility` and the Model Intelligence memory-fit controls against the known-good model; check the KV estimate against backend-reported allocation (the estimate assumes full attention on every layer). Then separately validate runtime correctness and preparation integrity.
 
-## PR #16 recovery evidence — 7 November 2026
 
-The recovered PR #16 branch was stale against the integrated `main`. The independent reviewer compares the worktree with `origin/main`, so the stale branch appeared to delete main's new test modules and fixture and was rejected. After resynchronising the worktree with `origin/main` and reconciling the branch's RUN-01 additions, the following was actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
+## UI interaction and error diagnostics
 
-- `python -m unittest discover -s tests` — **370 tests OK, 13 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
-- `python -m compileall -q src tests scripts .github/scripts` — OK.
-- `python .github/scripts/validate_provider_pool.py` — OK.
-- `python scripts/eclipse_review.py --base origin/main` — accepted.
-- `git diff --check origin/main` — clean.
-
-Windows Qt/PyInstaller CI and the owner Windows/GPU/Obsidian gates remain the unresolved acceptance gates.
+- `tests/test_diagnostics.py` verifies mouse press/release and wheel-scroll events, safe widget metadata, typed-text privacy, credential redaction, full-length bounded error details, and application-generated `QMessageBox` capture (severity, title, message, informative text and detailed text), including while ordinary interaction capture is paused.
+- Manual desktop check: launch ECLIPSE, confirm **Record UI activity** is checked, click between all three workspaces, use the inner tabs, scroll a page, open a menu and perform a harmless action. Select **Open diagnostics folder**. Confirm the current `eclipse-ui-*.jsonl` file contains event entries for the actions. Type a harmless test sentence into the Agent composer and confirm the sentence itself does not appear in the log.
+- To pause interaction capture, uncheck **Record UI activity**. Python/Qt error events and application-generated message boxes remain logged. Re-check it to resume.
+- To validate dialog capture, trigger a harmless validation message (for example, try **Load selected model** before registering/selecting a model). The log should contain `message_box_shown` with severity, title and message text. Detailed text is captured when the dialog supplies it.
+- Logs are local only. Do not attach logs publicly without reviewing them; they may contain widget identifiers, local paths from error reports, and technical environment details even though typed text and common credentials are excluded.

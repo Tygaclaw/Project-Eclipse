@@ -1,8 +1,9 @@
 # ECLIPSE Project Status
 
-**Status:** `INTEGRATED_LOCAL_IMPLEMENTATION_COMPLETE — OWNER_WINDOWS_VALIDATION_PENDING`
+**Status:** `WINDOWS_CI_AND_PACKAGE_VERIFIED — OWNER_RUNTIME_AND_RELEASE_VALIDATION_PENDING`
 **Last updated:** 2026-11-07
-**Implementation base:** `84ce050` (`main`); integrated on `freebuff/938f3f76478afd5f73c65464`
+**Implementation base:** `e27fec7` (`main`); integrated into `main` by fast-forward after local verification
+**Windows verification:** Python checks [#42330519701](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519701) and Windows desktop [#42330519740](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519740) both succeeded on `e27fec7`.
 
 ## Mainline history — verified
 
@@ -33,7 +34,7 @@ The old stacked PR #8 (hardware increment) and PR #9 (free provider pool) are cl
 
 ## Integrated product implementation — 7 November 2026
 
-The previous placeholders and pending runtime layers have been replaced by working systems on the integration branch:
+The previous placeholders and pending runtime layers have been replaced by working systems in the integrated implementation:
 
 - **Shared Core** — one SQLite store for models, prepared variants, profiles, runs, conversations, messages, attachments, tasks, corrections, knowledge metadata and settings; one event bus; one home/config layout; one permission broker with canonical path scoping, approvals, command validation and redaction. The desktop, CLI and tests all use this Core.
 - **Reversible preparation** — index/copy packages with source and output identity, SHA-256 inventories, manifests, lineage, verification, safe removal and quantization gated on a real `llama-quantize`.
@@ -42,7 +43,22 @@ The previous placeholders and pending runtime layers have been replaced by worki
 - **Correction memory and knowledge** — candidates are promoted only with substantive evidence and a regression reference; model notes wait in an Obsidian-compatible AI Inbox and approval copies them to trusted folders without overwriting existing notes.
 - **Agent** — persistent/searchable conversations, streaming, model selection, text attachments, scoped project tools, approvals, activity reporting and Stop on the same runtime and permission boundary.
 - **Desktop** — all three workspaces are functional: Inspect & feasibility, Prepare & run (registry, prepare/verify/delete, backend/profile, start/stop/restart, telemetry, test, diagnostics), Capability (four tabs), Agent (chat), plus a persisted light/dark theme.
-- **CLI** — 20 commands covering inspection, registry/preparation, runtime/chat, tasks, knowledge, corrections, status, diagnostics and check detection.
+- **CLI** — 23 commands covering inspection, registry/preparation, runtime support/chat/benchmark/profiles, tasks, knowledge, corrections, status, diagnostics and check detection.
+
+### Runtime completion pass — 7 November 2026
+
+- **Model-specific support report** — `runtime-support` compares an inspected atlas and host snapshot against the selected backend's declared formats, architectures, tensor types, devices, placement modes and controls. Every dimension is `declared_supported`, `unsupported` or `unknown`; GPU hardware is `hardware_present_backend_unvalidated`. `runtime_verified` is always `false`. This adapts the useful part of PR #16 to the current runtime instead of merging its duplicate `core/runtime.py` interface.
+- **Saved profiles and last-known-good restore** — a successful load persists the effective profile; a successful (non-cancelled) generation marks that profile last-known-good. The desktop can save, apply and restore profiles, and the CLI can list/delete them. Restoring a saved profile validates it against the current model before starting.
+- **Measured benchmark harness** — `benchmark` performs configurable warm-up and measured generations, records every sample, and reports min/median/mean/max/stdev for TTFT, tokens/second, total time and completion tokens. It persists a `benchmark` run and labels the result as local wall-clock evidence, not a quality score.
+- **Verification** — the complete suite now runs **340 tests, OK**. A real CLI benchmark against a spawned HTTP/SSE server returned `status=ok`, 2 measured samples, median TTFT `0.0016 s` and median throughput `122.645 tok/s`; the numbers are test-double measurements, not a model benchmark.
+
+### Windows CI and package close-out — 7 November 2026
+
+- **Windows Python matrix** — [run #42330519701](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519701) succeeded for Python 3.11, 3.12, 3.13 and 3.14.
+- **Windows desktop package** — [run #42330519740](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42330519740) succeeded through pinned dependency installation, the full Qt/offscreen test suite, PyInstaller onedir build, packaged `ECLIPSE.exe --atlas-backend --help` smoke test, ZIP creation and artifact upload. Artifact `ECLIPSE-windows-x64` (ID `13556659342`, 52,935,974 bytes, SHA-256 `2ff2029fc52363a2ad6d399807417708f02671ee4fd8d80bcea50a811c3c40cc`) is available until 2026-11-21.
+- **Defects found and fixed** — the first push-triggered run exposed Windows-only failures in Python-script server launch, SQLite `rowid` message ordering and a temp-directory/SQLite cleanup race. They were fixed in `edc02e7`, `1aeff21` and `e27fec7`; the local suite passes 340 tests on Python 3.11.16 and 3.12 (Python 3.11 skips the 13 optional Qt tests without PySide6).
+- **Boundary** — this verifies hosted Windows CI and the portable package, not the owner's real GPU/model runtime, installed-app acceptance or Obsidian vault.
+- **Dependency audit** — `pip-audit 2.10.1` audited `requirements-desktop.txt` (PySide6 6.12.0 chain, PyInstaller 6.22.3, pyinstaller-hooks-contrib 2026.9) with **no known vulnerabilities**. The development venv's `pip` 24.0 advisories were cleared by upgrading it to 26.3 and re-scanning; `pip` is tooling, not a shipped dependency. `LICENSES.md` now records the real PySide6 LGPL/GPL choice, PyInstaller's GPL-with-exception terms and the unresolved Qt distribution obligations.
 
 A static feasibility estimate is still not an executable placement plan or proof of inference. The application-level permission boundary is not an OS container sandbox. The runtime has been exercised against a real spawned HTTP/SSE test server, but not yet against the owner's real Windows llama.cpp/Vulkan/Qwen installation.
 
@@ -76,18 +92,19 @@ Because this milestone changes the protected controller, its PR remains draft fo
 ## What still requires real-world validation
 
 - Real Windows llama.cpp/Vulkan/Qwen load, generation, stop and restart through the packaged app, including observed context and actual VRAM/RAM telemetry.
-- Rebuilding the PyInstaller Windows package with the new Core/runtime/capability/agent hidden imports and smoke-testing the packaged executable.
+- Real benchmark runs and last-known-good restore/rollback on the owner's backend; GPU/disk/cache sensors and quality evidence are not implemented.
+- Owner launch/installation and acceptance of the CI-built Windows package; the package build and backend smoke test are verified in hosted CI, but an installed-app launch is not.
 - Owner walkthrough of the rebuilt three-workspace UI and the real Obsidian vault.
 - Real Safetensors and multi-shard Hugging Face folder validation on Windows.
 - Executable CPU/GPU/hybrid placement planning and allocation reconciliation (profiles exist; placement is still configuration-based).
 - Four remaining evaluations: multi-file development, runtime debugging, safe interconnected-code changes and Three.js/game development.
-- Windows installer/update/uninstall/recovery, license/Qt LGPL compliance and security/dependency scans.
+- Windows installer/update/uninstall/recovery, license/Qt LGPL compliance and the remaining binary/Qt security review (the Python dependency audit is recorded above).
 - Live provider route/tool-call smoke tests and one completed live autonomous workflow run.
 
 ## User-only release gates
 
 Do all independent development and GitHub-hosted Windows checks first. Then bundle only the remaining local checks into one clear Windows 11 validation run:
-- rebuild the package and launch the three-workspace app;
+- launch the CI-built package (rebuild locally only if desired) and exercise the three-workspace app;
 - verify the existing llama.cpp/Vulkan/Qwen connection without reinstalling or changing the known-good configuration;
 - test real model load/generate/stop/restart, observed context, actual hardware telemetry and resource recovery;
 - run one Capability task and one Agent tool task with real approvals;
@@ -109,11 +126,14 @@ Keep these gates `WAITING_FOR_OWNER_VALIDATION` until real evidence exists. Do n
 - [ ] First live autonomous run verified end-to-end (milestone PR merged by the controller).
 - [ ] Each API route passes live non-confidential text and tool-call smoke tests.
 - [x] Shared Core, managed/attached runtime, Capability System, knowledge workflow and Agent implemented and locally tested.
+- [x] Model-specific support matrix, saved profiles with last-known-good restore, and repeated measured benchmark harness implemented and locally tested.
 - [x] File tools are workspace-scoped and require explicit approval for writes and commands.
 - [x] A failed load, denied action or failed check is recorded as a failure, never converted into success.
 - [x] AI knowledge proposals remain in an Inbox until human approval; trusted notes are never overwritten.
-- [ ] Real Windows runtime, rebuilt package and real Obsidian walkthrough verified.
-- [ ] Security/dependency scans and release compliance complete.
+- [x] Windows Python matrix and Windows x64 desktop package build/smoke/upload verified on `e27fec7`.
+- [ ] Owner launch/installation of the CI-built package, real Windows runtime and real Obsidian walkthrough verified.
+- [x] Dependency audit of the declared desktop requirements complete (`pip-audit`, 7 November 2026): no known advisories.
+- [ ] Malware/binary and Qt CVE review plus release compliance complete.
 - [ ] License selection remains an owner decision; Qt/PySide6 LGPL packaging obligations must be addressed before redistribution.
 
 ## Autonomous bootstrap verification evidence — PR #12 (merged)
@@ -133,11 +153,32 @@ Last verified PR head before this documentation update: `44a463732448c6faa544620
 
 PR #12/#13 are now on `main`; the historical draft state above is superseded. Do not mark AUTO-01/02/03 completely accepted before the remaining live gates are satisfied.
 
-## PR #16 recovery — resynchronised with the integrated `main`
 
-The recovered PR #16 branch was cut from `main` before PR #15 (`84ce050`) and before the integrated-implementation commits (`8dddf39`, `5ee46bf`, `ed07f38`) that added the shared Core, runtime, preparation, Capability System, knowledge workflow, Agent and three-workspace desktop integration. The controller's independent review gate (`scripts/eclipse_review.py --base origin/main`) compares the worktree against `origin/main`, so the stale branch appeared to delete main's new test modules (`tests/test_agent.py`, `tests/test_app_cli.py`, `tests/test_capability.py`, `tests/test_core_foundation.py`, `tests/test_preparation.py`) and `tests/fixtures/fake_llama_server.py`, and rejected the change set. The same divergence also made the PR unmergeable with `main`.
 
-The recovery resynchronised the worktree with `origin/main` (taking main's version of every file main added or changed) and reconciled the branch's RUN-01 additions on top: the manifest-driven `src/eclipse/core/runtime.py` capability contract, `tests/test_runtime_cli.py`, and the contract tests moved to `tests/test_runtime_contract.py` so they coexist with main's real runtime suite `tests/test_runtime.py`. `src/eclipse/__main__.py` keeps main's `app_cli` dispatch and re-adds the `runtime-support` command. No product behaviour or test was weakened. `tests/test_recovery.py` now also reproduces the multi-file stale-base shape and proves the resynchronisation accepts the identical additive change.
+## UI diagnostics — verified 7 November 2026
 
-Local gates after the resynchronisation (Linux, Python 3.12.16, PySide6 not installed): `python -m unittest discover -s tests` = **370 tests OK, 13 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed; `compileall` OK; provider-pool validation OK; `scripts/eclipse_review.py --base origin/main` accepted; `git diff --check` clean. The Windows desktop build was also hardened for the branch's new module: `packaging/eclipse-desktop.spec` now lists `eclipse.core.runtime` in `hiddenimports`, and `tests/test_packaging_spec.py` guards that every hiddenimport resolves. This recovery did not start a new backlog item and did not change any milestone status; the Windows CI runs on this head remain approval-gated (`action_required`) and must be approved and run by the owner, and the owner Windows/GPU/Obsidian gates above remain the unresolved gates.
+- Added and merged in PR #17, main commit `95d13c972f69f0b955babb17f8cbfb899e0e88dd`.
+- The local session recorder captures Qt UI mouse press/release/double-click events, wheel scrolling, workspace navigation, tab/menu actions, safe navigation shortcuts, focus changes, context-menu use, drag/drop event types, Python/Qt errors, unhandled exceptions, runtime state changes, runtime failures and measured generation metrics. Application-generated message boxes now record severity, title, visible message, informative text and detailed text, even when ordinary interaction capture is paused. Error details and tracebacks are retained up to 8,000 characters per field after credential redaction. It does not record text typed into input controls or generated response text.
+- Interaction logging is enabled by default, can be paused/resumed from the sidebar, and can be opened from the sidebar. Logs remain local under the ECLIPSE home `logs/` folder. Files have per-session size limits and old files are pruned.
+- Privacy boundary: the recorder does not read text typed into input controls or the Agent composer, clipboard contents, file contents, screenshots or absolute screen coordinates. Diagnostic errors and stack traces are saved for troubleshooting; common credential forms are redacted, but logs should be reviewed before sharing because an error may contain a local path or other technical details.
+- Windows Python checks [#42335580165](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42335580165) passed on Python 3.11–3.14. Windows desktop build [#42335580233](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42335580233) passed the full Qt/offscreen suite (**345 tests, 1 skipped**), PyInstaller 6.22.3, packaged backend smoke test, ZIP creation and artifact upload.
+- Windows artifact: `ECLIPSE-windows-x64`, ID `13558838091`, 52,953,540 bytes, SHA-256 `3959a94bfbb5e86d87f0b9d996dd4c09724aefaa781752fd0c2a1ace66b9ae0b`; expires 21 November 2026.
+- Owner validation remains: launch the new package on Windows 11, verify the activity log, then validate real llama.cpp/Vulkan/Qwen execution. The Windows CI build does not prove real GPU model execution.
+
+### Diagnostics follow-up — PR #18 merged 7 November 2026
+
+- PR: https://github.com/Tygaclaw/Project-Eclipse/pull/18
+- Merge commit: `64ff0cd681e43458e5b265ba1d76cc1778179d62`.
+- Python matrix [run #42338515141](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42338515141) passed on Python 3.11, 3.12, 3.13 and 3.14.
+- Windows desktop [run #42338515159](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42338515159) passed the full Qt/offscreen test suite, PyInstaller build, packaged backend smoke test, ZIP creation and artifact upload.
+- Follow-up artifact: `ECLIPSE-windows-x64`, ID `13560219184`, 52,952,873 bytes, SHA-256 `9ac982014135562feb834aa5a238a73c8112ab6bcd5759c0af6a88c72ea7f04d`; expires 21 November 2026.
+- Message boxes now record severity, title, visible message, informative text and detailed text, including while ordinary interaction logging is paused. Diagnostic string values are bounded at 8,000 characters instead of the previous 400-character cap; credential redaction remains enabled.
+
+## PR #16 recovery — reconciled with the integrated mainstream
+
+The recovered PR #16 branch (`feature/eclipse-autonomous-42307488690-1`) was stale against the integrated `main`: it was cut before the shared Core/runtime/Capability/Agent implementation and before the runtime completion pass and UI diagnostics, and its last resync stopped at `ed07f38`. The controller's independent review gate (`scripts/eclipse_review.py --base origin/main`) compares the worktree with `origin/main`, so the stale branch appeared to delete `main`'s newer `tests/test_diagnostics.py` and rejected the change set; the same divergence also made the PR unmergeable.
+
+The branch was resynchronised with `origin/main` by taking `main`'s version of every tracked file. Its RUN-01 static runtime contract was already superseded: `main` commit `906222c` adapted the useful model-specific declaration comparison into `src/eclipse/runtime/backends.py` (`evaluate_model_support(...)` and the production `runtime-support` CLI) and decided the duplicate `core/runtime.py` would not be merged, so it was not re-introduced. The branch's unique regression coverage was preserved and strengthened: `tests/test_runtime_contract.py` was ported onto `main`'s production evaluator (adding direct unit coverage of the support matrix that `main` previously lacked), `tests/test_recovery.py` pins the stale-base reviewer behaviour, and `tests/test_packaging_spec.py` guards every PyInstaller `hiddenimport` (including `eclipse.runtime.benchmark` and `eclipse.desktop.diagnostics`) against the Windows desktop build.
+
+Local gates (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`): `python -m unittest discover -s tests` = **377 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed; `python -m compileall -q src tests scripts .github/scripts` OK; `python .github/scripts/validate_provider_pool.py` OK; `scripts/eclipse_review.py --base origin/main` accepted; `git diff --check origin/main` clean. No new backlog item was started and no milestone status changed. The Windows CI runs and the owner Windows/GPU/Obsidian gates remain unresolved.
 
