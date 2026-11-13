@@ -169,5 +169,79 @@ class MultiFileStaleBaseRecoveryTests(unittest.TestCase):
         self.assertTrue((self.root / "tests" / "test_runtime_cli.py").is_file())
 
 
+class AppendOnlyDocumentationConflictTests(unittest.TestCase):
+    """Pin the PR #16 documentation conflict and its non-overlapping fix.
+
+    The recovery branch copied ``main``'s new section and then appended its
+    own recovery note immediately after it in ``CONTINUATION.md`` and
+    ``STATUS.md``. Both sides therefore inserted at the old end-of-file, so the
+    branch was still unmergeable even though its content already contained the
+    newer ``main`` text. Moving the recovery note into a pre-existing region
+    keeps the same content and merges cleanly.
+    """
+
+    BASE = "# Log\n\nIntro.\n\n## Stable section\n\nKeep this.\n"
+    MAIN_ADDITION = "\n## New on main\n\nMain content.\n"
+    RECOVERY = "## Recovery\n\nUnique recovery note.\n\n"
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self._git("init")
+        self._git("config", "user.email", "recovery@example.test")
+        self._git("config", "user.name", "Recovery Test")
+        self._git("checkout", "-b", "main")
+        (self.root / "LOG.md").write_text(self.BASE, encoding="utf-8")
+        self._git("add", "-A")
+        self._git("commit", "-m", "base")
+
+        self._git("checkout", "-b", "feature")
+        self._git("checkout", "main")
+        (self.root / "LOG.md").write_text(self.BASE + self.MAIN_ADDITION, encoding="utf-8")
+        self._git("add", "-A")
+        self._git("commit", "-m", "main advance")
+        self._git("checkout", "feature")
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _git(self, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args], cwd=self.root, text=True, capture_output=True, check=True
+        )
+
+    def _commit_feature_doc(self, content: str) -> None:
+        (self.root / "LOG.md").write_text(content, encoding="utf-8")
+        self._git("add", "-A")
+        self._git("commit", "-m", "feature recovery note")
+
+    def _merge_main(self) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", "merge", "--no-edit", "main"],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    def test_appending_recovery_after_main_section_conflicts(self) -> None:
+        self._commit_feature_doc(self.BASE + self.MAIN_ADDITION + self.RECOVERY)
+        merged = self._merge_main()
+        self.assertNotEqual(merged.returncode, 0)
+        self.assertIn("CONFLICT", merged.stdout + merged.stderr)
+        self._git("merge", "--abort")
+
+    def test_placing_recovery_in_a_preexisting_region_merges_cleanly(self) -> None:
+        content = self.BASE.replace(
+            "## Stable section", self.RECOVERY + "## Stable section"
+        ) + self.MAIN_ADDITION
+        self._commit_feature_doc(content)
+        merged = self._merge_main()
+        self.assertEqual(merged.returncode, 0, merged.stdout + merged.stderr)
+        merged_text = (self.root / "LOG.md").read_text(encoding="utf-8")
+        self.assertIn("Unique recovery note.", merged_text)
+        self.assertIn("Main content.", merged_text)
+
+
 if __name__ == "__main__":
     unittest.main()

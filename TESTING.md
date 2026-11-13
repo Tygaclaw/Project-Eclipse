@@ -27,7 +27,7 @@ The core inspection suite uses only Python's standard library and synthetic bina
 - Independent review (`tests/test_review.py`): backlog table parsing, seeded-regression rejection (deleted test file, newly added test skip), false completion-claim rejection (placeholder evidence, missing referenced test, no changed test/CI record, completion claim while work remains), acceptance of legitimate verification, and real temporary-Git working-tree integration plus CLI exit codes.
 - Controller review wiring (`tests/test_autonomous_runner.py`): `validation_commands()` includes a separate `scripts/eclipse_review.py` gate distinct from the implementing controller.
 - Runtime support contract (`tests/test_runtime_contract.py`): direct unit coverage of `evaluate_model_support`/`evaluate_controls` in `eclipse.runtime.backends` — supported/unsupported/unknown format, architecture, tensor-type, device (CPU/CUDA/ROCm/Vulkan/remote) and placement dimensions, the `hardware_present_backend_unvalidated` and `runtime_verified: false` guarantees, control validation against the declaration, invalid-input rejection and the two-backend support matrix report.
-- Recovery (`tests/test_recovery.py`): the stale-base shape is reproduced in a temporary Git repository and the independent reviewer rejects the apparent deleted test until the base advance is incorporated, including the multi-file shape that the PR #16 resynchronisations fixed.
+- Recovery (`tests/test_recovery.py`): the stale-base shape is reproduced in a temporary Git repository and the independent reviewer rejects the apparent deleted test until the base advance is incorporated, including the multi-file shape that the PR #16 resynchronisations fixed. It also reproduces the append-only documentation conflict — a branch that copies `main`'s new end-of-file section and then appends its recovery note is still unmergeable — and verifies that placing the note in a pre-existing region merges cleanly.
 - Windows packaging guard (`tests/test_packaging_spec.py`): every PyInstaller `hiddenimport` in `packaging/eclipse-desktop.spec` must resolve to a real module under `src/`, and the integrated `eclipse.runtime`, `eclipse.runtime.backends`, `eclipse.runtime.benchmark` and `eclipse.desktop.diagnostics` modules must be listed, so a broken packaging spec fails fast instead of failing the remote Windows desktop build.
 
 Run (desktop tests need PySide6; use an offscreen platform on headless machines):
@@ -57,12 +57,13 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m unittest discover -s tests -v
 
 ## PR #16 recovery evidence — 13 November 2026
 
-The recovered PR #16 branch (`feature/eclipse-autonomous-42307488690-1`) was stale against the integrated `main`; the independent reviewer compares the worktree with `origin/main` and rejected the branch as deleting `main`'s newer `tests/test_diagnostics.py`. The worktree was resynchronised with `origin/main`; the branch's superseded duplicate static runtime contract was dropped in favour of `main`'s adapted `evaluate_model_support(...)`/`runtime-support` in `src/eclipse/runtime/backends.py`, and the branch's contract tests were ported onto that production evaluator. The following was actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
+The recovered PR #16 branch (`feature/eclipse-autonomous-42307488690-1`) was stale against the integrated `main`; the independent reviewer compares the worktree with `origin/main` and rejected the branch as deleting `main`'s newer `tests/test_diagnostics.py`. The worktree was resynchronised with `origin/main`; the branch's superseded duplicate static runtime contract was dropped in favour of `main`'s adapted `evaluate_model_support(...)`/`runtime-support` in `src/eclipse/runtime/backends.py`, and the branch's contract tests were ported onto that production evaluator. The first recovery still appended its note to the end of `CONTINUATION.md` and `STATUS.md` after `main`'s new end-of-file sections, which reproduced a merge conflict; those duplicate sections were removed and the record remains here and in the session handoff. The following was actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
 
-- `python -m unittest discover -s tests` — **377 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
+- `python -m unittest discover -s tests` — **379 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
 - `python -m compileall -q src tests scripts .github/scripts` — OK.
 - `python .github/scripts/validate_provider_pool.py` — OK.
 - `python scripts/eclipse_review.py --base origin/main` — accepted.
+- `git merge-tree --write-tree --messages origin/main <recovery-tree>` — clean (exit 0), no conflicts.
 - `git diff --check origin/main` — clean.
 
 Windows Qt/PyInstaller CI and the owner Windows/GPU/Obsidian gates remain the unresolved acceptance gates.
