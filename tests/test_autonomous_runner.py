@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import tempfile
+import time
 import unittest
+from pathlib import Path
 from subprocess import CompletedProcess
 from unittest import mock
 
@@ -514,6 +519,155 @@ class ExistingPrOwnerReviewTests(unittest.TestCase):
         self.assertIsNone(
             existing_pr_owner_review_message("url", False, ["src/eclipse/example.py"])
         )
+
+
+class EndToEndFailedPrRecoveryTests(unittest.TestCase):
+    """Drive the whole ``resume_existing_pr`` path against a real temporary Git repo.
+
+    Only the external boundaries are mocked: ``gh`` (GitHub) and
+    ``run_agent_with_failover`` (the OpenCode child). Git fetch/switch/commit/push and
+    the controller's safety guards run for real. This pins the deliberate failed-PR
+    recovery scenario: a real failed run is repaired on the *same* branch and
+    session, no second branch or PR is created, and the merge happens only after the
+    checks turn green.
+    """
+
+    BRANCH = "feature/eclipse-autonomous-1-1"
+    PR_URL = "https://github.com/Tygaclaw/Project-Eclipse/pull/16"
+    SESSION = "ses_e2e1234567890"
+    MODEL = "provider/model-rank-1"
+    RUN_ID = 43567081759
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.repo = self.tmp / "repo"
+        self.remote = self.tmp / "remote.git"
+        self.repo.mkdir()
+
+        self._git("init", cwd=self.repo)
+        self._git("config", "user.email", "e2e@example.test", cwd=self.repo)
+        self._git("config", "user.name", "E2E Test", cwd=self.repo)
+        self._git("checkout", "-b", "main", cwd=self.repo)
+        (self.repo / "README.md").write_text("base\n", encoding="utf-8")
+        self._git("add", "-A", cwd=self.repo)
+        self._git("commit", "-m", "base", cwd=self.repo)
+
+        self._git("init", "--bare", str(self.remote), cwd=self.tmp)
+        self._git("remote", "add", "origin", str(self.remote), cwd=self.repo)
+        self._git("push", "-u", "origin", "main", cwd=self.repo)
+
+        self._git("checkout", "-b", self.BRANCH, cwd=self.repo)
+        (self.repo / "src").mkdir()
+        (self.repo / "src" / "feature.py").write_text("feature = True\n", encoding="utf-8")
+        self._git("add", "-A", cwd=self.repo)
+        self._git("commit", "-m", "feature work", cwd=self.repo)
+        self._git("push", "-u", "origin", self.BRANCH, cwd=self.repo)
+        self._git("fetch", "origin", cwd=self.repo)
+
+        self._original_root = eclipse_autonomous.ROOT
+        self._original_commit = eclipse_autonomous.commit_and_push_worktree
+        eclipse_autonomous.ROOT = self.repo
+        self.agent_calls: list[dict[str, object]] = []
+        self.gh_calls: list[list[str]] = []
+        self.merge_calls: list[list[str]] = []
+        self.commits = 0
+
+    def tearDown(self) -> None:
+        eclipse_autonomous.ROOT = self._original_root
+        self._tmp.cleanup()
+
+    def _git(self, *args: str, cwd: Path) -> CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args], cwd=cwd, text=True, capture_output=True, check=True
+        )
+
+    def _head(self) -> str:
+        return self._git("rev-parse", "HEAD", cwd=self.repo).stdout.strip()
+
+    def _fake_gh(self, args, *, source_env, check=True):
+        self.gh_calls.append(list(args))
+        if list(args[:2]) == ["pr", "view"]:
+            fields = args[args.index("--json") + 1]
+            data: dict[str, object] = {"headRefOid": self._head(), "state": "OPEN", "isDraft": False}
+            if "state" not in fields:
+                data = {"headRefOid": data["headRefOid"]}
+            return CompletedProcess(list(args), 0, json.dumps(data), "")
+        if list(args[:2]) == ["run", "list"]:
+            runs = [{
+                "databaseId": self.RUN_ID, "headSha": self._head(), "status": "completed",
+                "conclusion": "failure", "name": "Windows desktop build",
+            }]
+            return CompletedProcess(list(args), 0, json.dumps(runs), "")
+        if list(args[:2]) == ["run", "view"]:
+            return CompletedProcess(list(args), 0, "AssertionError: Windows check failed\n", "")
+        if list(args[:2]) == ["pr", "checks"]:
+            green = self.commits >= 2
+            return CompletedProcess(
+                list(args), 0 if green else 1, "", "" if green else "checks failed"
+            )
+        if list(args[:2]) == ["pr", "merge"]:
+            self.merge_calls.append(list(args))
+            return CompletedProcess(list(args), 0, "merged", "")
+        return CompletedProcess(list(args), 0, "", "")
+
+    def _fake_agent(self, prompt, run_title, source_env, **kwargs):
+        self.agent_calls.append({
+            "prompt": prompt,
+            "initial_session_id": kwargs.get("initial_session_id"),
+            "start_model_id": kwargs.get("start_model_id"),
+        })
+        recovery = self.repo / "src" / "recovery.py"
+        if len(self.agent_calls) == 1:
+            recovery.write_text("recovered = True\n", encoding="utf-8")
+        else:
+            recovery.write_text("recovered = True\nrepaired = True\n", encoding="utf-8")
+        return True, self.SESSION, self.MODEL, ""
+
+    def _commit_wrapper(self, branch, source_env):
+        result = self._original_commit(branch, source_env)
+        if result[0]:
+            self.commits += 1
+        return result
+
+    def test_failed_pr_is_repaired_in_place_on_the_same_branch_without_a_new_pr(self) -> None:
+        pr = {
+            "headRefName": self.BRANCH,
+            "url": self.PR_URL,
+            "title": "ECLIPSE autonomous milestone",
+            "isDraft": False,
+            "headRefOid": "stale-head",
+            "body": "",
+        }
+        env = {"GITHUB_TOKEN": "fake-token", "PATH": os.environ.get("PATH", "")}
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=self._fake_gh), \
+                mock.patch.object(
+                    eclipse_autonomous, "run_agent_with_failover", side_effect=self._fake_agent
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "commit_and_push_worktree", side_effect=self._commit_wrapper
+                ):
+            result = eclipse_autonomous.resume_existing_pr(
+                pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
+            )
+
+        self.assertEqual(result, 0)
+        # Same branch, same PR: no duplicate branch/PR was created.
+        self.assertEqual(self._git("rev-parse", "--abbrev-ref", "HEAD", cwd=self.repo).stdout.strip(), self.BRANCH)
+        self.assertFalse(any(call[:2] == ["pr", "create"] for call in self.gh_calls))
+        # The first recovery and the follow-up CI repair both ran in one session.
+        self.assertEqual(len(self.agent_calls), 2)
+        self.assertIsNone(self.agent_calls[0]["initial_session_id"])
+        self.assertEqual(self.agent_calls[1]["initial_session_id"], self.SESSION)
+        self.assertEqual(self.agent_calls[1]["start_model_id"], self.MODEL)
+        # The prompt carries the real failure log, not the old log-less evidence.
+        self.assertIn(self.PR_URL, str(self.agent_calls[0]["prompt"]))
+        self.assertIn("checkpoint: False", str(self.agent_calls[0]["prompt"]))
+        self.assertIn("AssertionError: Windows check failed", str(self.agent_calls[0]["prompt"]))
+        self.assertNotIn("log not found", str(self.agent_calls[0]["prompt"]))
+        # Work was committed and pushed back to the same remote branch.
+        self.assertEqual(self._git("rev-parse", f"origin/{self.BRANCH}", cwd=self.repo).stdout.strip(), self._head())
+        self.assertEqual(len(self.merge_calls), 1)
 
 
 if __name__ == "__main__":
