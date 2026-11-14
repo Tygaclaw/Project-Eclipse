@@ -1023,7 +1023,7 @@ def resume_existing_pr(
     approval_message = owner_approval_required_message(pr_url, branch, source_env)
     if approval_message:
         print(approval_message)
-        return 9
+        return 0
 
     logs = remote_ci_failure_context(pr_url, branch, source_env)
     if not logs:
@@ -1033,7 +1033,7 @@ def resume_existing_pr(
     evidence_message = unusable_repair_evidence_message(logs, pr_url)
     if evidence_message:
         print(evidence_message)
-        return 9
+        return 0
     recovery_prompt = f"""RECOVER THE EXISTING ECLIPSE AUTONOMOUS PR — DO NOT START A NEW BACKLOG ITEM.
 
 You are continuing work on existing PR {pr_url}, branch {branch}, against main.
@@ -1081,7 +1081,7 @@ Prior PR/checkpoint evidence:
         approval_message = owner_approval_required_message(pr_url, branch, source_env)
         if approval_message:
             print(approval_message)
-            return 9
+            return 0
         logs = remote_ci_failure_context(pr_url, branch, source_env)
         if not logs:
             print("Existing PR still fails CI; no fresh failure logs available. Leaving open.")
@@ -1089,7 +1089,7 @@ Prior PR/checkpoint evidence:
         evidence_message = unusable_repair_evidence_message(logs, pr_url)
         if evidence_message:
             print(evidence_message)
-            return 9
+            return 0
         repaired, session_id, selected_model, failure = run_agent_with_failover(
             build_repair_prompt("Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n" + logs),
             run_title + f" recover PR CI {repair_round + 1}",
@@ -1264,7 +1264,7 @@ def main() -> int:
         approval_message = owner_approval_required_message(pr_url, branch, source_env)
         if approval_message:
             print(approval_message)
-            return 9
+            return 0
         failure_context = remote_ci_failure_context(pr_url, branch, source_env)
         if not failure_context:
             print("CI_NOT_GREEN: no failed-run logs could be retrieved; preserving PR without merge.")
@@ -1273,7 +1273,7 @@ def main() -> int:
         evidence_message = unusable_repair_evidence_message(failure_context, pr_url)
         if evidence_message:
             print(evidence_message)
-            return 9
+            return 0
         repair_prompt = build_repair_prompt(
             "The PR's Windows/GitHub Actions checks failed. Repair the real failure in this same "
             "OpenCode session and current feature branch. Keep all existing successful work.\n\n"

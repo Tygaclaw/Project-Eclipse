@@ -560,6 +560,23 @@ class RemoteCiFailureContextTests(unittest.TestCase):
         self.assertNotIn("Diagnose the concrete failure", prompt)
         self.assertNotIn("fix the underlying issue", prompt)
 
+    def test_current_sanitized_approval_gate_pair_is_refused(self) -> None:
+        """The #43648458309/#43648458292 evidence must never become a repair prompt."""
+        evidence = (
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Python checks run 43648458309 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Windows desktop build run 43648458292 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.assertTrue(approval_gate_evidence(evidence))
+        message = unusable_repair_evidence_message(evidence, "url")
+        self.assertIsNotNone(message)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", message)
+        prompt = build_repair_prompt(evidence)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", prompt)
+        self.assertNotIn("Diagnose the concrete failure", prompt)
+
     def test_unavailable_failure_log_cannot_build_a_repair_prompt(self) -> None:
         """A `failure` header with only `log not found` is not actionable evidence."""
         evidence = (
@@ -827,7 +844,7 @@ class EndToEndFailedPrRecoveryTests(unittest.TestCase):
                 pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
             )
 
-        self.assertEqual(result, 9)
+        self.assertEqual(result, 0)
         self.assertEqual(self.agent_calls, [])
         self.assertEqual(self.run_views, [])
         self.assertEqual(self.merge_calls, [])
@@ -866,7 +883,7 @@ class EndToEndFailedPrRecoveryTests(unittest.TestCase):
                 pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
             )
 
-        self.assertEqual(result, 9)
+        self.assertEqual(result, 0)
         self.assertEqual(self.agent_calls, [])
         self.assertEqual(self.run_views, [])
         self.assertEqual(self.merge_calls, [])
@@ -902,7 +919,7 @@ class EndToEndFailedPrRecoveryTests(unittest.TestCase):
                 pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
             )
 
-        self.assertEqual(result, 9)
+        self.assertEqual(result, 0)
         self.assertEqual(self.agent_calls, [])
         self.assertEqual(self.run_views, [])
         self.assertEqual(self.merge_calls, [])
