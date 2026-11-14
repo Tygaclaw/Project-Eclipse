@@ -16,6 +16,7 @@ from scripts.eclipse_autonomous import (
     ci_requires_owner_approval,
     classify_ci_run,
     classify_failure,
+    existing_pr_owner_review_message,
     extract_session_id,
     owner_approval_required_message,
     remote_ci_failure_context,
@@ -496,6 +497,23 @@ class RemoteCiFailureContextTests(unittest.TestCase):
         with mock.patch.object(eclipse_autonomous, "gh", side_effect=fake_gh):
             message = owner_approval_required_message("url", "branch", {"GITHUB_TOKEN": "x"})
         self.assertIsNone(message)
+
+
+class ExistingPrOwnerReviewTests(unittest.TestCase):
+    def test_protected_non_checkpoint_pr_parks_for_owner_review(self) -> None:
+        message = existing_pr_owner_review_message("url", False, ["scripts/eclipse_autonomous.py"])
+        self.assertIsNotNone(message)
+        self.assertIn("OWNER_REVIEW_REQUIRED", message)
+
+    def test_protected_checkpoint_draft_is_still_resumable(self) -> None:
+        self.assertIsNone(
+            existing_pr_owner_review_message("url", True, ["scripts/eclipse_autonomous.py"])
+        )
+
+    def test_ordinary_non_checkpoint_pr_is_not_early_parked(self) -> None:
+        self.assertIsNone(
+            existing_pr_owner_review_message("url", False, ["src/eclipse/example.py"])
+        )
 
 
 if __name__ == "__main__":

@@ -719,6 +719,26 @@ def owner_approval_required_message(
     )
 
 
+def existing_pr_owner_review_message(
+    pr_url: str, is_checkpoint: bool, paths: Sequence[str]
+) -> str | None:
+    """Park a non-checkpoint existing PR that changes owner-review-only paths.
+
+    Such a PR can never auto-merge and repeatedly feeding its CI state to the model
+    only burns free-model calls and CI-repair rounds, so it is handed to the owner
+    before any recovery work starts. Checkpoint drafts are still resumable.
+    """
+    if is_checkpoint:
+        return None
+    _safe, _reason, protected = safety_scan(paths)
+    if not protected:
+        return None
+    return (
+        "OWNER_REVIEW_REQUIRED: this existing PR changes protected automation/security "
+        f"paths and must be reviewed by the owner; not running model recovery: {pr_url}"
+    )
+
+
 def make_pr_body(branch: str, paths: Sequence[str], validation: str, protected: bool) -> str:
     preview = "\n".join(f"- `{item}`" for item in paths[:80])
     if len(paths) > 80:
@@ -866,6 +886,11 @@ def resume_existing_pr(
         cwd=ROOT, env=controller_env, check=True,
     )
     subprocess.run(["git", "merge-base", "HEAD", "origin/main"], cwd=ROOT, env=controller_env, check=True)
+
+    owner_review_message = existing_pr_owner_review_message(pr_url, is_checkpoint, changed_paths())
+    if owner_review_message:
+        print(owner_review_message)
+        return 0
 
     check_result = gh(["pr", "checks", pr_url, "--watch", "--fail-fast"], source_env=source_env, check=False)
     if check_result.returncode == 0 and not is_checkpoint:
