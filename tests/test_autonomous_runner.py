@@ -500,6 +500,23 @@ class RemoteCiFailureContextTests(unittest.TestCase):
         self.assertIn("OWNER_APPROVAL_REQUIRED", message)
         self.assertFalse(any(call[:2] == ["run", "view"] for call in calls))
 
+    def test_latest_sanitized_action_required_evidence_parks_without_a_model_call(self) -> None:
+        """The 14 November #43601410296/#43601410276 evidence must never reach the model."""
+        runs = [
+            {"databaseId": 43601410296, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "action_required", "name": "Python checks"},
+            {"databaseId": 43601410276, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "action_required", "name": "Windows desktop build"},
+        ]
+        fake_gh, calls = self._patched_gh(runs, log_output="failed to get run log: log not found")
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=fake_gh):
+            context = remote_ci_failure_context("url", "branch", {"GITHUB_TOKEN": "x"})
+            message = owner_approval_required_message("url", "branch", {"GITHUB_TOKEN": "x"})
+        self.assertEqual(context, "")
+        self.assertIsNotNone(message)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", message)
+        self.assertFalse(any(call[:2] == ["run", "view"] for call in calls))
+
     def test_unavailable_failure_log_is_not_packaged_as_evidence(self) -> None:
         """Even a genuine `failure` run with no retrievable log must not become fake evidence."""
         runs = [
@@ -737,6 +754,48 @@ class EndToEndFailedPrRecoveryTests(unittest.TestCase):
         self.assertEqual(self.run_views, [])
         self.assertEqual(self.merge_calls, [])
         self.assertEqual(self.commits, 0)
+        self.assertFalse(any(call[:2] == ["pr", "create"] for call in self.gh_calls))
+
+    def test_protected_non_draft_pr_parks_before_ci_checks_or_a_model_call(self) -> None:
+        """A non-draft PR touching protected automation paths must reach the owner first.
+
+        This is the real PR #16 shape: a non-draft branch that changes the
+        controller itself. Even if its runs are approval-gated or failing, the
+        recovery model must not run and no CI log may be fetched.
+        """
+        (self.repo / "SECURITY.md").write_text("Security policy\n", encoding="utf-8")
+        self._git("add", "-A", cwd=self.repo)
+        self._git("commit", "-m", "touch protected path", cwd=self.repo)
+        self._git("push", "origin", self.BRANCH, cwd=self.repo)
+        self._git("fetch", "origin", cwd=self.repo)
+
+        pr = {
+            "headRefName": self.BRANCH,
+            "url": self.PR_URL,
+            "title": "ECLIPSE autonomous milestone",
+            "isDraft": False,
+            "headRefOid": "stale-head",
+            "body": "",
+        }
+        env = {"GITHUB_TOKEN": "fake-token", "PATH": os.environ.get("PATH", "")}
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=self._fake_gh), \
+                mock.patch.object(
+                    eclipse_autonomous, "run_agent_with_failover", side_effect=self._fake_agent
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "commit_and_push_worktree", side_effect=self._commit_wrapper
+                ):
+            result = eclipse_autonomous.resume_existing_pr(
+                pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(self.agent_calls, [])
+        self.assertEqual(self.run_views, [])
+        self.assertEqual(self.merge_calls, [])
+        self.assertEqual(self.commits, 0)
+        self.assertEqual(self.gh_calls, [])
+        self.assertFalse(any(call[:2] == ["pr", "checks"] for call in self.gh_calls))
         self.assertFalse(any(call[:2] == ["pr", "create"] for call in self.gh_calls))
 
 
