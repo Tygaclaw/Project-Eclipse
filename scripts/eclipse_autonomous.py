@@ -241,6 +241,13 @@ Do not modify code, commit, push or merge. Wait for the owner to approve the pen
 Approval-gate evidence:
 {clipped}
 """
+    if ci_run_conclusions(failure_output) and not ci_evidence_has_log(failure_output):
+        return f"""CI_EVIDENCE_UNAVAILABLE: the supplied CI evidence contains no readable failure log.
+Do not modify code, commit, push or merge. Re-run or approve the failed workflow and let the scheduled autonomous run continue with the real log.
+
+Unavailable-log evidence:
+{clipped}
+"""
     lowered = failure_output.lower()
     if any(token in lowered for token in (
         "context_length_exceeded", "maximum context length", "context window exceeded",
@@ -671,6 +678,40 @@ def approval_gate_evidence_message(
     )
 
 
+def ci_evidence_has_log(failure_output: str) -> bool:
+    """True when at least one CI evidence chunk carries a readable failure log body."""
+    matches = list(CI_RUN_HEADER.finditer(failure_output))
+    if not matches:
+        return failure_log_is_available(failure_output)
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(failure_output)
+        if failure_log_is_available(failure_output[match.end():end]):
+            return True
+    return False
+
+
+def unusable_repair_evidence_message(
+    failure_output: str, pr_url: str
+) -> str | None:
+    """Operator message when the supplied CI evidence cannot support a code repair.
+
+    Covers both approval-gated runs and a genuine ``failure`` run whose log could not
+    be retrieved. In the latter case the old code still told the model to "diagnose"
+    an empty ``log not found`` body, which no code change can fix.
+    """
+    approval_message = approval_gate_evidence_message(failure_output, pr_url)
+    if approval_message:
+        return approval_message
+    if ci_run_conclusions(failure_output) and not ci_evidence_has_log(failure_output):
+        return (
+            "CI_EVIDENCE_UNAVAILABLE: the supplied CI evidence has no readable failure "
+            "log (only GitHub CLI unavailable-log notices). No model repair was attempted; "
+            f"re-run or approve the failed workflow for {pr_url} and let the scheduled "
+            "autonomous run continue with the real log."
+        )
+    return None
+
+
 def classify_ci_run(run: dict[str, object]) -> str:
     """Classify a GitHub Actions run for the PR-recovery loop.
 
@@ -989,7 +1030,7 @@ def resume_existing_pr(
         logs = redact(str(pr.get("body", "")), source_env)[-12_000:]
     if not logs:
         logs = redact(check_result.stdout + check_result.stderr, source_env)[-12_000:]
-    evidence_message = approval_gate_evidence_message(logs, pr_url)
+    evidence_message = unusable_repair_evidence_message(logs, pr_url)
     if evidence_message:
         print(evidence_message)
         return 9
@@ -1045,7 +1086,7 @@ Prior PR/checkpoint evidence:
         if not logs:
             print("Existing PR still fails CI; no fresh failure logs available. Leaving open.")
             return 4
-        evidence_message = approval_gate_evidence_message(logs, pr_url)
+        evidence_message = unusable_repair_evidence_message(logs, pr_url)
         if evidence_message:
             print(evidence_message)
             return 9
@@ -1229,7 +1270,7 @@ def main() -> int:
             print("CI_NOT_GREEN: no failed-run logs could be retrieved; preserving PR without merge.")
             print(redact(checks.stdout + checks.stderr, source_env)[-8_000:])
             return 4
-        evidence_message = approval_gate_evidence_message(failure_context, pr_url)
+        evidence_message = unusable_repair_evidence_message(failure_context, pr_url)
         if evidence_message:
             print(evidence_message)
             return 9

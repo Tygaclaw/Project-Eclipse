@@ -20,6 +20,7 @@ from scripts.eclipse_autonomous import (
     RunResult,
     approval_gate_evidence,
     approval_gate_evidence_message,
+    ci_evidence_has_log,
     ci_requires_owner_approval,
     ci_run_conclusions,
     classify_ci_run,
@@ -29,6 +30,7 @@ from scripts.eclipse_autonomous import (
     failure_log_is_available,
     owner_approval_required_message,
     remote_ci_failure_context,
+    unusable_repair_evidence_message,
     safe_child_environment,
     safety_scan,
     select_current_head_ci_runs,
@@ -558,6 +560,41 @@ class RemoteCiFailureContextTests(unittest.TestCase):
         self.assertNotIn("Diagnose the concrete failure", prompt)
         self.assertNotIn("fix the underlying issue", prompt)
 
+    def test_unavailable_failure_log_cannot_build_a_repair_prompt(self) -> None:
+        """A `failure` header with only `log not found` is not actionable evidence."""
+        evidence = (
+            "===== Windows desktop build run 43648092720 (failure) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.assertFalse(ci_evidence_has_log(evidence))
+        message = unusable_repair_evidence_message(evidence, "url")
+        self.assertIsNotNone(message)
+        self.assertIn("CI_EVIDENCE_UNAVAILABLE", message)
+        prompt = build_repair_prompt(evidence)
+        self.assertIn("CI_EVIDENCE_UNAVAILABLE", prompt)
+        self.assertNotIn("Diagnose the concrete failure", prompt)
+
+    def test_real_failure_log_still_builds_a_repair_prompt(self) -> None:
+        evidence = (
+            "===== Windows desktop build run 111 (failure) =====\n"
+            "AssertionError: expected 2 got 1"
+        )
+        self.assertTrue(ci_evidence_has_log(evidence))
+        self.assertIsNone(unusable_repair_evidence_message(evidence, "url"))
+        prompt = build_repair_prompt(evidence)
+        self.assertIn("Diagnose the concrete failure", prompt)
+        self.assertIn("AssertionError: expected 2 got 1", prompt)
+
+    def test_mixed_failure_and_unavailable_chunks_use_the_readable_log(self) -> None:
+        evidence = (
+            "===== Python checks run 1 (failure) =====\n"
+            "failed to get run log: log not found\n\n"
+            "===== Windows desktop build run 2 (failure) =====\n"
+            "AssertionError: real failure"
+        )
+        self.assertTrue(ci_evidence_has_log(evidence))
+        self.assertIsNone(unusable_repair_evidence_message(evidence, "url"))
+
     def test_unavailable_failure_log_is_not_packaged_as_evidence(self) -> None:
         """Even a genuine `failure` run with no retrievable log must not become fake evidence."""
         runs = [
@@ -818,6 +855,42 @@ class EndToEndFailedPrRecoveryTests(unittest.TestCase):
         with mock.patch.object(eclipse_autonomous, "gh", side_effect=self._fake_gh), \
                 mock.patch.object(
                     eclipse_autonomous, "remote_ci_failure_context", return_value=legacy_evidence
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "run_agent_with_failover", side_effect=self._fake_agent
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "commit_and_push_worktree", side_effect=self._commit_wrapper
+                ):
+            result = eclipse_autonomous.resume_existing_pr(
+                pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
+            )
+
+        self.assertEqual(result, 9)
+        self.assertEqual(self.agent_calls, [])
+        self.assertEqual(self.run_views, [])
+        self.assertEqual(self.merge_calls, [])
+        self.assertEqual(self.commits, 0)
+
+    def test_unavailable_failure_log_parks_without_a_model_call(self) -> None:
+        """A real `failure` run with no retrievable log must not start a repair."""
+        unavailable = (
+            "===== Windows desktop build run 43648092720 (failure) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.ci_conclusion = "failure"
+        pr = {
+            "headRefName": self.BRANCH,
+            "url": self.PR_URL,
+            "title": "ECLIPSE autonomous milestone",
+            "isDraft": False,
+            "headRefOid": "stale-head",
+            "body": "",
+        }
+        env = {"GITHUB_TOKEN": "fake-token", "PATH": os.environ.get("PATH", "")}
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=self._fake_gh), \
+                mock.patch.object(
+                    eclipse_autonomous, "remote_ci_failure_context", return_value=unavailable
                 ), \
                 mock.patch.object(
                     eclipse_autonomous, "run_agent_with_failover", side_effect=self._fake_agent
