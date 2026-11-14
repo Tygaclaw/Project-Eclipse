@@ -234,6 +234,13 @@ When done, leave a concise summary of changed files, tests actually run, test re
 
 def build_repair_prompt(failure_output: str) -> str:
     clipped = failure_output[-12_000:]
+    if approval_gate_evidence(failure_output):
+        return f"""OWNER_APPROVAL_REQUIRED: the supplied CI evidence contains only action_required approval-gate runs, not a failing check.
+Do not modify code, commit, push or merge. Wait for the owner to approve the pending workflow runs, then let the scheduled autonomous run continue.
+
+Approval-gate evidence:
+{clipped}
+"""
     lowered = failure_output.lower()
     if any(token in lowered for token in (
         "context_length_exceeded", "maximum context length", "context window exceeded",
@@ -624,6 +631,46 @@ def failure_log_is_available(raw: str) -> bool:
     return not any(marker in lowered for marker in LOG_UNAVAILABLE_MARKERS)
 
 
+CI_RUN_HEADER = re.compile(
+    r"=====\s*.+?\s+run\s+\d+\s+\((?P<conclusion>[a-z_]+)\)\s*====="
+)
+
+
+def ci_run_conclusions(failure_output: str) -> list[str]:
+    """Conclusions named in the controller's ``===== <name> run <id> (<conclusion>) =====`` chunks."""
+    return [match.group("conclusion") for match in CI_RUN_HEADER.finditer(failure_output)]
+
+
+def approval_gate_evidence(failure_output: str) -> bool:
+    """True when the evidence describes approval-gated runs and no repairable failure.
+
+    The controller normally classifies runs before building a prompt, but old or
+    external callers can still supply the legacy ``action_required`` chunks (the
+    ``log not found`` evidence that produced spurious repair prompts). Refusing to
+    treat such evidence as a code failure is a defence in depth.
+    """
+    conclusions = ci_run_conclusions(failure_output)
+    return (
+        bool(conclusions)
+        and any(conclusion in APPROVAL_REQUIRED_CI_CONCLUSIONS for conclusion in conclusions)
+        and not any(conclusion in REPAIRABLE_CI_CONCLUSIONS for conclusion in conclusions)
+    )
+
+
+def approval_gate_evidence_message(
+    failure_output: str, pr_url: str
+) -> str | None:
+    """Operator message when supplied repair evidence only describes approval gates."""
+    if not approval_gate_evidence(failure_output):
+        return None
+    return (
+        "OWNER_APPROVAL_REQUIRED: the CI evidence contains only action_required "
+        "approval-gate runs, not a failing check. No model repair was attempted; "
+        f"approve the pending workflow runs for {pr_url} and let the scheduled "
+        "autonomous run continue."
+    )
+
+
 def classify_ci_run(run: dict[str, object]) -> str:
     """Classify a GitHub Actions run for the PR-recovery loop.
 
@@ -942,6 +989,10 @@ def resume_existing_pr(
         logs = redact(str(pr.get("body", "")), source_env)[-12_000:]
     if not logs:
         logs = redact(check_result.stdout + check_result.stderr, source_env)[-12_000:]
+    evidence_message = approval_gate_evidence_message(logs, pr_url)
+    if evidence_message:
+        print(evidence_message)
+        return 9
     recovery_prompt = f"""RECOVER THE EXISTING ECLIPSE AUTONOMOUS PR — DO NOT START A NEW BACKLOG ITEM.
 
 You are continuing work on existing PR {pr_url}, branch {branch}, against main.
@@ -994,6 +1045,10 @@ Prior PR/checkpoint evidence:
         if not logs:
             print("Existing PR still fails CI; no fresh failure logs available. Leaving open.")
             return 4
+        evidence_message = approval_gate_evidence_message(logs, pr_url)
+        if evidence_message:
+            print(evidence_message)
+            return 9
         repaired, session_id, selected_model, failure = run_agent_with_failover(
             build_repair_prompt("Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n" + logs),
             run_title + f" recover PR CI {repair_round + 1}",
@@ -1174,6 +1229,10 @@ def main() -> int:
             print("CI_NOT_GREEN: no failed-run logs could be retrieved; preserving PR without merge.")
             print(redact(checks.stdout + checks.stderr, source_env)[-8_000:])
             return 4
+        evidence_message = approval_gate_evidence_message(failure_context, pr_url)
+        if evidence_message:
+            print(evidence_message)
+            return 9
         repair_prompt = build_repair_prompt(
             "The PR's Windows/GitHub Actions checks failed. Repair the real failure in this same "
             "OpenCode session and current feature branch. Keep all existing successful work.\n\n"

@@ -18,7 +18,10 @@ from scripts.eclipse_autonomous import (
     ROUTES,
     Route,
     RunResult,
+    approval_gate_evidence,
+    approval_gate_evidence_message,
     ci_requires_owner_approval,
+    ci_run_conclusions,
     classify_ci_run,
     classify_failure,
     existing_pr_owner_review_message,
@@ -517,6 +520,44 @@ class RemoteCiFailureContextTests(unittest.TestCase):
         self.assertIn("OWNER_APPROVAL_REQUIRED", message)
         self.assertFalse(any(call[:2] == ["run", "view"] for call in calls))
 
+    def test_legacy_action_required_chunks_are_detected_as_an_approval_gate(self) -> None:
+        evidence = (
+            "===== Python checks run 43601410296 (action_required) =====\n"
+            "failed to get run log: log not found\n\n"
+            "===== Windows desktop build run 43601410276 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.assertEqual(ci_run_conclusions(evidence), ["action_required", "action_required"])
+        self.assertTrue(approval_gate_evidence(evidence))
+        message = approval_gate_evidence_message(evidence, "url")
+        self.assertIsNotNone(message)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", message)
+
+    def test_real_failure_chunk_is_not_approval_gate_evidence(self) -> None:
+        evidence = (
+            "===== Windows desktop build run 111 (failure) =====\n"
+            "AssertionError: expected 2 got 1"
+        )
+        self.assertFalse(approval_gate_evidence(evidence))
+        self.assertIsNone(approval_gate_evidence_message(evidence, "url"))
+        mixed = evidence + (
+            "\n\n===== Python checks run 222 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.assertFalse(approval_gate_evidence(mixed))
+
+    def test_build_repair_prompt_refuses_legacy_approval_gate_evidence(self) -> None:
+        evidence = (
+            "===== Python checks run 43601410296 (action_required) =====\n"
+            "failed to get run log: log not found\n\n"
+            "===== Windows desktop build run 43601410276 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+        prompt = build_repair_prompt(evidence)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", prompt)
+        self.assertNotIn("Diagnose the concrete failure", prompt)
+        self.assertNotIn("fix the underlying issue", prompt)
+
     def test_unavailable_failure_log_is_not_packaged_as_evidence(self) -> None:
         """Even a genuine `failure` run with no retrievable log must not become fake evidence."""
         runs = [
@@ -755,6 +796,44 @@ class EndToEndFailedPrRecoveryTests(unittest.TestCase):
         self.assertEqual(self.merge_calls, [])
         self.assertEqual(self.commits, 0)
         self.assertFalse(any(call[:2] == ["pr", "create"] for call in self.gh_calls))
+
+    def test_legacy_approval_gate_evidence_parks_without_a_model_call(self) -> None:
+        """Even if a stale/external caller supplies the old chunks, no repair runs."""
+        legacy_evidence = (
+            "===== Python checks run 43601410296 (action_required) =====\n"
+            "failed to get run log: log not found\n\n"
+            "===== Windows desktop build run 43601410276 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.ci_conclusion = "failure"
+        pr = {
+            "headRefName": self.BRANCH,
+            "url": self.PR_URL,
+            "title": "ECLIPSE autonomous milestone",
+            "isDraft": False,
+            "headRefOid": "stale-head",
+            "body": "",
+        }
+        env = {"GITHUB_TOKEN": "fake-token", "PATH": os.environ.get("PATH", "")}
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=self._fake_gh), \
+                mock.patch.object(
+                    eclipse_autonomous, "remote_ci_failure_context", return_value=legacy_evidence
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "run_agent_with_failover", side_effect=self._fake_agent
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "commit_and_push_worktree", side_effect=self._commit_wrapper
+                ):
+            result = eclipse_autonomous.resume_existing_pr(
+                pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
+            )
+
+        self.assertEqual(result, 9)
+        self.assertEqual(self.agent_calls, [])
+        self.assertEqual(self.run_views, [])
+        self.assertEqual(self.merge_calls, [])
+        self.assertEqual(self.commits, 0)
 
     def test_protected_non_draft_pr_parks_before_ci_checks_or_a_model_call(self) -> None:
         """A non-draft PR touching protected automation paths must reach the owner first.
