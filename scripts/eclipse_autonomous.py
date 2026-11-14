@@ -608,6 +608,21 @@ def run_agent_with_failover(
 REPAIRABLE_CI_CONCLUSIONS = frozenset({"failure", "timed_out"})
 APPROVAL_REQUIRED_CI_CONCLUSIONS = frozenset({"action_required"})
 
+# ``gh run view --log-failed`` prints one of these instead of a log when the run's
+# log is unavailable (for example, an approval gate or an expired/missing artifact).
+# Such a string is GitHub CLI diagnostics, not evidence of a code failure, so it must
+# never be packaged as recovery evidence for the model.
+LOG_UNAVAILABLE_MARKERS = ("failed to get run log", "log not found")
+
+
+def failure_log_is_available(raw: str) -> bool:
+    """True when ``raw`` contains an actual failure log, not a GitHub CLI unavailable-log notice."""
+    text = raw.strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    return not any(marker in lowered for marker in LOG_UNAVAILABLE_MARKERS)
+
 
 def classify_ci_run(run: dict[str, object]) -> str:
     """Classify a GitHub Actions run for the PR-recovery loop.
@@ -680,6 +695,8 @@ def remote_ci_failure_context(
             continue
         logs = gh(["run", "view", run_id, "--log-failed"], source_env=source_env, check=False)
         raw = (logs.stdout or "") + (logs.stderr or "")
+        if not failure_log_is_available(raw):
+            continue
         chunks.append(
             f"===== {run.get('name', 'GitHub Actions')} run {run_id} "
             f"({run.get('conclusion')}) =====\n{redact(raw, source_env)[-8_000:]}"

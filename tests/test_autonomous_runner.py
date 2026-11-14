@@ -23,6 +23,7 @@ from scripts.eclipse_autonomous import (
     classify_failure,
     existing_pr_owner_review_message,
     extract_session_id,
+    failure_log_is_available,
     owner_approval_required_message,
     remote_ci_failure_context,
     safe_child_environment,
@@ -435,7 +436,7 @@ class RemoteCiFailureContextTests(unittest.TestCase):
 
     HEAD = "headsha1234567890"
 
-    def _patched_gh(self, runs: list[dict[str, object]]):
+    def _patched_gh(self, runs: list[dict[str, object]], log_output: str | None = None):
         calls: list[list[str]] = []
 
         def fake_gh(args, *, source_env, check=True):
@@ -445,7 +446,8 @@ class RemoteCiFailureContextTests(unittest.TestCase):
             if list(args[:2]) == ["run", "list"]:
                 return CompletedProcess(list(args), 0, stdout=json.dumps(runs), stderr="")
             if list(args[:2]) == ["run", "view"]:
-                return CompletedProcess(list(args), 0, stdout=f"log for {args[2]}", stderr="")
+                output = log_output if log_output is not None else f"log for {args[2]}"
+                return CompletedProcess(list(args), 0, stdout=output, stderr="")
             return CompletedProcess(list(args), 0, stdout="", stderr="")
 
         return fake_gh, calls
@@ -480,6 +482,41 @@ class RemoteCiFailureContextTests(unittest.TestCase):
         viewed = [call[2] for call in calls if call[:2] == ["run", "view"]]
         self.assertEqual(viewed, ["111"])
         self.assertFalse(approval_required)
+
+    def test_exact_sanitized_action_required_evidence_parks_without_a_model_call(self) -> None:
+        """The 14 November #43567081759/#43567081760 evidence must never reach the model."""
+        runs = [
+            {"databaseId": 43567081759, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "action_required", "name": "Python checks"},
+            {"databaseId": 43567081760, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "action_required", "name": "Windows desktop build"},
+        ]
+        fake_gh, calls = self._patched_gh(runs, log_output="failed to get run log: log not found")
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=fake_gh):
+            context = remote_ci_failure_context("url", "branch", {"GITHUB_TOKEN": "x"})
+            message = owner_approval_required_message("url", "branch", {"GITHUB_TOKEN": "x"})
+        self.assertEqual(context, "")
+        self.assertIsNotNone(message)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", message)
+        self.assertFalse(any(call[:2] == ["run", "view"] for call in calls))
+
+    def test_unavailable_failure_log_is_not_packaged_as_evidence(self) -> None:
+        """Even a genuine `failure` run with no retrievable log must not become fake evidence."""
+        runs = [
+            {"databaseId": 43567081760, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "failure", "name": "Windows desktop build"},
+        ]
+        fake_gh, _calls = self._patched_gh(runs, log_output="failed to get run log: log not found")
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=fake_gh):
+            context = remote_ci_failure_context("url", "branch", {"GITHUB_TOKEN": "x"})
+        self.assertEqual(context, "")
+        self.assertNotIn("log not found", context)
+
+    def test_failure_log_availability_rejects_empty_and_cli_notice(self) -> None:
+        for raw in ("", "   ", "failed to get run log: log not found", "Log not found"):
+            with self.subTest(raw=raw):
+                self.assertFalse(failure_log_is_available(raw))
+        self.assertTrue(failure_log_is_available("AssertionError: expected 2 got 1"))
 
     def test_owner_approval_message_is_returned_for_an_approval_gate(self) -> None:
         runs = [
@@ -570,8 +607,10 @@ class EndToEndFailedPrRecoveryTests(unittest.TestCase):
         eclipse_autonomous.ROOT = self.repo
         self.agent_calls: list[dict[str, object]] = []
         self.gh_calls: list[list[str]] = []
+        self.run_views: list[list[str]] = []
         self.merge_calls: list[list[str]] = []
         self.commits = 0
+        self.ci_conclusion = "failure"
 
     def tearDown(self) -> None:
         eclipse_autonomous.ROOT = self._original_root
@@ -596,10 +635,11 @@ class EndToEndFailedPrRecoveryTests(unittest.TestCase):
         if list(args[:2]) == ["run", "list"]:
             runs = [{
                 "databaseId": self.RUN_ID, "headSha": self._head(), "status": "completed",
-                "conclusion": "failure", "name": "Windows desktop build",
+                "conclusion": self.ci_conclusion, "name": "Windows desktop build",
             }]
             return CompletedProcess(list(args), 0, json.dumps(runs), "")
         if list(args[:2]) == ["run", "view"]:
+            self.run_views.append(list(args))
             return CompletedProcess(list(args), 0, "AssertionError: Windows check failed\n", "")
         if list(args[:2]) == ["pr", "checks"]:
             green = self.commits >= 2
@@ -668,6 +708,36 @@ class EndToEndFailedPrRecoveryTests(unittest.TestCase):
         # Work was committed and pushed back to the same remote branch.
         self.assertEqual(self._git("rev-parse", f"origin/{self.BRANCH}", cwd=self.repo).stdout.strip(), self._head())
         self.assertEqual(len(self.merge_calls), 1)
+
+    def test_action_required_pr_parks_before_any_model_call_or_run_log_fetch(self) -> None:
+        """The exact sanitized run pair must park the PR, not start a recovery model call."""
+        self.ci_conclusion = "action_required"
+        pr = {
+            "headRefName": self.BRANCH,
+            "url": self.PR_URL,
+            "title": "ECLIPSE autonomous milestone",
+            "isDraft": False,
+            "headRefOid": "stale-head",
+            "body": "",
+        }
+        env = {"GITHUB_TOKEN": "fake-token", "PATH": os.environ.get("PATH", "")}
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=self._fake_gh), \
+                mock.patch.object(
+                    eclipse_autonomous, "run_agent_with_failover", side_effect=self._fake_agent
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "commit_and_push_worktree", side_effect=self._commit_wrapper
+                ):
+            result = eclipse_autonomous.resume_existing_pr(
+                pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
+            )
+
+        self.assertEqual(result, 9)
+        self.assertEqual(self.agent_calls, [])
+        self.assertEqual(self.run_views, [])
+        self.assertEqual(self.merge_calls, [])
+        self.assertEqual(self.commits, 0)
+        self.assertFalse(any(call[:2] == ["pr", "create"] for call in self.gh_calls))
 
 
 if __name__ == "__main__":
