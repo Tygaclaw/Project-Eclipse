@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
 import unittest
+from subprocess import CompletedProcess
+from unittest import mock
 
+from scripts import eclipse_autonomous
 from scripts.eclipse_autonomous import (
     MAX_CALLS_PER_MODEL,
     REVIEW_COMMAND,
@@ -9,10 +13,14 @@ from scripts.eclipse_autonomous import (
     ROUTES,
     Route,
     RunResult,
+    ci_requires_owner_approval,
+    classify_ci_run,
     classify_failure,
     extract_session_id,
+    remote_ci_failure_context,
     safe_child_environment,
     safety_scan,
+    select_current_head_ci_runs,
     run_opencode,
     validation_commands,
     validation_environment,
@@ -367,6 +375,104 @@ class RankedPoolConsistencyTests(unittest.TestCase):
         ranked.sort(key=lambda row: int(row[0]))
         self.assertEqual(len(ranked), 12)
         self.assertEqual([row[1] for row in ranked], [route.open_code_id for route in ROUTES])
+
+
+class CiRunClassificationTests(unittest.TestCase):
+    def test_action_required_run_is_an_approval_gate_not_a_repairable_failure(self) -> None:
+        run = {"status": "completed", "conclusion": "action_required", "headSha": "abc"}
+        self.assertEqual(classify_ci_run(run), "approval_required")
+
+    def test_failed_and_timed_out_runs_are_repairable(self) -> None:
+        for conclusion in ("failure", "timed_out"):
+            with self.subTest(conclusion=conclusion):
+                self.assertEqual(
+                    classify_ci_run({"status": "completed", "conclusion": conclusion}),
+                    "repairable",
+                )
+
+    def test_success_skipped_cancelled_and_incomplete_runs_are_ignored(self) -> None:
+        for run in (
+            {"status": "completed", "conclusion": "success"},
+            {"status": "completed", "conclusion": "skipped"},
+            {"status": "completed", "conclusion": "cancelled"},
+            {"status": "in_progress", "conclusion": None},
+            {"status": "queued", "conclusion": None},
+        ):
+            with self.subTest(run=run):
+                self.assertEqual(classify_ci_run(run), "ignored")
+
+    def test_only_the_exact_head_and_only_classified_runs_are_selected(self) -> None:
+        runs = [
+            {"status": "completed", "conclusion": "failure", "headSha": "head"},
+            {"status": "completed", "conclusion": "action_required", "headSha": "head"},
+            {"status": "completed", "conclusion": "failure", "headSha": "other"},
+            {"status": "queued", "conclusion": None, "headSha": "head"},
+        ]
+        repairable, approval = select_current_head_ci_runs(runs, "head")
+        self.assertEqual([run["conclusion"] for run in repairable], ["failure"])
+        self.assertEqual([run["conclusion"] for run in approval], ["action_required"])
+
+    def test_missing_expected_head_selects_nothing(self) -> None:
+        runs = [{"status": "completed", "conclusion": "failure", "headSha": "head"}]
+        self.assertEqual(select_current_head_ci_runs(runs, None), ([], []))
+
+
+class RemoteCiFailureContextTests(unittest.TestCase):
+    """The recovery loop must never fabricate evidence from a log-less run.
+
+    The 2026-11-06 recovery of PR #16 received a prompt whose only "failure evidence"
+    was ``failed to get run log: log not found`` because the two current-head runs
+    concluded ``action_required`` (an approval gate) and had no logs. These tests pin
+    that such a run is reported as an owner-approval gate instead of a code failure.
+    """
+
+    HEAD = "headsha1234567890"
+
+    def _patched_gh(self, runs: list[dict[str, object]]):
+        calls: list[list[str]] = []
+
+        def fake_gh(args, *, source_env, check=True):
+            calls.append(list(args))
+            if list(args[:2]) == ["pr", "view"]:
+                return CompletedProcess(list(args), 0, stdout=json.dumps({"headRefOid": self.HEAD}), stderr="")
+            if list(args[:2]) == ["run", "list"]:
+                return CompletedProcess(list(args), 0, stdout=json.dumps(runs), stderr="")
+            if list(args[:2]) == ["run", "view"]:
+                return CompletedProcess(list(args), 0, stdout=f"log for {args[2]}", stderr="")
+            return CompletedProcess(list(args), 0, stdout="", stderr="")
+
+        return fake_gh, calls
+
+    def test_action_required_run_is_not_packaged_as_failure_evidence(self) -> None:
+        runs = [
+            {"databaseId": 43495367336, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "action_required", "name": "Python checks"},
+        ]
+        fake_gh, calls = self._patched_gh(runs)
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=fake_gh):
+            context = remote_ci_failure_context("url", "branch", {"GITHUB_TOKEN": "x"})
+            approval_required = ci_requires_owner_approval("url", "branch", {"GITHUB_TOKEN": "x"})
+        self.assertEqual(context, "")
+        self.assertTrue(approval_required)
+        self.assertFalse(any(call[:2] == ["run", "view"] for call in calls))
+        self.assertNotIn("log not found", context)
+
+    def test_real_failure_log_is_collected_and_takes_priority_over_approval_gate(self) -> None:
+        runs = [
+            {"databaseId": 111, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "failure", "name": "Windows desktop build"},
+            {"databaseId": 222, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "action_required", "name": "Python checks"},
+        ]
+        fake_gh, calls = self._patched_gh(runs)
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=fake_gh):
+            context = remote_ci_failure_context("url", "branch", {"GITHUB_TOKEN": "x"})
+            approval_required = ci_requires_owner_approval("url", "branch", {"GITHUB_TOKEN": "x"})
+        self.assertIn("log for 111", context)
+        self.assertNotIn("log for 222", context)
+        viewed = [call[2] for call in calls if call[:2] == ["run", "view"]]
+        self.assertEqual(viewed, ["111"])
+        self.assertFalse(approval_required)
 
 
 if __name__ == "__main__":

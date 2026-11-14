@@ -600,10 +600,55 @@ def run_agent_with_failover(
     return False, session_id, "", last_failure or "No approved free model route was available."
 
 
-def remote_ci_failure_context(
+# GitHub Actions conclusions the recovery loop can actually repair: a real failed or
+# timed-out check has a log the model can diagnose. ``action_required`` is an
+# approval/pending gate with no log; the old code fetched logs for it anyway, so the
+# recovery prompt contained only ``failed to get run log: log not found`` and burned
+# free-model calls on a fix that cannot exist in the repository.
+REPAIRABLE_CI_CONCLUSIONS = frozenset({"failure", "timed_out"})
+APPROVAL_REQUIRED_CI_CONCLUSIONS = frozenset({"action_required"})
+
+
+def classify_ci_run(run: dict[str, object]) -> str:
+    """Classify a GitHub Actions run for the PR-recovery loop.
+
+    Returns ``repairable`` (a failed/timed-out check with logs), ``approval_required``
+    (an ``action_required`` approval gate), or ``ignored`` (not completed, or a
+    success/neutral/skipped/cancelled conclusion).
+    """
+    if str(run.get("status") or "") != "completed":
+        return "ignored"
+    conclusion = str(run.get("conclusion") or "")
+    if conclusion in REPAIRABLE_CI_CONCLUSIONS:
+        return "repairable"
+    if conclusion in APPROVAL_REQUIRED_CI_CONCLUSIONS:
+        return "approval_required"
+    return "ignored"
+
+
+def select_current_head_ci_runs(
+    runs: Sequence[dict[str, object]], expected_head: str | None
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Split the completed runs for the exact PR head into repairable and approval-gated."""
+    repairable: list[dict[str, object]] = []
+    approval_required: list[dict[str, object]] = []
+    if not expected_head:
+        return repairable, approval_required
+    for run in runs:
+        if run.get("headSha") != expected_head:
+            continue
+        kind = classify_ci_run(run)
+        if kind == "repairable":
+            repairable.append(run)
+        elif kind == "approval_required":
+            approval_required.append(run)
+    return repairable, approval_required
+
+
+def current_head_ci_runs(
     pr_url: str, branch: str, source_env: dict[str, str]
-) -> str:
-    """Collect failed GitHub Actions logs for the exact current PR head."""
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Completed repairable and approval-gated runs for the exact current PR head."""
     details = json.loads(gh(
         ["pr", "view", pr_url, "--json", "headRefOid"],
         source_env=source_env,
@@ -615,14 +660,21 @@ def remote_ci_failure_context(
         source_env=source_env,
     )
     runs = json.loads(runs_result.stdout or "[]")
-    failed = [
-        run for run in runs
-        if run.get("headSha") == expected_head
-        and run.get("status") == "completed"
-        and run.get("conclusion") in {"failure", "timed_out", "cancelled", "action_required"}
-    ]
+    return select_current_head_ci_runs(runs, expected_head)
+
+
+def remote_ci_failure_context(
+    pr_url: str, branch: str, source_env: dict[str, str]
+) -> str:
+    """Collect retrievable failure logs for the exact current PR head.
+
+    Only genuine failed/timed-out checks are collected. An ``action_required`` run is
+    an approval gate with no log, so :func:`ci_requires_owner_approval` reports it
+    instead of packaging a nonexistent log as recovery evidence.
+    """
+    repairable, _approval_required = current_head_ci_runs(pr_url, branch, source_env)
     chunks: list[str] = []
-    for run in failed[:6]:
+    for run in repairable[:6]:
         run_id = str(run.get("databaseId", ""))
         if not run_id:
             continue
@@ -633,6 +685,19 @@ def remote_ci_failure_context(
             f"({run.get('conclusion')}) =====\n{redact(raw, source_env)[-8_000:]}"
         )
     return "\n\n".join(chunks)[-24_000:]
+
+
+def ci_requires_owner_approval(
+    pr_url: str, branch: str, source_env: dict[str, str]
+) -> bool:
+    """True when the current PR head is blocked only by approval-gated workflow runs.
+
+    A run in the ``action_required`` conclusion is waiting for a human approval and
+    produces no log, so the controller must not treat it as code to repair. If a real
+    repairable failure also exists, that failure takes priority.
+    """
+    repairable, approval_required = current_head_ci_runs(pr_url, branch, source_env)
+    return bool(approval_required) and not repairable
 
 
 def make_pr_body(branch: str, paths: Sequence[str], validation: str, protected: bool) -> str:
@@ -805,6 +870,16 @@ def resume_existing_pr(
                     return 0
         print(f"Open PR checks pass but auto-merge is protected or blocked: {reason or pr_url}")
         return 0
+
+    if ci_requires_owner_approval(pr_url, branch, source_env):
+        print(
+            "OWNER_APPROVAL_REQUIRED: this PR's GitHub Actions checks are waiting on an "
+            "approval gate (conclusion action_required), not failing on code. No model "
+            "recovery was attempted because there is no failure log to repair."
+        )
+        print(f"Approve the pending workflow runs for {pr_url} and let the scheduled "
+              "autonomous run continue; do not re-run this branch as a new milestone.")
+        return 9
 
     logs = remote_ci_failure_context(pr_url, branch, source_env)
     if not logs:
@@ -1030,6 +1105,13 @@ def main() -> int:
     for repair_round in range(5):
         if checks.returncode == 0:
             break
+        if ci_requires_owner_approval(pr_url, branch, source_env):
+            print(
+                "OWNER_APPROVAL_REQUIRED: the new PR's checks are waiting on an approval "
+                "gate (conclusion action_required), not failing on code. No repair was attempted."
+            )
+            print(f"Approve the pending workflow runs for {pr_url} to let it merge.")
+            return 9
         failure_context = remote_ci_failure_context(pr_url, branch, source_env)
         if not failure_context:
             print("CI_NOT_GREEN: no failed-run logs could be retrieved; preserving PR without merge.")
