@@ -17,6 +17,7 @@ from scripts.eclipse_autonomous import (
     classify_ci_run,
     classify_failure,
     extract_session_id,
+    owner_approval_required_message,
     remote_ci_failure_context,
     safe_child_environment,
     safety_scan,
@@ -473,6 +474,28 @@ class RemoteCiFailureContextTests(unittest.TestCase):
         viewed = [call[2] for call in calls if call[:2] == ["run", "view"]]
         self.assertEqual(viewed, ["111"])
         self.assertFalse(approval_required)
+
+    def test_owner_approval_message_is_returned_for_an_approval_gate(self) -> None:
+        runs = [
+            {"databaseId": 43495367336, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "action_required", "name": "Python checks"},
+        ]
+        fake_gh, _calls = self._patched_gh(runs)
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=fake_gh):
+            message = owner_approval_required_message("url", "branch", {"GITHUB_TOKEN": "x"})
+        self.assertIsNotNone(message)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", message)
+        self.assertIn("action_required", message)
+
+    def test_owner_approval_message_is_absent_when_a_real_failure_exists(self) -> None:
+        runs = [
+            {"databaseId": 1, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "failure", "name": "Windows desktop build"},
+        ]
+        fake_gh, _calls = self._patched_gh(runs)
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=fake_gh):
+            message = owner_approval_required_message("url", "branch", {"GITHUB_TOKEN": "x"})
+        self.assertIsNone(message)
 
 
 if __name__ == "__main__":

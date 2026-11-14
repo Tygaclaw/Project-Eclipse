@@ -700,6 +700,25 @@ def ci_requires_owner_approval(
     return bool(approval_required) and not repairable
 
 
+def owner_approval_required_message(
+    pr_url: str, branch: str, source_env: dict[str, str]
+) -> str | None:
+    """Operator message when the PR is blocked by an approval gate, otherwise ``None``.
+
+    Centralises the three CI-handling call sites so a log-less ``action_required`` run
+    always parks the PR with the same honest explanation instead of a model repair.
+    """
+    if not ci_requires_owner_approval(pr_url, branch, source_env):
+        return None
+    return (
+        "OWNER_APPROVAL_REQUIRED: this PR's GitHub Actions checks are waiting on an "
+        "approval gate (conclusion action_required), not failing on code. No model "
+        "recovery or CI repair was attempted because there is no failure log to fix.\n"
+        f"Approve the pending workflow runs for {pr_url} and let the scheduled "
+        "autonomous run continue; do not re-run this branch as a new milestone."
+    )
+
+
 def make_pr_body(branch: str, paths: Sequence[str], validation: str, protected: bool) -> str:
     preview = "\n".join(f"- `{item}`" for item in paths[:80])
     if len(paths) > 80:
@@ -871,14 +890,9 @@ def resume_existing_pr(
         print(f"Open PR checks pass but auto-merge is protected or blocked: {reason or pr_url}")
         return 0
 
-    if ci_requires_owner_approval(pr_url, branch, source_env):
-        print(
-            "OWNER_APPROVAL_REQUIRED: this PR's GitHub Actions checks are waiting on an "
-            "approval gate (conclusion action_required), not failing on code. No model "
-            "recovery was attempted because there is no failure log to repair."
-        )
-        print(f"Approve the pending workflow runs for {pr_url} and let the scheduled "
-              "autonomous run continue; do not re-run this branch as a new milestone.")
+    approval_message = owner_approval_required_message(pr_url, branch, source_env)
+    if approval_message:
+        print(approval_message)
         return 9
 
     logs = remote_ci_failure_context(pr_url, branch, source_env)
@@ -930,6 +944,10 @@ Prior PR/checkpoint evidence:
         checks = gh(["pr", "checks", pr_url, "--watch", "--fail-fast"], source_env=source_env, check=False)
         if checks.returncode == 0:
             break
+        approval_message = owner_approval_required_message(pr_url, branch, source_env)
+        if approval_message:
+            print(approval_message)
+            return 9
         logs = remote_ci_failure_context(pr_url, branch, source_env)
         if not logs:
             print("Existing PR still fails CI; no fresh failure logs available. Leaving open.")
@@ -1105,12 +1123,9 @@ def main() -> int:
     for repair_round in range(5):
         if checks.returncode == 0:
             break
-        if ci_requires_owner_approval(pr_url, branch, source_env):
-            print(
-                "OWNER_APPROVAL_REQUIRED: the new PR's checks are waiting on an approval "
-                "gate (conclusion action_required), not failing on code. No repair was attempted."
-            )
-            print(f"Approve the pending workflow runs for {pr_url} to let it merge.")
+        approval_message = owner_approval_required_message(pr_url, branch, source_env)
+        if approval_message:
+            print(approval_message)
             return 9
         failure_context = remote_ci_failure_context(pr_url, branch, source_env)
         if not failure_context:
