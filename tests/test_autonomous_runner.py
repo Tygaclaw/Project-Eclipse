@@ -956,6 +956,52 @@ class EndToEndFailedPrRecoveryTests(unittest.TestCase):
         self.assertEqual(self.merge_calls, [])
         self.assertEqual(self.commits, 0)
 
+    def test_newest_ci_run_pair_43685572267_parks_through_the_full_recovery_path(self) -> None:
+        """The exact reported validation evidence must park without a model, log or commit.
+
+        This reproduces the reported validation failure verbatim: the two
+        ``action_required`` chunks (#43685572267/#43685572300) are fed into
+        ``resume_existing_pr`` and must be rejected as an owner-approval gate through the
+        real Git recovery path, not sent to the recovery model as a code failure.
+        """
+        validation_evidence = (
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Windows desktop build run 43685572267 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Python checks run 43685572300 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.ci_conclusion = "failure"
+        pr = {
+            "headRefName": self.BRANCH,
+            "url": self.PR_URL,
+            "title": "ECLIPSE autonomous milestone",
+            "isDraft": False,
+            "headRefOid": "stale-head",
+            "body": "",
+        }
+        env = {"GITHUB_TOKEN": "fake-token", "PATH": os.environ.get("PATH", "")}
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=self._fake_gh), \
+                mock.patch.object(
+                    eclipse_autonomous, "remote_ci_failure_context", return_value=validation_evidence
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "run_agent_with_failover", side_effect=self._fake_agent
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "commit_and_push_worktree", side_effect=self._commit_wrapper
+                ):
+            result = eclipse_autonomous.resume_existing_pr(
+                pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(self.agent_calls, [])
+        self.assertEqual(self.run_views, [])
+        self.assertEqual(self.merge_calls, [])
+        self.assertEqual(self.commits, 0)
+        self.assertFalse(any(call[:2] == ["pr", "create"] for call in self.gh_calls))
+
     def test_unavailable_failure_log_parks_without_a_model_call(self) -> None:
         """A real `failure` run with no retrievable log must not start a repair."""
         unavailable = (
