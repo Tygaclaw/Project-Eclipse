@@ -157,6 +157,18 @@ The recovery prompt carried `Windows desktop build` #43685572267 and `Python che
 
 The #43685572267/#43685572300 runs are approval gates, not code failures; only the owner can approve them or merge this protected PR. Merging or dispatching the workflow on this branch is required before the controller on `main` stops generating these prompts.
 
+### Recovered run — header-less unavailable-log gap closed and #43749264535 pinned — 15 November 2026
+
+The recovery prompt carried `Windows desktop build` #43749264535 and `Python checks` #43749264536, both `action_required` with `failed to get run log: log not found`. The committed branch already refuses those exact chunks as an owner-approval gate; the prompt is still produced by the pre-fix controller executing from `main`. What was different this pass was a genuine adjacent defect found while diagnosing it: both `build_repair_prompt` and `unusable_repair_evidence_message` only refused unavailable-log evidence when it carried a `===== ... run <id> (<conclusion>) =====` header. A header-less notice such as a bare `failed to get run log: log not found` fell through to the generic "Diagnose the concrete failure" prompt, which no code change can satisfy. The condition now tests `not ci_evidence_has_log(failure_output)` directly, so any evidence with no readable log is refused. A real failure log without headers is still repaired. Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
+
+- `python -m unittest tests.test_autonomous_runner` — **64 tests OK**. `test_bare_unavailable_log_notice_cannot_build_a_repair_prompt` reproduces the gap (renamed to fail on the old code); `test_newest_ci_run_pair_43749264535_parks_without_a_model_call` and `test_newest_ci_run_pair_43749264535_cannot_build_a_repair_prompt` pin the reported pair.
+- `python -m unittest discover -s tests` — **415 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
+- `python -m compileall -q src tests scripts .github/scripts packaging` — OK.
+- `python .github/scripts/validate_provider_pool.py` — OK; `python scripts/eclipse_review.py --base origin/main` — accepted.
+- `git diff --check origin/main` — clean; `git merge-tree` against `origin/main` — clean.
+
+The #43749264535/#43749264536 runs are approval gates, not code failures; only the owner can approve them or merge this protected PR. Merging or dispatching the workflow on this branch is required before the controller on `main` stops generating these prompts.
+
 ## Verified GitHub Actions evidence
 
 - Hardware branch head `4385fb6` (before the close-out commit): Python checks [#42204589092](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42204589092) passed Windows Python 3.11–3.14, **184 tests per job, 11 skipped**. No Windows desktop (Qt/PyInstaller) run existed for that head: `desktop.yml` triggers only on PRs to `main` or manual dispatch, so a stacked PR into PR #5's branch needs a manual dispatch. The result for the close-out head is reported on the stacked PR.

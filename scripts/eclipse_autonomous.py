@@ -241,7 +241,7 @@ Do not modify code, commit, push or merge. Wait for the owner to approve the pen
 Approval-gate evidence:
 {clipped}
 """
-    if ci_run_conclusions(failure_output) and not ci_evidence_has_log(failure_output):
+    if not ci_evidence_has_log(failure_output):
         return f"""CI_EVIDENCE_UNAVAILABLE: the supplied CI evidence contains no readable failure log.
 Do not modify code, commit, push or merge. Re-run or approve the failed workflow and let the scheduled autonomous run continue with the real log.
 
@@ -702,7 +702,7 @@ def unusable_repair_evidence_message(
     approval_message = approval_gate_evidence_message(failure_output, pr_url)
     if approval_message:
         return approval_message
-    if ci_run_conclusions(failure_output) and not ci_evidence_has_log(failure_output):
+    if not ci_evidence_has_log(failure_output):
         return (
             "CI_EVIDENCE_UNAVAILABLE: the supplied CI evidence has no readable failure "
             "log (only GitHub CLI unavailable-log notices). No model repair was attempted; "

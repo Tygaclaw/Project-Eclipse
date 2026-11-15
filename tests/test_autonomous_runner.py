@@ -658,6 +658,52 @@ class RemoteCiFailureContextTests(unittest.TestCase):
         self.assertIn("CI_EVIDENCE_UNAVAILABLE", prompt)
         self.assertNotIn("Diagnose the concrete failure", prompt)
 
+    def test_bare_unavailable_log_notice_cannot_build_a_repair_prompt(self) -> None:
+        """A header-less `log not found` notice must still be refused, not "diagnosed"."""
+        evidence = "failed to get run log: log not found"
+        self.assertFalse(ci_evidence_has_log(evidence))
+        message = unusable_repair_evidence_message(evidence, "url")
+        self.assertIsNotNone(message)
+        self.assertIn("CI_EVIDENCE_UNAVAILABLE", message)
+        prompt = build_repair_prompt(evidence)
+        self.assertIn("CI_EVIDENCE_UNAVAILABLE", prompt)
+        self.assertNotIn("Diagnose the concrete failure", prompt)
+
+    def test_newest_ci_run_pair_43749264535_parks_without_a_model_call(self) -> None:
+        """The 15 November #43749264535/#43749264536 evidence must never reach the model."""
+        runs = [
+            {"databaseId": 43749264536, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "action_required", "name": "Python checks"},
+            {"databaseId": 43749264535, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "action_required", "name": "Windows desktop build"},
+        ]
+        fake_gh, calls = self._patched_gh(runs, log_output="failed to get run log: log not found")
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=fake_gh):
+            context = remote_ci_failure_context("url", "branch", {"GITHUB_TOKEN": "x"})
+            message = owner_approval_required_message("url", "branch", {"GITHUB_TOKEN": "x"})
+        self.assertEqual(context, "")
+        self.assertIsNotNone(message)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", message)
+        self.assertFalse(any(call[:2] == ["run", "view"] for call in calls))
+
+    def test_newest_ci_run_pair_43749264535_cannot_build_a_repair_prompt(self) -> None:
+        """The #43749264535/#43749264536 legacy chunks must never become a repair prompt."""
+        evidence = (
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Windows desktop build run 43749264535 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Python checks run 43749264536 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.assertEqual(ci_run_conclusions(evidence), ["action_required", "action_required"])
+        self.assertTrue(approval_gate_evidence(evidence))
+        message = unusable_repair_evidence_message(evidence, "url")
+        self.assertIsNotNone(message)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", message)
+        prompt = build_repair_prompt(evidence)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", prompt)
+        self.assertNotIn("Diagnose the concrete failure", prompt)
+
     def test_real_failure_log_still_builds_a_repair_prompt(self) -> None:
         evidence = (
             "===== Windows desktop build run 111 (failure) =====\n"
