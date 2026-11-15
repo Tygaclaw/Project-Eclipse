@@ -145,6 +145,18 @@ The recovery prompt carried `Windows desktop build` #43649302769 and `Python che
 
 The #43649302769/#43649302743 runs are approval gates, not code failures; only the owner can approve them or merge this protected PR. Merging or dispatching the workflow on this branch is required before the controller on `main` stops generating these prompts.
 
+### Recovered run — newest ci-run pair #43685572267 pinned — 15 November 2026
+
+The recovery prompt carried `Windows desktop build` #43685572267 and `Python checks` #43685572300, both `action_required` with `failed to get run log: log not found`. This is the same approval-gate class AUTO-03 already handles on this branch; the executing controller that produced the prompt still runs the pre-fix code from `main` (`origin/main` still contains `action_required` in `remote_ci_failure_context`; the workflow checks out `${{ github.ref }}`). No code failure exists to repair and no new backlog item was started: the existing work was preserved and the newest evidence pair was pinned. Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
+
+- `python -m unittest tests.test_autonomous_runner` — **60 tests OK**. `test_newest_ci_run_pair_43685572267_parks_without_a_model_call` proves the #43685572267/#43685572300 pair yields an empty failure context, reports `OWNER_APPROVAL_REQUIRED` and is never sent to `run view`; `test_newest_ci_run_pair_43685572267_cannot_build_a_repair_prompt` proves the exact legacy chunk text cannot produce a repair instruction.
+- `python -m unittest discover -s tests` — **411 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
+- `python -m compileall -q src tests scripts .github/scripts packaging` — OK.
+- `python .github/scripts/validate_provider_pool.py` — OK; `python scripts/eclipse_review.py --base origin/main` — accepted.
+- `git diff --check origin/main` — clean; `git merge-tree` against `origin/main` — clean.
+
+The #43685572267/#43685572300 runs are approval gates, not code failures; only the owner can approve them or merge this protected PR. Merging or dispatching the workflow on this branch is required before the controller on `main` stops generating these prompts.
+
 ## Verified GitHub Actions evidence
 
 - Hardware branch head `4385fb6` (before the close-out commit): Python checks [#42204589092](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42204589092) passed Windows Python 3.11–3.14, **184 tests per job, 11 skipped**. No Windows desktop (Qt/PyInstaller) run existed for that head: `desktop.yml` triggers only on PRs to `main` or manual dispatch, so a stacked PR into PR #5's branch needs a manual dispatch. The result for the close-out head is reported on the stacked PR.
