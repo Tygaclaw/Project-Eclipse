@@ -705,9 +705,9 @@ def unusable_repair_evidence_message(
     if not ci_evidence_has_log(failure_output):
         return (
             "CI_EVIDENCE_UNAVAILABLE: the supplied CI evidence has no readable failure "
-            "log (only GitHub CLI unavailable-log notices). No model repair was attempted; "
-            f"re-run or approve the failed workflow for {pr_url} and let the scheduled "
-            "autonomous run continue with the real log."
+            "log (it is empty or contains only GitHub CLI unavailable-log notices). No model "
+            f"repair was attempted; re-run or approve the failed workflow for {pr_url} and let "
+            "the scheduled autonomous run continue with the real log."
         )
     return None
 
@@ -1026,9 +1026,12 @@ def resume_existing_pr(
         return 0
 
     logs = remote_ci_failure_context(pr_url, branch, source_env)
-    if not logs:
+    if not logs and is_checkpoint:
+        # Only a checkpoint body carries the prior run's sanitized failure context. A
+        # normal PR body is just the milestone description, so using it as CI evidence
+        # would fabricate a "repair" from text that names no failure.
         logs = redact(str(pr.get("body", "")), source_env)[-12_000:]
-    if not logs:
+    if not logs and is_checkpoint:
         logs = redact(check_result.stdout + check_result.stderr, source_env)[-12_000:]
     evidence_message = unusable_repair_evidence_message(logs, pr_url)
     if evidence_message:

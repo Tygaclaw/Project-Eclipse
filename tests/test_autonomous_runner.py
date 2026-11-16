@@ -704,6 +704,41 @@ class RemoteCiFailureContextTests(unittest.TestCase):
         self.assertIn("OWNER_APPROVAL_REQUIRED", prompt)
         self.assertNotIn("Diagnose the concrete failure", prompt)
 
+    def test_newest_ci_run_pair_43749765989_parks_without_a_model_call(self) -> None:
+        """The 16 November #43749765989/#43749766017 evidence must never reach the model."""
+        runs = [
+            {"databaseId": 43749766017, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "action_required", "name": "Python checks"},
+            {"databaseId": 43749765989, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "action_required", "name": "Windows desktop build"},
+        ]
+        fake_gh, calls = self._patched_gh(runs, log_output="failed to get run log: log not found")
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=fake_gh):
+            context = remote_ci_failure_context("url", "branch", {"GITHUB_TOKEN": "x"})
+            message = owner_approval_required_message("url", "branch", {"GITHUB_TOKEN": "x"})
+        self.assertEqual(context, "")
+        self.assertIsNotNone(message)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", message)
+        self.assertFalse(any(call[:2] == ["run", "view"] for call in calls))
+
+    def test_newest_ci_run_pair_43749765989_cannot_build_a_repair_prompt(self) -> None:
+        """The #43749765989/#43749766017 legacy chunks must never become a repair prompt."""
+        evidence = (
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Windows desktop build run 43749765989 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Python checks run 43749766017 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.assertEqual(ci_run_conclusions(evidence), ["action_required", "action_required"])
+        self.assertTrue(approval_gate_evidence(evidence))
+        message = unusable_repair_evidence_message(evidence, "url")
+        self.assertIsNotNone(message)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", message)
+        prompt = build_repair_prompt(evidence)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", prompt)
+        self.assertNotIn("Diagnose the concrete failure", prompt)
+
     def test_real_failure_log_still_builds_a_repair_prompt(self) -> None:
         evidence = (
             "===== Windows desktop build run 111 (failure) =====\n"
@@ -1047,6 +1082,126 @@ class EndToEndFailedPrRecoveryTests(unittest.TestCase):
         self.assertEqual(self.merge_calls, [])
         self.assertEqual(self.commits, 0)
         self.assertFalse(any(call[:2] == ["pr", "create"] for call in self.gh_calls))
+
+    def test_newest_ci_run_pair_43749765989_parks_through_the_full_recovery_path(self) -> None:
+        """The exact 16 November validation evidence must park without a model, log or commit."""
+        validation_evidence = (
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Windows desktop build run 43749765989 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Python checks run 43749766017 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.ci_conclusion = "failure"
+        pr = {
+            "headRefName": self.BRANCH,
+            "url": self.PR_URL,
+            "title": "ECLIPSE autonomous milestone",
+            "isDraft": False,
+            "headRefOid": "stale-head",
+            "body": "",
+        }
+        env = {"GITHUB_TOKEN": "fake-token", "PATH": os.environ.get("PATH", "")}
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=self._fake_gh), \
+                mock.patch.object(
+                    eclipse_autonomous, "remote_ci_failure_context", return_value=validation_evidence
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "run_agent_with_failover", side_effect=self._fake_agent
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "commit_and_push_worktree", side_effect=self._commit_wrapper
+                ):
+            result = eclipse_autonomous.resume_existing_pr(
+                pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(self.agent_calls, [])
+        self.assertEqual(self.run_views, [])
+        self.assertEqual(self.merge_calls, [])
+        self.assertEqual(self.commits, 0)
+        self.assertFalse(any(call[:2] == ["pr", "create"] for call in self.gh_calls))
+
+    def test_non_checkpoint_failure_without_remote_logs_parks_instead_of_using_pr_body(self) -> None:
+        """A normal PR body is not CI evidence; recover only from a real failure log.
+
+        The old fallback handed the milestone description to the repair model and told
+        it to "diagnose" text that names no failure. A non-checkpoint PR with no usable
+        log must park for a fresh run instead of burning model calls.
+        """
+        self.ci_conclusion = "failure"
+        pr = {
+            "headRefName": self.BRANCH,
+            "url": self.PR_URL,
+            "title": "ECLIPSE autonomous milestone",
+            "isDraft": False,
+            "headRefOid": "stale-head",
+            "body": "## Autonomous ECLIPSE milestone\n\n- Validation performed by the parent controller\n",
+        }
+        env = {"GITHUB_TOKEN": "fake-token", "PATH": os.environ.get("PATH", "")}
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=self._fake_gh), \
+                mock.patch.object(
+                    eclipse_autonomous, "remote_ci_failure_context", return_value=""
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "run_agent_with_failover", side_effect=self._fake_agent
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "commit_and_push_worktree", side_effect=self._commit_wrapper
+                ):
+            result = eclipse_autonomous.resume_existing_pr(
+                pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(self.agent_calls, [])
+        self.assertEqual(self.run_views, [])
+        self.assertEqual(self.merge_calls, [])
+        self.assertEqual(self.commits, 0)
+        self.assertFalse(any(call[:2] == ["pr", "create"] for call in self.gh_calls))
+
+    def test_checkpoint_body_still_resumes_without_ci_logs(self) -> None:
+        """A checkpoint body is the prior run's failure context and must remain resumable."""
+        self.ci_conclusion = "failure"
+
+        def checkpoint_gh(args, *, source_env, check=True):
+            if list(args[:2]) == ["pr", "checks"]:
+                self.gh_calls.append(list(args))
+                green = self.commits >= 1
+                return CompletedProcess(
+                    list(args), 0 if green else 1, "", "" if green else "checks failed"
+                )
+            return self._fake_gh(args, source_env=source_env, check=check)
+
+        pr = {
+            "headRefName": self.BRANCH,
+            "url": self.PR_URL,
+            "title": "Checkpoint: ECLIPSE autonomous run requires recovery",
+            "isDraft": True,
+            "headRefOid": "stale-head",
+            "body": "Interrupted run checkpoint\nState: BLOCKED; failure: no free model route\n",
+        }
+        env = {"GITHUB_TOKEN": "fake-token", "PATH": os.environ.get("PATH", "")}
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=checkpoint_gh), \
+                mock.patch.object(
+                    eclipse_autonomous, "remote_ci_failure_context", return_value=""
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "run_agent_with_failover", side_effect=self._fake_agent
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "commit_and_push_worktree", side_effect=self._commit_wrapper
+                ):
+            result = eclipse_autonomous.resume_existing_pr(
+                pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(len(self.agent_calls), 1)
+        self.assertIn("Interrupted run checkpoint", str(self.agent_calls[0]["prompt"]))
+        self.assertEqual(self.commits, 1)
+        self.assertEqual(len(self.merge_calls), 1)
 
     def test_unavailable_failure_log_parks_without_a_model_call(self) -> None:
         """A real `failure` run with no retrievable log must not start a repair."""
