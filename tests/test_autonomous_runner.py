@@ -1123,6 +1123,57 @@ class EndToEndFailedPrRecoveryTests(unittest.TestCase):
         self.assertEqual(self.commits, 0)
         self.assertFalse(any(call[:2] == ["pr", "create"] for call in self.gh_calls))
 
+    def test_followup_ci_repair_rejects_replayed_approval_gate_evidence(self) -> None:
+        """The exact validation replay happens in the CI-repair stage, not only pre-recovery.
+
+        The first recovery gets a real failure log and commits; the follow-up CI check then
+        replays the #43749765989/#43749766017 ``action_required`` chunks. That second stage
+        must park without another model call or commit, which is the concrete failure the
+        independent validation step reported.
+        """
+        real_failure = (
+            "===== Windows desktop build run 111 (failure) =====\n"
+            "AssertionError: Windows check failed"
+        )
+        replayed = (
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Windows desktop build run 43749765989 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Python checks run 43749766017 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.ci_conclusion = "failure"
+        pr = {
+            "headRefName": self.BRANCH,
+            "url": self.PR_URL,
+            "title": "ECLIPSE autonomous milestone",
+            "isDraft": False,
+            "headRefOid": "stale-head",
+            "body": "",
+        }
+        env = {"GITHUB_TOKEN": "fake-token", "PATH": os.environ.get("PATH", "")}
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=self._fake_gh), \
+                mock.patch.object(
+                    eclipse_autonomous, "remote_ci_failure_context",
+                    side_effect=[real_failure, replayed],
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "run_agent_with_failover", side_effect=self._fake_agent
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "commit_and_push_worktree", side_effect=self._commit_wrapper
+                ):
+            result = eclipse_autonomous.resume_existing_pr(
+                pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(len(self.agent_calls), 1)
+        self.assertIn("AssertionError: Windows check failed", str(self.agent_calls[0]["prompt"]))
+        self.assertEqual(self.commits, 1)
+        self.assertEqual(self.merge_calls, [])
+        self.assertEqual(self.run_views, [])
+
     def test_non_checkpoint_failure_without_remote_logs_parks_instead_of_using_pr_body(self) -> None:
         """A normal PR body is not CI evidence; recover only from a real failure log.
 
