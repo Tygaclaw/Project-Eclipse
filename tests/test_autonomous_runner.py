@@ -773,6 +773,40 @@ class RemoteCiFailureContextTests(unittest.TestCase):
         self.assertIn("OWNER_APPROVAL_REQUIRED", prompt)
         self.assertNotIn("Diagnose the concrete failure", prompt)
 
+    def test_newest_ci_run_pair_43966482393_parks_without_a_model_call(self) -> None:
+        """The 17 November #43966482393/#43966482410 evidence must never reach the model."""
+        runs = [
+            {"databaseId": 43966482410, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "action_required", "name": "Python checks"},
+            {"databaseId": 43966482393, "headSha": self.HEAD, "status": "completed",
+             "conclusion": "action_required", "name": "Windows desktop build"},
+        ]
+        fake_gh, calls = self._patched_gh(runs, log_output="failed to get run log: log not found")
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=fake_gh):
+            context = remote_ci_failure_context("url", "branch", {"GITHUB_TOKEN": "x"})
+            message = owner_approval_required_message("url", "branch", {"GITHUB_TOKEN": "x"})
+        self.assertEqual(context, "")
+        self.assertIsNotNone(message)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", message)
+        self.assertFalse(any(call[:2] == ["run", "view"] for call in calls))
+
+    def test_newest_ci_run_pair_43966482393_cannot_build_a_repair_prompt(self) -> None:
+        """The #43966482393/#43966482410 legacy chunks must never become a repair prompt."""
+        evidence = (
+            "===== Windows desktop build run 43966482393 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Python checks run 43966482410 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.assertEqual(ci_run_conclusions(evidence), ["action_required", "action_required"])
+        self.assertTrue(approval_gate_evidence(evidence))
+        message = unusable_repair_evidence_message(evidence, "url")
+        self.assertIsNotNone(message)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", message)
+        prompt = build_repair_prompt(evidence)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", prompt)
+        self.assertNotIn("Diagnose the concrete failure", prompt)
+
     def test_real_failure_log_still_builds_a_repair_prompt(self) -> None:
         evidence = (
             "===== Windows desktop build run 111 (failure) =====\n"
@@ -1351,6 +1385,99 @@ class EndToEndFailedPrRecoveryTests(unittest.TestCase):
         self.assertEqual(len(self.agent_calls), 1)
         self.assertIn("AssertionError: Windows check failed", str(self.agent_calls[0]["prompt"]))
         self.assertNotIn("43966081267", str(self.agent_calls[0]["prompt"]))
+        self.assertEqual(self.commits, 1)
+        self.assertEqual(self.merge_calls, [])
+        self.assertEqual(self.run_views, [])
+
+    def test_newest_ci_run_pair_43966482393_parks_through_the_full_recovery_path(self) -> None:
+        """The exact 17 November validation evidence must park without a model, log or commit."""
+        validation_evidence = (
+            "===== Windows desktop build run 43966482393 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Python checks run 43966482410 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.ci_conclusion = "failure"
+        pr = {
+            "headRefName": self.BRANCH,
+            "url": self.PR_URL,
+            "title": "ECLIPSE autonomous milestone",
+            "isDraft": False,
+            "headRefOid": "stale-head",
+            "body": "",
+        }
+        env = {"GITHUB_TOKEN": "fake-token", "PATH": os.environ.get("PATH", "")}
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=self._fake_gh), \
+                mock.patch.object(
+                    eclipse_autonomous, "remote_ci_failure_context", return_value=validation_evidence
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "run_agent_with_failover", side_effect=self._fake_agent
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "commit_and_push_worktree", side_effect=self._commit_wrapper
+                ):
+            result = eclipse_autonomous.resume_existing_pr(
+                pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(self.agent_calls, [])
+        self.assertEqual(self.run_views, [])
+        self.assertEqual(self.merge_calls, [])
+        self.assertEqual(self.commits, 0)
+        self.assertFalse(any(call[:2] == ["pr", "create"] for call in self.gh_calls))
+
+    def test_followup_ci_repair_rejects_replayed_43966482393_evidence(self) -> None:
+        """The exact reported validation replay must park at the follow-up CI-repair stage.
+
+        The first recovery gets a real failure log and commits; the follow-up CI check then
+        replays the #43966482393/#43966482410 ``action_required`` chunks, prefixed with the
+        CI-repair instruction. That second stage must park without another model call,
+        ``run view``, commit or merge, which is the concrete validation failure reported.
+        """
+        real_failure = (
+            "===== Windows desktop build run 111 (failure) =====\n"
+            "AssertionError: Windows check failed"
+        )
+        replayed = (
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Windows desktop build run 43966482393 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Python checks run 43966482410 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.assertEqual(ci_run_conclusions(replayed), ["action_required", "action_required"])
+        self.assertIn("OWNER_APPROVAL_REQUIRED", build_repair_prompt(replayed))
+        self.ci_conclusion = "failure"
+        pr = {
+            "headRefName": self.BRANCH,
+            "url": self.PR_URL,
+            "title": "ECLIPSE autonomous milestone",
+            "isDraft": False,
+            "headRefOid": "stale-head",
+            "body": "",
+        }
+        env = {"GITHUB_TOKEN": "fake-token", "PATH": os.environ.get("PATH", "")}
+        with mock.patch.object(eclipse_autonomous, "gh", side_effect=self._fake_gh), \
+                mock.patch.object(
+                    eclipse_autonomous, "remote_ci_failure_context",
+                    side_effect=[real_failure, replayed],
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "run_agent_with_failover", side_effect=self._fake_agent
+                ), \
+                mock.patch.object(
+                    eclipse_autonomous, "commit_and_push_worktree", side_effect=self._commit_wrapper
+                ):
+            result = eclipse_autonomous.resume_existing_pr(
+                pr, env, "ECLIPSE autonomous test", time.monotonic() + 60
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(len(self.agent_calls), 1)
+        self.assertIn("AssertionError: Windows check failed", str(self.agent_calls[0]["prompt"]))
+        self.assertNotIn("43966482393", str(self.agent_calls[0]["prompt"]))
         self.assertEqual(self.commits, 1)
         self.assertEqual(self.merge_calls, [])
         self.assertEqual(self.run_views, [])
