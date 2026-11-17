@@ -567,6 +567,9 @@ def run_agent_with_failover(
                 else build_repair_prompt(last_failure) if last_failure
                 else prompt
             )
+            evidence_message = unusable_ci_prompt_message(current_prompt)
+            if evidence_message:
+                return False, session_id, "", evidence_message
             result, observed_session = call(
                 route, current_prompt, session_id, run_title,
                 timeout=current_timeout, source_env=source_env,
@@ -710,6 +713,19 @@ def unusable_repair_evidence_message(
             "the scheduled autonomous run continue with the real log."
         )
     return None
+
+
+def unusable_ci_prompt_message(prompt: str) -> str | None:
+    """Refuse a model prompt whose only CI evidence is an approval gate or missing log.
+
+    The controller's own recovery paths pre-filter their evidence, but the model-call
+    boundary is also reachable by stale or external callers. If such a caller replays
+    the old ``action_required``/``log not found`` chunks verbatim, no free-model call
+    can fix the workflow, so the prompt is parked here instead of being sent.
+    """
+    if not ci_run_conclusions(prompt):
+        return None
+    return unusable_repair_evidence_message(prompt, "the current PR")
 
 
 def classify_ci_run(run: dict[str, object]) -> str:

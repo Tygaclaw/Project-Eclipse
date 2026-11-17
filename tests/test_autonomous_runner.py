@@ -218,6 +218,89 @@ class FailoverLoopTests(unittest.TestCase):
             "ZAI_API_KEY": "zai-test",
         }
 
+    def test_raw_approval_gate_ci_prompt_is_refused_before_any_provider_call(self) -> None:
+        """A stale caller replaying the #43966482393/#43966482410 chunks cannot burn a model call."""
+        from scripts.eclipse_autonomous import run_agent_with_failover
+
+        calls = []
+        prompt = (
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Windows desktop build run 43966482393 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Python checks run 43966482410 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+
+        def fake_call(route, prompt, session_id, run_title, **kwargs):
+            calls.append(route.open_code_id)
+            return RunResult(0, stdout='{"type":"session.updated"}'), "ses_gate1234567890"
+
+        success, _session, _model, failure = run_agent_with_failover(
+            prompt, "gate-test", self.all_provider_secrets(),
+            call=fake_call,
+            validate=lambda: (True, "all passed"),
+            sleep=lambda _seconds: None,
+            rng=lambda: 0.0,
+        )
+
+        self.assertFalse(success)
+        self.assertEqual(calls, [])
+        self.assertIn("OWNER_APPROVAL_REQUIRED", failure)
+
+    def test_raw_unavailable_failure_log_prompt_is_refused_before_any_provider_call(self) -> None:
+        """A caller bypassing build_repair_prompt still cannot send an empty failure log."""
+        from scripts.eclipse_autonomous import run_agent_with_failover
+
+        calls = []
+        prompt = (
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Windows desktop build run 111 (failure) =====\n"
+            "failed to get run log: log not found"
+        )
+
+        def fake_call(route, prompt, session_id, run_title, **kwargs):
+            calls.append(route.open_code_id)
+            return RunResult(0, stdout='{"type":"session.updated"}'), "ses_nolog1234567890"
+
+        success, _session, _model, failure = run_agent_with_failover(
+            prompt, "no-log-test", self.all_provider_secrets(),
+            call=fake_call,
+            validate=lambda: (True, "all passed"),
+            sleep=lambda _seconds: None,
+            rng=lambda: 0.0,
+        )
+
+        self.assertFalse(success)
+        self.assertEqual(calls, [])
+        self.assertIn("CI_EVIDENCE_UNAVAILABLE", failure)
+
+    def test_raw_real_failure_ci_prompt_still_reaches_the_provider(self) -> None:
+        """The boundary guard must not block genuine failure logs."""
+        from scripts.eclipse_autonomous import run_agent_with_failover
+
+        calls = []
+        prompt = (
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Windows desktop build run 111 (failure) =====\n"
+            "AssertionError: Windows check failed"
+        )
+
+        def fake_call(route, prompt, session_id, run_title, **kwargs):
+            calls.append((route.open_code_id, prompt))
+            return RunResult(0, stdout='{"type":"session.updated"}'), "ses_realfail12345678"
+
+        success, _session, _model, failure = run_agent_with_failover(
+            prompt, "real-failure-test", self.all_provider_secrets(),
+            call=fake_call,
+            validate=lambda: (True, "all passed"),
+            sleep=lambda _seconds: None,
+            rng=lambda: 0.0,
+        )
+
+        self.assertTrue(success, failure)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("AssertionError: Windows check failed", calls[0][1])
+
     def test_transient_model_failure_switches_after_initial_plus_five_and_keeps_session(self) -> None:
         from scripts.eclipse_autonomous import run_agent_with_failover
 
