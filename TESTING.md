@@ -227,6 +227,20 @@ Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLAT
 
 The #44042810216/#44042810197 runs are approval gates, not code failures; only the owner can approve them or merge this protected PR. Merging or dispatching the workflow on this branch is required before the controller on `main` stops generating these prompts. AUTO-03 remains `IN_PROGRESS`; this pass does not commit, push or merge and claims no Windows or owner gate.
 
+### Recovered run — newest approval-gate pair #44174341838 pinned — 18 November 2026
+
+The recovery prompt carried `Python checks` #44174341838 and `Windows desktop build` #44174342093, both `action_required` with `failed to get run log: log not found`. This is the same approval-gate class AUTO-03 already handles on this branch; the prompt is still produced by the pre-fix controller executing from `main`, which classifies `action_required` as a repairable failure and checks out `${{ github.ref }}`. There is no failing check for this branch to repair, and the branch's own controller already early-parks a protected non-checkpoint PR before any `gh` call, so no new backlog item was started. The existing work was preserved and the exact newest evidence pair was pinned.
+
+Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
+
+- `python -m unittest tests.test_autonomous_runner` — **92 tests OK**. `test_newest_ci_run_pair_44174341838_parks_without_a_model_call` proves the #44174341838/#44174342093 pair yields an empty failure context, reports `OWNER_APPROVAL_REQUIRED` and is never sent to `run view`; `test_newest_ci_run_pair_44174341838_cannot_build_a_repair_prompt` proves the exact legacy chunk text cannot produce a repair instruction; `test_newest_ci_run_pair_44174341838_parks_through_the_full_recovery_path` feeds the exact validation evidence into the real-Git `resume_existing_pr` and proves exit 0 with no agent call, `run view`, merge, commit or new PR; `test_followup_ci_repair_rejects_replayed_44174341838_evidence` drives the follow-up CI-repair stage — a successful first repair and commit, then the same `action_required` chunks replayed — and proves `build_repair_prompt` returns `OWNER_APPROVAL_REQUIRED` and the second pass parks with no extra model call, `run view`, commit or merge; `test_raw_newest_approval_gate_ci_prompt_44174341838_is_refused` pins the same raw prompt at the model-call boundary. The earlier #44042810216/#44042810197, #43966482393/#43966482410, genuine-failure and unavailable-log controls are unchanged.
+- `python -m unittest discover -s tests` — **443 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
+- `python -m compileall -q src tests scripts .github/scripts packaging` — OK.
+- `python .github/scripts/validate_provider_pool.py` — OK; `python scripts/eclipse_review.py --base origin/main` — accepted.
+- `git diff --check origin/main` — clean; `git merge-tree` against `origin/main` — clean.
+
+The #44174341838/#44174342093 runs are approval gates, not code failures; only the owner can approve them or merge this protected PR. Merging or dispatching the workflow on this branch is required before the controller on `main` stops generating these prompts. AUTO-03 remains `IN_PROGRESS`; this pass does not commit, push or merge and claims no Windows or owner gate.
+
 ## Verified GitHub Actions evidence
 
 - Hardware branch head `4385fb6` (before the close-out commit): Python checks [#42204589092](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42204589092) passed Windows Python 3.11–3.14, **184 tests per job, 11 skipped**. No Windows desktop (Qt/PyInstaller) run existed for that head: `desktop.yml` triggers only on PRs to `main` or manual dispatch, so a stacked PR into PR #5's branch needs a manual dispatch. The result for the close-out head is reported on the stacked PR.
