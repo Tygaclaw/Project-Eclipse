@@ -285,6 +285,20 @@ Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLAT
 
 The #44259167673/#44259167616 runs are approval gates, not code failures; only the owner can approve them or merge this protected PR. AUTO-03 remains `IN_PROGRESS`; this pass does not commit, push or merge and claims no Windows or owner gate.
 
+### Recovered run — newest approval-gate pair #44259366820 pinned — 18 November 2026
+
+The validation replay carried the CI-repair instruction plus `Python checks` #44259366820 and `Windows desktop build` #44259366784, both `action_required` with `failed to get run log: log not found`. This is the same owner-approval gate class AUTO-03 already handles; the replay is still produced by the pre-fix controller executing from `main`. There is no failing check to repair and no product code change was needed in this pass; the header-less boundary hardening from the earlier pass is retained.
+
+Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
+
+- `python -m unittest tests.test_autonomous_runner` — **113 tests OK**. `test_newest_ci_run_pair_44259366820_parks_without_a_model_call` proves the pair yields an empty failure context, reports `OWNER_APPROVAL_REQUIRED` and is never sent to `run view`; `test_newest_ci_run_pair_44259366820_cannot_build_a_repair_prompt` and `test_exact_validation_replay_44259366820_is_refused` pin the exact legacy chunks and the full replayed text; `test_newest_ci_run_pair_44259366820_parks_through_the_full_recovery_path` drives the real-Git `resume_existing_pr` and proves exit 0 with no agent call, `run view`, merge, commit or new PR; `test_followup_ci_repair_rejects_replayed_44259366820_evidence` proves the follow-up stage parks after a real first repair; `test_raw_newest_approval_gate_ci_prompt_44259366820_is_refused` pins the model-call boundary.
+- `python -m unittest discover -s tests` — **464 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
+- `python -m compileall -q src tests scripts .github/scripts packaging` — OK.
+- `python .github/scripts/validate_provider_pool.py` — OK; `python scripts/eclipse_review.py --base origin/main` — accepted.
+- `git diff --check origin/main` — clean; `git merge-tree` against `origin/main` — clean.
+
+The #44259366820/#44259366784 runs are approval gates, not code failures; only the owner can approve them or merge this protected PR. Each new head produces a fresh approval-gated pair, so this loop cannot end from repository code alone. AUTO-03 remains `IN_PROGRESS`; this pass does not commit, push or merge and claims no Windows or owner gate.
+
 ## Verified GitHub Actions evidence
 
 - Hardware branch head `4385fb6` (before the close-out commit): Python checks [#42204589092](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42204589092) passed Windows Python 3.11–3.14, **184 tests per job, 11 skipped**. No Windows desktop (Qt/PyInstaller) run existed for that head: `desktop.yml` triggers only on PRs to `main` or manual dispatch, so a stacked PR into PR #5's branch needs a manual dispatch. The result for the close-out head is reported on the stacked PR.
