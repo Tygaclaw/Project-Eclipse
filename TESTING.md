@@ -241,6 +241,22 @@ Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLAT
 
 The #44174341838/#44174342093 runs are approval gates, not code failures; only the owner can approve them or merge this protected PR. Merging or dispatching the workflow on this branch is required before the controller on `main` stops generating these prompts. AUTO-03 remains `IN_PROGRESS`; this pass does not commit, push or merge and claims no Windows or owner gate.
 
+### Recovered run — validation replay #44174341838 refused at the model boundary — 18 November 2026
+
+The independent validation replay passed the exact approval-gate evidence back into the session: the CI-repair instruction plus `Python checks` #44174341838 and `Windows desktop build` #44174342093, both `action_required`, each followed by `failed to get run log: log not found`. There is no failing check to repair; this is the owner-approval gate class AUTO-03 handles, and the replay is still produced by the pre-fix controller executing from `main`.
+
+Concrete adjacent defect fixed: `unusable_ci_prompt_message` only refused a log-less prompt that carried a `===== ... run <id> (<conclusion>) =====` header, so a stale caller that strips the headers could still send a bare `failed to get run log: log not found` prompt to a provider. The model-call boundary now refuses any prompt containing an unavailable-log marker through a shared `ci_evidence_unavailable_message` helper; ordinary milestone prompts and genuine failure logs are unaffected.
+
+Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
+
+- `python -m unittest tests.test_autonomous_runner` — **95 tests OK**. `test_exact_validation_replay_44174341838_is_refused` pins the exact replayed text including the repair instruction and trailing newline; `test_headerless_raw_unavailable_log_prompt_is_refused_before_any_provider_call` proves a header-less unavailable-log prompt never reaches a provider; `test_ordinary_prompt_without_ci_evidence_is_not_refused` proves ordinary milestone prompts still pass the guard. The exact #44174341838 mocked-`gh`, legacy-chunk, full-Git recovery and follow-up replay tests remain.
+- `python -m unittest discover -s tests` — **446 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
+- `python -m compileall -q src tests scripts .github/scripts packaging` — OK.
+- `python .github/scripts/validate_provider_pool.py` — OK; `python scripts/eclipse_review.py --base origin/main` — accepted.
+- `git diff --check origin/main` — clean; `git merge-tree` against `origin/main` — clean.
+
+The #44174341838/#44174342093 runs are approval gates, not code failures; only the owner can approve them or merge this protected PR. AUTO-03 remains `IN_PROGRESS`; this pass does not commit, push or merge and claims no Windows or owner gate.
+
 ## Verified GitHub Actions evidence
 
 - Hardware branch head `4385fb6` (before the close-out commit): Python checks [#42204589092](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42204589092) passed Windows Python 3.11–3.14, **184 tests per job, 11 skipped**. No Windows desktop (Qt/PyInstaller) run existed for that head: `desktop.yml` triggers only on PRs to `main` or manual dispatch, so a stacked PR into PR #5's branch needs a manual dispatch. The result for the close-out head is reported on the stacked PR.

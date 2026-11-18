@@ -706,13 +706,18 @@ def unusable_repair_evidence_message(
     if approval_message:
         return approval_message
     if not ci_evidence_has_log(failure_output):
-        return (
-            "CI_EVIDENCE_UNAVAILABLE: the supplied CI evidence has no readable failure "
-            "log (it is empty or contains only GitHub CLI unavailable-log notices). No model "
-            f"repair was attempted; re-run or approve the failed workflow for {pr_url} and let "
-            "the scheduled autonomous run continue with the real log."
-        )
+        return ci_evidence_unavailable_message(pr_url)
     return None
+
+
+def ci_evidence_unavailable_message(pr_url: str) -> str:
+    """Operator message for CI evidence that carries no readable failure log."""
+    return (
+        "CI_EVIDENCE_UNAVAILABLE: the supplied CI evidence has no readable failure "
+        "log (it is empty or contains only GitHub CLI unavailable-log notices). No model "
+        f"repair was attempted; re-run or approve the failed workflow for {pr_url} and let "
+        "the scheduled autonomous run continue with the real log."
+    )
 
 
 def unusable_ci_prompt_message(prompt: str) -> str | None:
@@ -721,11 +726,16 @@ def unusable_ci_prompt_message(prompt: str) -> str | None:
     The controller's own recovery paths pre-filter their evidence, but the model-call
     boundary is also reachable by stale or external callers. If such a caller replays
     the old ``action_required``/``log not found`` chunks verbatim, no free-model call
-    can fix the workflow, so the prompt is parked here instead of being sent.
+    can fix the workflow, so the prompt is parked here instead of being sent. A
+    header-less unavailable-log notice is refused too: a stale caller can strip the
+    CI run headers without turning the notice into a real failure log.
     """
-    if not ci_run_conclusions(prompt):
-        return None
-    return unusable_repair_evidence_message(prompt, "the current PR")
+    if ci_run_conclusions(prompt):
+        return unusable_repair_evidence_message(prompt, "the current PR")
+    lowered = prompt.lower()
+    if any(marker in lowered for marker in LOG_UNAVAILABLE_MARKERS):
+        return ci_evidence_unavailable_message("the current PR")
+    return None
 
 
 def classify_ci_run(run: dict[str, object]) -> str:

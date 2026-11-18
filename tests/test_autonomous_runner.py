@@ -30,6 +30,7 @@ from scripts.eclipse_autonomous import (
     failure_log_is_available,
     owner_approval_required_message,
     remote_ci_failure_context,
+    unusable_ci_prompt_message,
     unusable_repair_evidence_message,
     safe_child_environment,
     safety_scan,
@@ -331,6 +332,40 @@ class FailoverLoopTests(unittest.TestCase):
         self.assertFalse(success)
         self.assertEqual(calls, [])
         self.assertIn("CI_EVIDENCE_UNAVAILABLE", failure)
+
+    def test_headerless_raw_unavailable_log_prompt_is_refused_before_any_provider_call(self) -> None:
+        """A stale caller that strips the CI headers still cannot send a log-less notice."""
+        from scripts.eclipse_autonomous import run_agent_with_failover
+
+        calls = []
+        prompt = (
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "failed to get run log: log not found"
+        )
+
+        def fake_call(route, prompt, session_id, run_title, **kwargs):
+            calls.append(route.open_code_id)
+            return RunResult(0, stdout='{"type":"session.updated"}'), "ses_bare_nolog123"
+
+        success, _session, _model, failure = run_agent_with_failover(
+            prompt, "bare-no-log-test", self.all_provider_secrets(),
+            call=fake_call,
+            validate=lambda: (True, "all passed"),
+            sleep=lambda _seconds: None,
+            rng=lambda: 0.0,
+        )
+
+        self.assertFalse(success)
+        self.assertEqual(calls, [])
+        self.assertIn("CI_EVIDENCE_UNAVAILABLE", failure)
+
+    def test_ordinary_prompt_without_ci_evidence_is_not_refused(self) -> None:
+        """The boundary guard must not block normal milestone prompts."""
+        self.assertIsNone(
+            unusable_ci_prompt_message(
+                "Continue the highest-priority unfinished ECLIPSE milestone and add tests."
+            )
+        )
 
     def test_raw_real_failure_ci_prompt_still_reaches_the_provider(self) -> None:
         """The boundary guard must not block genuine failure logs."""
@@ -1015,6 +1050,25 @@ class RemoteCiFailureContextTests(unittest.TestCase):
         prompt = build_repair_prompt(evidence)
         self.assertIn("OWNER_APPROVAL_REQUIRED", prompt)
         self.assertNotIn("Diagnose the concrete failure", prompt)
+
+    def test_exact_validation_replay_44174341838_is_refused(self) -> None:
+        """The exact 18 November validation replay must never become a repair prompt.
+
+        This is the raw text the controller replayed into the session, including the
+        CI-repair instruction and trailing newline, not just the bare run chunks.
+        """
+        replayed = (
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Python checks run 44174341838 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Windows desktop build run 44174342093 (action_required) =====\n"
+            "failed to get run log: log not found\n"
+        )
+        self.assertEqual(ci_run_conclusions(replayed), ["action_required", "action_required"])
+        self.assertTrue(approval_gate_evidence(replayed))
+        self.assertIn("OWNER_APPROVAL_REQUIRED", build_repair_prompt(replayed))
+        self.assertIn("OWNER_APPROVAL_REQUIRED", unusable_ci_prompt_message(replayed) or "")
+        self.assertNotIn("Diagnose the concrete failure", build_repair_prompt(replayed))
 
     def test_real_failure_log_still_builds_a_repair_prompt(self) -> None:
         evidence = (
