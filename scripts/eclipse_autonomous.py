@@ -234,6 +234,20 @@ When done, leave a concise summary of changed files, tests actually run, test re
 
 def build_repair_prompt(failure_output: str) -> str:
     clipped = failure_output[-12_000:]
+    if approval_gate_evidence(failure_output):
+        return f"""OWNER_APPROVAL_REQUIRED: the supplied CI evidence contains only action_required approval-gate runs, not a failing check.
+Do not modify code, commit, push or merge. Wait for the owner to approve the pending workflow runs, then let the scheduled autonomous run continue.
+
+Approval-gate evidence:
+{clipped}
+"""
+    if not ci_evidence_has_log(failure_output):
+        return f"""CI_EVIDENCE_UNAVAILABLE: the supplied CI evidence contains no readable failure log.
+Do not modify code, commit, push or merge. Re-run or approve the failed workflow and let the scheduled autonomous run continue with the real log.
+
+Unavailable-log evidence:
+{clipped}
+"""
     lowered = failure_output.lower()
     if any(token in lowered for token in (
         "context_length_exceeded", "maximum context length", "context window exceeded",
@@ -268,6 +282,13 @@ def run_opencode(
     timeout: int = DEFAULT_TURN_TIMEOUT,
     source_env: dict[str, str] | None = None,
 ) -> tuple[RunResult, str | None]:
+    # Lowest-level model-call boundary. ``run_agent_with_failover`` already parks
+    # approval-gate/unavailable-log prompts, but a stale or external caller can invoke
+    # this function directly; refuse there too rather than spawning a provider process
+    # to "repair" an approval gate that no code change can fix.
+    refusal = unusable_ci_prompt_message(prompt)
+    if refusal:
+        return RunResult(0, stdout="", stderr=refusal), session_id
     env_source = source_env if source_env is not None else dict(os.environ)
     child_env = safe_child_environment(route, env_source)
     # Bash sources BASH_ENV for non-interactive commands. Remove all provider/GitHub
@@ -553,6 +574,9 @@ def run_agent_with_failover(
                 else build_repair_prompt(last_failure) if last_failure
                 else prompt
             )
+            evidence_message = unusable_ci_prompt_message(current_prompt)
+            if evidence_message:
+                return False, session_id, "", evidence_message
             result, observed_session = call(
                 route, current_prompt, session_id, run_title,
                 timeout=current_timeout, source_env=source_env,
@@ -600,10 +624,167 @@ def run_agent_with_failover(
     return False, session_id, "", last_failure or "No approved free model route was available."
 
 
-def remote_ci_failure_context(
+# GitHub Actions conclusions the recovery loop can actually repair: a real failed or
+# timed-out check has a log the model can diagnose. ``action_required`` is an
+# approval/pending gate with no log; the old code fetched logs for it anyway, so the
+# recovery prompt contained only ``failed to get run log: log not found`` and burned
+# free-model calls on a fix that cannot exist in the repository.
+REPAIRABLE_CI_CONCLUSIONS = frozenset({"failure", "timed_out"})
+APPROVAL_REQUIRED_CI_CONCLUSIONS = frozenset({"action_required"})
+
+# ``gh run view --log-failed`` prints one of these instead of a log when the run's
+# log is unavailable (for example, an approval gate or an expired/missing artifact).
+# Such a string is GitHub CLI diagnostics, not evidence of a code failure, so it must
+# never be packaged as recovery evidence for the model.
+LOG_UNAVAILABLE_MARKERS = ("failed to get run log", "log not found")
+
+
+def failure_log_is_available(raw: str) -> bool:
+    """True when ``raw`` contains an actual failure log, not a GitHub CLI unavailable-log notice."""
+    text = raw.strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    return not any(marker in lowered for marker in LOG_UNAVAILABLE_MARKERS)
+
+
+CI_RUN_HEADER = re.compile(
+    r"=====\s*.+?\s+run\s+\d+\s+\((?P<conclusion>[a-z_]+)\)\s*====="
+)
+
+
+def ci_run_conclusions(failure_output: str) -> list[str]:
+    """Conclusions named in the controller's ``===== <name> run <id> (<conclusion>) =====`` chunks."""
+    return [match.group("conclusion") for match in CI_RUN_HEADER.finditer(failure_output)]
+
+
+def approval_gate_evidence(failure_output: str) -> bool:
+    """True when the evidence describes approval-gated runs and no repairable failure.
+
+    The controller normally classifies runs before building a prompt, but old or
+    external callers can still supply the legacy ``action_required`` chunks (the
+    ``log not found`` evidence that produced spurious repair prompts). Refusing to
+    treat such evidence as a code failure is a defence in depth.
+    """
+    conclusions = ci_run_conclusions(failure_output)
+    return (
+        bool(conclusions)
+        and any(conclusion in APPROVAL_REQUIRED_CI_CONCLUSIONS for conclusion in conclusions)
+        and not any(conclusion in REPAIRABLE_CI_CONCLUSIONS for conclusion in conclusions)
+    )
+
+
+def approval_gate_evidence_message(
+    failure_output: str, pr_url: str
+) -> str | None:
+    """Operator message when supplied repair evidence only describes approval gates."""
+    if not approval_gate_evidence(failure_output):
+        return None
+    return (
+        "OWNER_APPROVAL_REQUIRED: the CI evidence contains only action_required "
+        "approval-gate runs, not a failing check. No model repair was attempted; "
+        f"approve the pending workflow runs for {pr_url} and let the scheduled "
+        "autonomous run continue."
+    )
+
+
+def ci_evidence_has_log(failure_output: str) -> bool:
+    """True when at least one CI evidence chunk carries a readable failure log body."""
+    matches = list(CI_RUN_HEADER.finditer(failure_output))
+    if not matches:
+        return failure_log_is_available(failure_output)
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(failure_output)
+        if failure_log_is_available(failure_output[match.end():end]):
+            return True
+    return False
+
+
+def unusable_repair_evidence_message(
+    failure_output: str, pr_url: str
+) -> str | None:
+    """Operator message when the supplied CI evidence cannot support a code repair.
+
+    Covers both approval-gated runs and a genuine ``failure`` run whose log could not
+    be retrieved. In the latter case the old code still told the model to "diagnose"
+    an empty ``log not found`` body, which no code change can fix.
+    """
+    approval_message = approval_gate_evidence_message(failure_output, pr_url)
+    if approval_message:
+        return approval_message
+    if not ci_evidence_has_log(failure_output):
+        return ci_evidence_unavailable_message(pr_url)
+    return None
+
+
+def ci_evidence_unavailable_message(pr_url: str) -> str:
+    """Operator message for CI evidence that carries no readable failure log."""
+    return (
+        "CI_EVIDENCE_UNAVAILABLE: the supplied CI evidence has no readable failure "
+        "log (it is empty or contains only GitHub CLI unavailable-log notices). No model "
+        f"repair was attempted; re-run or approve the failed workflow for {pr_url} and let "
+        "the scheduled autonomous run continue with the real log."
+    )
+
+
+def unusable_ci_prompt_message(prompt: str) -> str | None:
+    """Refuse a model prompt whose only CI evidence is an approval gate or missing log.
+
+    The controller's own recovery paths pre-filter their evidence, but the model-call
+    boundary is also reachable by stale or external callers. If such a caller replays
+    the old ``action_required``/``log not found`` chunks verbatim, no free-model call
+    can fix the workflow, so the prompt is parked here instead of being sent. A
+    header-less unavailable-log notice is refused too: a stale caller can strip the
+    CI run headers without turning the notice into a real failure log.
+    """
+    if ci_run_conclusions(prompt):
+        return unusable_repair_evidence_message(prompt, "the current PR")
+    lowered = prompt.lower()
+    if any(marker in lowered for marker in LOG_UNAVAILABLE_MARKERS):
+        return ci_evidence_unavailable_message("the current PR")
+    return None
+
+
+def classify_ci_run(run: dict[str, object]) -> str:
+    """Classify a GitHub Actions run for the PR-recovery loop.
+
+    Returns ``repairable`` (a failed/timed-out check with logs), ``approval_required``
+    (an ``action_required`` approval gate), or ``ignored`` (not completed, or a
+    success/neutral/skipped/cancelled conclusion).
+    """
+    if str(run.get("status") or "") != "completed":
+        return "ignored"
+    conclusion = str(run.get("conclusion") or "")
+    if conclusion in REPAIRABLE_CI_CONCLUSIONS:
+        return "repairable"
+    if conclusion in APPROVAL_REQUIRED_CI_CONCLUSIONS:
+        return "approval_required"
+    return "ignored"
+
+
+def select_current_head_ci_runs(
+    runs: Sequence[dict[str, object]], expected_head: str | None
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Split the completed runs for the exact PR head into repairable and approval-gated."""
+    repairable: list[dict[str, object]] = []
+    approval_required: list[dict[str, object]] = []
+    if not expected_head:
+        return repairable, approval_required
+    for run in runs:
+        if run.get("headSha") != expected_head:
+            continue
+        kind = classify_ci_run(run)
+        if kind == "repairable":
+            repairable.append(run)
+        elif kind == "approval_required":
+            approval_required.append(run)
+    return repairable, approval_required
+
+
+def current_head_ci_runs(
     pr_url: str, branch: str, source_env: dict[str, str]
-) -> str:
-    """Collect failed GitHub Actions logs for the exact current PR head."""
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Completed repairable and approval-gated runs for the exact current PR head."""
     details = json.loads(gh(
         ["pr", "view", pr_url, "--json", "headRefOid"],
         source_env=source_env,
@@ -615,24 +796,85 @@ def remote_ci_failure_context(
         source_env=source_env,
     )
     runs = json.loads(runs_result.stdout or "[]")
-    failed = [
-        run for run in runs
-        if run.get("headSha") == expected_head
-        and run.get("status") == "completed"
-        and run.get("conclusion") in {"failure", "timed_out", "cancelled", "action_required"}
-    ]
+    return select_current_head_ci_runs(runs, expected_head)
+
+
+def remote_ci_failure_context(
+    pr_url: str, branch: str, source_env: dict[str, str]
+) -> str:
+    """Collect retrievable failure logs for the exact current PR head.
+
+    Only genuine failed/timed-out checks are collected. An ``action_required`` run is
+    an approval gate with no log, so :func:`ci_requires_owner_approval` reports it
+    instead of packaging a nonexistent log as recovery evidence.
+    """
+    repairable, _approval_required = current_head_ci_runs(pr_url, branch, source_env)
     chunks: list[str] = []
-    for run in failed[:6]:
+    for run in repairable[:6]:
         run_id = str(run.get("databaseId", ""))
         if not run_id:
             continue
         logs = gh(["run", "view", run_id, "--log-failed"], source_env=source_env, check=False)
         raw = (logs.stdout or "") + (logs.stderr or "")
+        if not failure_log_is_available(raw):
+            continue
         chunks.append(
             f"===== {run.get('name', 'GitHub Actions')} run {run_id} "
             f"({run.get('conclusion')}) =====\n{redact(raw, source_env)[-8_000:]}"
         )
     return "\n\n".join(chunks)[-24_000:]
+
+
+def ci_requires_owner_approval(
+    pr_url: str, branch: str, source_env: dict[str, str]
+) -> bool:
+    """True when the current PR head is blocked only by approval-gated workflow runs.
+
+    A run in the ``action_required`` conclusion is waiting for a human approval and
+    produces no log, so the controller must not treat it as code to repair. If a real
+    repairable failure also exists, that failure takes priority.
+    """
+    repairable, approval_required = current_head_ci_runs(pr_url, branch, source_env)
+    return bool(approval_required) and not repairable
+
+
+def owner_approval_required_message(
+    pr_url: str, branch: str, source_env: dict[str, str]
+) -> str | None:
+    """Operator message when the PR is blocked by an approval gate, otherwise ``None``.
+
+    Centralises the three CI-handling call sites so a log-less ``action_required`` run
+    always parks the PR with the same honest explanation instead of a model repair.
+    """
+    if not ci_requires_owner_approval(pr_url, branch, source_env):
+        return None
+    return (
+        "OWNER_APPROVAL_REQUIRED: this PR's GitHub Actions checks are waiting on an "
+        "approval gate (conclusion action_required), not failing on code. No model "
+        "recovery or CI repair was attempted because there is no failure log to fix.\n"
+        f"Approve the pending workflow runs for {pr_url} and let the scheduled "
+        "autonomous run continue; do not re-run this branch as a new milestone."
+    )
+
+
+def existing_pr_owner_review_message(
+    pr_url: str, is_checkpoint: bool, paths: Sequence[str]
+) -> str | None:
+    """Park a non-checkpoint existing PR that changes owner-review-only paths.
+
+    Such a PR can never auto-merge and repeatedly feeding its CI state to the model
+    only burns free-model calls and CI-repair rounds, so it is handed to the owner
+    before any recovery work starts. Checkpoint drafts are still resumable.
+    """
+    if is_checkpoint:
+        return None
+    _safe, _reason, protected = safety_scan(paths)
+    if not protected:
+        return None
+    return (
+        "OWNER_REVIEW_REQUIRED: this existing PR changes protected automation/security "
+        f"paths and must be reviewed by the owner; not running model recovery: {pr_url}"
+    )
 
 
 def make_pr_body(branch: str, paths: Sequence[str], validation: str, protected: bool) -> str:
@@ -783,6 +1025,11 @@ def resume_existing_pr(
     )
     subprocess.run(["git", "merge-base", "HEAD", "origin/main"], cwd=ROOT, env=controller_env, check=True)
 
+    owner_review_message = existing_pr_owner_review_message(pr_url, is_checkpoint, changed_paths())
+    if owner_review_message:
+        print(owner_review_message)
+        return 0
+
     check_result = gh(["pr", "checks", pr_url, "--watch", "--fail-fast"], source_env=source_env, check=False)
     if check_result.returncode == 0 and not is_checkpoint:
         paths = changed_paths()
@@ -806,11 +1053,23 @@ def resume_existing_pr(
         print(f"Open PR checks pass but auto-merge is protected or blocked: {reason or pr_url}")
         return 0
 
+    approval_message = owner_approval_required_message(pr_url, branch, source_env)
+    if approval_message:
+        print(approval_message)
+        return 0
+
     logs = remote_ci_failure_context(pr_url, branch, source_env)
-    if not logs:
+    if not logs and is_checkpoint:
+        # Only a checkpoint body carries the prior run's sanitized failure context. A
+        # normal PR body is just the milestone description, so using it as CI evidence
+        # would fabricate a "repair" from text that names no failure.
         logs = redact(str(pr.get("body", "")), source_env)[-12_000:]
-    if not logs:
+    if not logs and is_checkpoint:
         logs = redact(check_result.stdout + check_result.stderr, source_env)[-12_000:]
+    evidence_message = unusable_repair_evidence_message(logs, pr_url)
+    if evidence_message:
+        print(evidence_message)
+        return 0
     recovery_prompt = f"""RECOVER THE EXISTING ECLIPSE AUTONOMOUS PR — DO NOT START A NEW BACKLOG ITEM.
 
 You are continuing work on existing PR {pr_url}, branch {branch}, against main.
@@ -855,10 +1114,18 @@ Prior PR/checkpoint evidence:
         checks = gh(["pr", "checks", pr_url, "--watch", "--fail-fast"], source_env=source_env, check=False)
         if checks.returncode == 0:
             break
+        approval_message = owner_approval_required_message(pr_url, branch, source_env)
+        if approval_message:
+            print(approval_message)
+            return 0
         logs = remote_ci_failure_context(pr_url, branch, source_env)
         if not logs:
             print("Existing PR still fails CI; no fresh failure logs available. Leaving open.")
             return 4
+        evidence_message = unusable_repair_evidence_message(logs, pr_url)
+        if evidence_message:
+            print(evidence_message)
+            return 0
         repaired, session_id, selected_model, failure = run_agent_with_failover(
             build_repair_prompt("Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n" + logs),
             run_title + f" recover PR CI {repair_round + 1}",
@@ -1030,11 +1297,19 @@ def main() -> int:
     for repair_round in range(5):
         if checks.returncode == 0:
             break
+        approval_message = owner_approval_required_message(pr_url, branch, source_env)
+        if approval_message:
+            print(approval_message)
+            return 0
         failure_context = remote_ci_failure_context(pr_url, branch, source_env)
         if not failure_context:
             print("CI_NOT_GREEN: no failed-run logs could be retrieved; preserving PR without merge.")
             print(redact(checks.stdout + checks.stderr, source_env)[-8_000:])
             return 4
+        evidence_message = unusable_repair_evidence_message(failure_context, pr_url)
+        if evidence_message:
+            print(evidence_message)
+            return 0
         repair_prompt = build_repair_prompt(
             "The PR's Windows/GitHub Actions checks failed. Repair the real failure in this same "
             "OpenCode session and current feature branch. Keep all existing successful work.\n\n"
