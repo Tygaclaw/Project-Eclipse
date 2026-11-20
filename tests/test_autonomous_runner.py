@@ -536,6 +536,36 @@ class FailoverLoopTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertIn("OWNER_APPROVAL_REQUIRED", failure)
 
+    def test_wrapped_newest_approval_gate_repair_prompt_44479263157_is_refused(self) -> None:
+        """A ``build_repair_prompt`` wrapper around the #44479263157 evidence is still refused."""
+        from scripts.eclipse_autonomous import run_agent_with_failover
+
+        wrapped = build_repair_prompt(
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Windows desktop build run 44479263157 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Python checks run 44479263146 (action_required) =====\n"
+            "failed to get run log: log not found"
+        )
+        self.assertIn("OWNER_APPROVAL_REQUIRED", wrapped)
+        calls = []
+
+        def fake_call(route, prompt, session_id, run_title, **kwargs):
+            calls.append(route.open_code_id)
+            return RunResult(0, stdout='{"type":"session.updated"}'), "ses_wrapped44479263157"
+
+        success, _session, _model, failure = run_agent_with_failover(
+            wrapped, "gate-test", self.all_provider_secrets(),
+            call=fake_call,
+            validate=lambda: (True, "all passed"),
+            sleep=lambda _seconds: None,
+            rng=lambda: 0.0,
+        )
+
+        self.assertFalse(success)
+        self.assertEqual(calls, [])
+        self.assertIn("OWNER_APPROVAL_REQUIRED", failure)
+
     def test_headerless_raw_unavailable_log_prompt_is_refused_before_any_provider_call(self) -> None:
         """A stale caller that strips the CI headers still cannot send a log-less notice."""
         from scripts.eclipse_autonomous import run_agent_with_failover
@@ -3053,6 +3083,7 @@ class EndToEndFailedPrRecoveryTests(unittest.TestCase):
         )
         self.assertEqual(ci_run_conclusions(replayed), ["action_required", "action_required"])
         self.assertIn("OWNER_APPROVAL_REQUIRED", build_repair_prompt(replayed))
+        self.assertIn("OWNER_APPROVAL_REQUIRED", unusable_ci_prompt_message(replayed) or "")
         self.ci_conclusion = "failure"
         pr = {
             "headRefName": self.BRANCH,
