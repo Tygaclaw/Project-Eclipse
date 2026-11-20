@@ -369,6 +369,20 @@ Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLAT
 
 The #44694538865/#44694538873 runs are approval gates, not code failures; only the owner can approve them or merge this protected PR. Each new head produces a fresh approval-gated pair, so this loop cannot end from repository code alone. AUTO-03 remains `IN_PROGRESS`; this pass does not commit, push or merge and claims no Windows or owner gate.
 
+### Recovered run — replayed #44694538865 evidence refused at the raw process boundary — 20 November 2026
+
+The independent validation step re-supplied the CI-repair instruction plus `Windows desktop build` #44694538865 and `Python checks` #44694538873, both `action_required` with `failed to get run log: log not found`. There is no failing check to repair. A concrete adjacent gap was closed: the model-call guard existed only in `run_agent_with_failover`, so the raw low-level `run_opencode` — which builds and spawns the provider process and is reachable directly by a stale/external caller — could still be invoked with approval-gate evidence. `run_opencode` now refuses approval-gate or unavailable-log prompts before spawning, using the same `unusable_ci_prompt_message` check; ordinary prompts and prompts without CI evidence are unaffected.
+
+Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
+
+- `python -m unittest tests.test_autonomous_runner` — **148 tests OK**. `test_run_opencode_refuses_approval_gate_prompt_before_spawning_a_process` passes the exact replayed #44694538865 text to `run_opencode` with a runner that raises if called and proves no process is spawned (`OWNER_APPROVAL_REQUIRED`, session unchanged); `test_run_opencode_refuses_headerless_unavailable_log_before_spawning_a_process` pins the header-less `failed to get run log` park and session preservation; `test_run_opencode_still_spawns_for_an_ordinary_prompt` proves an ordinary prompt still spawns exactly once and recovers the session id.
+- `python -m unittest discover -s tests` — **499 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
+- `python -m compileall -q src tests scripts .github/scripts packaging` — OK.
+- `python .github/scripts/validate_provider_pool.py` — OK; `python scripts/eclipse_review.py --base origin/main` — accepted.
+- `git diff --check origin/main` — clean; `git merge-tree` against `origin/main` — clean (exit 0).
+
+The #44694538865/#44694538873 runs are approval gates, not code failures; only the owner can approve them or merge this protected PR. Each new head produces a fresh approval-gated pair, so this loop cannot end from repository code alone. AUTO-03 remains `IN_PROGRESS`; this pass does not commit, push or merge and claims no Windows or owner gate.
+
 ## Verified GitHub Actions evidence
 
 - Hardware branch head `4385fb6` (before the close-out commit): Python checks [#42204589092](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42204589092) passed Windows Python 3.11–3.14, **184 tests per job, 11 skipped**. No Windows desktop (Qt/PyInstaller) run existed for that head: `desktop.yml` triggers only on PRs to `main` or manual dispatch, so a stacked PR into PR #5's branch needs a manual dispatch. The result for the close-out head is reported on the stacked PR.

@@ -177,6 +177,76 @@ class SafetyScanTests(unittest.TestCase):
         self.assertNotIn("TOKENHARBOR_API_KEY", captured["env"])
         self.assertNotIn("GITHUB_TOKEN", captured["env"])
 
+    def test_run_opencode_refuses_approval_gate_prompt_before_spawning_a_process(self) -> None:
+        """The raw model-call boundary must not spawn a provider for #44694538865 evidence.
+
+        ``run_agent_with_failover`` parks this, but a stale/external caller can invoke
+        ``run_opencode`` directly. No provider process may be started for an approval gate.
+        """
+        spawned = []
+
+        def fake_runner(command, **kwargs):
+            spawned.append(command)
+            raise AssertionError("runner must not be called for approval-gate evidence")
+
+        replay = (
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Windows desktop build run 44694538865 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Python checks run 44694538873 (action_required) =====\n"
+            "failed to get run log: log not found\n"
+        )
+        result, session = run_opencode(
+            ROUTES[1], replay, None, "gate-test",
+            runner=fake_runner, source_env={"PATH": "/usr/bin"},
+        )
+
+        self.assertEqual(spawned, [])
+        self.assertIn("OWNER_APPROVAL_REQUIRED", result.stderr)
+        self.assertIsNone(session)
+
+    def test_run_opencode_refuses_headerless_unavailable_log_before_spawning_a_process(self) -> None:
+        """A header-less unavailable-log notice is refused at the raw boundary too."""
+        spawned = []
+
+        def fake_runner(command, **kwargs):
+            spawned.append(command)
+            raise AssertionError("runner must not be called for unavailable-log evidence")
+
+        result, session = run_opencode(
+            ROUTES[1],
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "failed to get run log: log not found",
+            "ses_previous12345678", "gate-test",
+            runner=fake_runner, source_env={"PATH": "/usr/bin"},
+        )
+
+        self.assertEqual(spawned, [])
+        self.assertIn("CI_EVIDENCE_UNAVAILABLE", result.stderr)
+        self.assertEqual(session, "ses_previous12345678")
+
+    def test_run_opencode_still_spawns_for_an_ordinary_prompt(self) -> None:
+        """An ordinary prompt with no CI evidence still reaches the provider process."""
+        spawned = []
+
+        def fake_runner(command, **kwargs):
+            spawned.append(command)
+            return __import__("subprocess").CompletedProcess(
+                command, 0,
+                stdout='{"type":"session.updated","sessionID":"ses_abcdefgh12345678"}\n',
+                stderr="",
+            )
+
+        result, session = run_opencode(
+            ROUTES[1], "continue the milestone task", None, "ordinary-test",
+            runner=fake_runner,
+            source_env={"PATH": "/usr/bin", "GEMINI_API_KEY": "gemini-test-key"},
+        )
+
+        self.assertEqual(len(spawned), 1)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(session, "ses_abcdefgh12345678")
+
     def test_payment_required_skips_provider_without_retry(self) -> None:
         failure = classify_failure("HTTP 402 Payment Required: credits exhausted")
         self.assertEqual(failure.kind, "quota")

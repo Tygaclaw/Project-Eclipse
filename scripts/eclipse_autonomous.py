@@ -282,6 +282,13 @@ def run_opencode(
     timeout: int = DEFAULT_TURN_TIMEOUT,
     source_env: dict[str, str] | None = None,
 ) -> tuple[RunResult, str | None]:
+    # Lowest-level model-call boundary. ``run_agent_with_failover`` already parks
+    # approval-gate/unavailable-log prompts, but a stale or external caller can invoke
+    # this function directly; refuse there too rather than spawning a provider process
+    # to "repair" an approval gate that no code change can fix.
+    refusal = unusable_ci_prompt_message(prompt)
+    if refusal:
+        return RunResult(0, stdout="", stderr=refusal), session_id
     env_source = source_env if source_env is not None else dict(os.environ)
     child_env = safe_child_environment(route, env_source)
     # Bash sources BASH_ENV for non-interactive commands. Remove all provider/GitHub
