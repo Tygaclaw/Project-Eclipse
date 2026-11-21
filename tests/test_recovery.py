@@ -242,6 +242,35 @@ class AppendOnlyDocumentationConflictTests(unittest.TestCase):
         self.assertIn("Unique recovery note.", merged_text)
         self.assertIn("Main content.", merged_text)
 
+    def test_relocated_real_incident_sections_merge_cleanly(self) -> None:
+        """The 2026-11-21 PR #16 shape: two newest sections appended after main's EOF.
+
+        ``TESTING.md`` was unmergeable because its two most recent recovery
+        sections were appended *after* ``main``'s new end-of-file section. Moving
+        exactly those sections into the pre-existing recovery region clears the
+        conflict and keeps every section, which is the fix that was applied.
+        """
+        first = "## Recovery one\n\nFirst unique note.\n\n"
+        second = "## Recovery two\n\nSecond unique note.\n\n"
+        # The broken shape: copy main's new section, then append both notes after it.
+        self._commit_feature_doc(self.BASE + self.MAIN_ADDITION + first + second)
+        merged = self._merge_main()
+        self.assertNotEqual(merged.returncode, 0)
+        self.assertIn("CONFLICT", merged.stdout + merged.stderr)
+        self._git("merge", "--abort")
+
+        # The fix: place both notes in a region that already existed in the base.
+        content = self.BASE.replace(
+            "## Stable section", first + second + "## Stable section"
+        ) + self.MAIN_ADDITION
+        self._commit_feature_doc(content)
+        merged = self._merge_main()
+        self.assertEqual(merged.returncode, 0, merged.stdout + merged.stderr)
+        merged_text = (self.root / "LOG.md").read_text(encoding="utf-8")
+        self.assertIn("First unique note.", merged_text)
+        self.assertIn("Second unique note.", merged_text)
+        self.assertIn("Main content.", merged_text)
+
 
 if __name__ == "__main__":
     unittest.main()
