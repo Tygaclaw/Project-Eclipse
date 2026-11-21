@@ -325,6 +325,36 @@ class SafetyScanTests(unittest.TestCase):
         self.assertIn("OWNER_APPROVAL_REQUIRED", result.stderr)
         self.assertEqual(session, "ses_previous44811933372")
 
+    def test_run_opencode_refuses_validation_wrapper_44811933372_before_spawning_a_process(self) -> None:
+        """The raw boundary must also refuse the outer validation wrapper around the replay."""
+        spawned = []
+
+        def fake_runner(command, **kwargs):
+            spawned.append(command)
+            raise AssertionError("runner must not be called for approval-gate evidence")
+
+        replay = (
+            "Continue the SAME ECLIPSE task in this SAME OpenCode session. "
+            "Do not restart or discard successful work.\n"
+            "The independent validation step failed. Diagnose the concrete failure, fix the "
+            "underlying issue, add/update regression coverage, and rerun the relevant test "
+            "plus the full portable suite. Do not weaken tests or claim success without output.\n\n"
+            "Sanitized validation output:\n"
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Python checks run 44811933372 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Windows desktop build run 44811933547 (action_required) =====\n"
+            "failed to get run log: log not found\n"
+        )
+        result, session = run_opencode(
+            ROUTES[1], replay, "ses_previous44811933372", "gate-test",
+            runner=fake_runner, source_env={"PATH": "/usr/bin"},
+        )
+
+        self.assertEqual(spawned, [])
+        self.assertIn("OWNER_APPROVAL_REQUIRED", result.stderr)
+        self.assertEqual(session, "ses_previous44811933372")
+
     def test_run_opencode_refuses_headerless_unavailable_log_before_spawning_a_process(self) -> None:
         """A header-less unavailable-log notice is refused at the raw boundary too."""
         spawned = []
@@ -1100,6 +1130,43 @@ class FailoverLoopTests(unittest.TestCase):
 
         success, _session, _model, failure = run_agent_with_failover(
             wrapped, "gate-test", self.all_provider_secrets(),
+            call=fake_call,
+            validate=lambda: (True, "all passed"),
+            sleep=lambda _seconds: None,
+            rng=lambda: 0.0,
+        )
+
+        self.assertFalse(success)
+        self.assertEqual(calls, [])
+        self.assertIn("OWNER_APPROVAL_REQUIRED", failure)
+
+    def test_wrapped_validation_replay_44811933372_is_refused(self) -> None:
+        """The exact validation wrapper around the #44811933372 replay cannot burn a model call."""
+        from scripts.eclipse_autonomous import run_agent_with_failover
+
+        replayed = (
+            "Continue the SAME ECLIPSE task in this SAME OpenCode session. "
+            "Do not restart or discard successful work.\n"
+            "The independent validation step failed. Diagnose the concrete failure, fix the "
+            "underlying issue, add/update regression coverage, and rerun the relevant test "
+            "plus the full portable suite. Do not weaken tests or claim success without output.\n\n"
+            "Sanitized validation output:\n"
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Python checks run 44811933372 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Windows desktop build run 44811933547 (action_required) =====\n"
+            "failed to get run log: log not found\n"
+        )
+        self.assertIn("OWNER_APPROVAL_REQUIRED", build_repair_prompt(replayed))
+        self.assertIn("OWNER_APPROVAL_REQUIRED", unusable_ci_prompt_message(replayed) or "")
+        calls = []
+
+        def fake_call(route, prompt, session_id, run_title, **kwargs):
+            calls.append(route.open_code_id)
+            return RunResult(0, stdout='{"type":"session.updated"}'), "ses_wrappedvalidation44811933372"
+
+        success, _session, _model, failure = run_agent_with_failover(
+            replayed, "gate-test", self.all_provider_secrets(),
             call=fake_call,
             validate=lambda: (True, "all passed"),
             sleep=lambda _seconds: None,
@@ -2434,6 +2501,28 @@ class RemoteCiFailureContextTests(unittest.TestCase):
         self.assertIn("OWNER_APPROVAL_REQUIRED", build_repair_prompt(replayed))
         self.assertIn("OWNER_APPROVAL_REQUIRED", unusable_ci_prompt_message(replayed) or "")
         self.assertNotIn("Diagnose the concrete failure", build_repair_prompt(replayed))
+
+    def test_exact_validation_wrapper_44811933372_is_refused(self) -> None:
+        """The 21 November outer validation wrapper around the replay must be refused."""
+        replayed = (
+            "Continue the SAME ECLIPSE task in this SAME OpenCode session. "
+            "Do not restart or discard successful work.\n"
+            "The independent validation step failed. Diagnose the concrete failure, fix the "
+            "underlying issue, add/update regression coverage, and rerun the relevant test "
+            "plus the full portable suite. Do not weaken tests or claim success without output.\n\n"
+            "Sanitized validation output:\n"
+            "Repair this existing PR's remote Windows CI failure in the SAME current session.\n\n"
+            "===== Python checks run 44811933372 (action_required) =====\n"
+            "failed to get run log: log not found\n\n\n"
+            "===== Windows desktop build run 44811933547 (action_required) =====\n"
+            "failed to get run log: log not found\n"
+        )
+        self.assertEqual(ci_run_conclusions(replayed), ["action_required", "action_required"])
+        self.assertTrue(approval_gate_evidence(replayed))
+        prompt = build_repair_prompt(replayed)
+        self.assertTrue(prompt.startswith("OWNER_APPROVAL_REQUIRED"))
+        self.assertIn("Do not modify code", prompt)
+        self.assertIn("OWNER_APPROVAL_REQUIRED", unusable_ci_prompt_message(replayed) or "")
 
     def test_newest_ci_run_pair_44811933372_parks_without_a_model_call(self) -> None:
         """The 21 November #44811933372/#44811933547 evidence must never reach the model."""

@@ -486,3 +486,21 @@ Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLAT
 - `python -m unittest tests.test_autonomous_runner` — **188 tests OK**. `test_newest_ci_run_pair_44811933372_parks_without_a_model_call` proves the pair yields an empty failure context, reports `OWNER_APPROVAL_REQUIRED` and is never sent to `run view`; `test_newest_ci_run_pair_44811933372_cannot_build_a_repair_prompt` and `test_exact_validation_replay_44811933372_is_refused` pin the exact legacy chunks and the full replayed text; `test_newest_ci_run_pair_44811933372_parks_through_the_full_recovery_path` drives the real-Git `resume_existing_pr` and proves exit 0 with no agent call, `run view`, merge, commit or new PR; `test_followup_ci_repair_rejects_replayed_44811933372_evidence` proves the follow-up stage parks after a real first repair; `test_raw_newest_approval_gate_ci_prompt_44811933372_is_refused` and `test_wrapped_newest_approval_gate_repair_prompt_44811933372_is_refused` pin the failover model-call boundary; `test_run_opencode_refuses_approval_gate_prompt_44811933372_before_spawning_a_process` pins the raw process boundary with the passed session preserved.
 
 The #44811933372/#44811933547 runs are approval gates, not code failures; only the owner can approve them or merge this protected PR. AUTO-03 remains `IN_PROGRESS`; this pass does not commit, push or merge and claims no Windows or owner gate.
+
+### Recovered run — validation replay #44811933372 refused inside the outer wrapper — 21 November 2026
+
+The independent validation step re-supplied its generic wrapper (`Continue the SAME ECLIPSE task... Sanitized validation output:`) around the same #44811933372/#44811933547 approval-gate replay. There is still no failing check; the branch's existing guards detect the embedded `action_required` chunks and park with `OWNER_APPROVAL_REQUIRED` before any provider call or child process. This is the pre-fix harness/controller from `main`, not a product regression.
+
+Regression coverage added for the exact new shape:
+
+- `RemoteCiFailureContextTests.test_exact_validation_wrapper_44811933372_is_refused` pins the outer wrapper at `build_repair_prompt`/`unusable_ci_prompt_message`.
+- `FailoverLoopTests.test_wrapped_validation_replay_44811933372_is_refused` proves `run_agent_with_failover` makes no provider call.
+- `SafetyScanTests.test_run_opencode_refuses_validation_wrapper_44811933372_before_spawning_a_process` proves the raw boundary spawns no process and preserves the session.
+
+Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
+
+- `python -m unittest tests.test_autonomous_runner` — **191 tests OK**.
+- Full `python -m unittest discover -s tests` — **542 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
+- `compileall`, provider allowlist validation, independent review and `git diff --check origin/main` all pass.
+
+Only the owner can approve the pending runs or merge this protected PR; AUTO-03 remains `IN_PROGRESS`.
