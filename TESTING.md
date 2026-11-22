@@ -527,6 +527,27 @@ Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLAT
 
 Only the owner can approve the pending runs or merge this protected PR; AUTO-03 remains `IN_PROGRESS`.
 
+### Recovered run — newest approval-gate pair #44995549490 pinned (Python-before-Windows) — 22 November 2026
+
+The validation replay carried `Python checks` #44995549490 and `Windows desktop build` #44995549556, both `action_required` with `failed to get run log: log not found` (Python-before-Windows order). Same owner-approval gate class AUTO-03 already handles; the replay is still produced by the pre-fix controller/harness from `main`. There is no failing check to repair and no product code change was needed in this pass.
+
+Regression coverage added for the exact new pair, replay and wrapper:
+
+- `RemoteCiFailureContextTests.test_newest_ci_run_pair_44995549490_parks_without_a_model_call` proves the pair yields an empty failure context, reports `OWNER_APPROVAL_REQUIRED` and is never sent to `run view`.
+- `RemoteCiFailureContextTests.test_newest_ci_run_pair_44995549490_cannot_build_a_repair_prompt`, `test_exact_validation_replay_44995549490_is_refused` and `test_exact_validation_wrapper_44995549490_is_refused` pin the exact chunks and both replay shapes.
+- `EndToEndFailedPrRecoveryTests.test_newest_ci_run_pair_44995549490_parks_through_the_full_recovery_path` drives the real-Git `resume_existing_pr` and proves exit 0 with no agent call, `run view`, merge, commit or new PR.
+- `EndToEndFailedPrRecoveryTests.test_followup_ci_repair_rejects_replayed_44995549490_evidence` proves the follow-up stage parks after a real first repair.
+- `FailoverLoopTests.test_raw_newest_approval_gate_ci_prompt_44995549490_is_refused`, `test_wrapped_newest_approval_gate_repair_prompt_44995549490_is_refused` and `test_wrapped_validation_replay_44995549490_is_refused` pin the failover model-call boundary.
+- `SafetyScanTests.test_run_opencode_refuses_approval_gate_prompt_44995549490_before_spawning_a_process` and `test_run_opencode_refuses_validation_wrapper_44995549490_before_spawning_a_process` pin the raw process boundary with the passed session preserved.
+
+Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
+
+- `python -m unittest tests.test_autonomous_runner` — **224 tests OK**.
+- Full `python -m unittest discover -s tests` — **576 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
+- `compileall`, provider allowlist validation, independent review and `git diff --check origin/main` all pass; `git merge-tree --write-tree --messages origin/main HEAD` is clean (exit 0).
+
+Only the owner can approve the pending runs or merge this protected PR; AUTO-03 remains `IN_PROGRESS`.
+
 ## Verified GitHub Actions evidence
 
 - Hardware branch head `4385fb6` (before the close-out commit): Python checks [#42204589092](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42204589092) passed Windows Python 3.11–3.14, **184 tests per job, 11 skipped**. No Windows desktop (Qt/PyInstaller) run existed for that head: `desktop.yml` triggers only on PRs to `main` or manual dispatch, so a stacked PR into PR #5's branch needs a manual dispatch. The result for the close-out head is reported on the stacked PR.
