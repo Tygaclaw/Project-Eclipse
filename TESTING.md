@@ -488,6 +488,24 @@ Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLAT
 
 The #44940483278/#44940483168 runs are approval gates, not code failures; only the owner can approve them or merge this protected PR. Each new head produces a fresh approval-gated pair, so this loop cannot end from repository code alone. AUTO-03 remains `IN_PROGRESS`; this pass does not commit, push or merge and claims no Windows or owner gate.
 
+### Recovered run — validation replay #44940483278 refused inside the outer wrapper — 22 November 2026
+
+The independent validation step re-supplied its generic wrapper (`Continue the SAME ECLIPSE task... Sanitized validation output:`) around the same #44940483278/#44940483168 approval-gate replay. There is still no failing check; the branch's existing guards detect the embedded `action_required` chunks and park with `OWNER_APPROVAL_REQUIRED` before any provider call or child process. This is the pre-fix harness/controller from `main`, not a product regression.
+
+Regression coverage added for the exact new shape:
+
+- `RemoteCiFailureContextTests.test_exact_validation_wrapper_44940483278_is_refused` pins the outer wrapper at `build_repair_prompt`/`unusable_ci_prompt_message`.
+- `FailoverLoopTests.test_wrapped_validation_replay_44940483278_is_refused` proves `run_agent_with_failover` makes no provider call.
+- `SafetyScanTests.test_run_opencode_refuses_validation_wrapper_44940483278_before_spawning_a_process` proves the raw boundary spawns no process and preserves the session.
+
+Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
+
+- `python -m unittest tests.test_autonomous_runner` — **202 tests OK**.
+- Full `python -m unittest discover -s tests` — **554 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
+- `compileall`, provider allowlist validation, independent review and `git diff --check origin/main` all pass; `git merge-tree --write-tree --messages origin/main HEAD` is clean (exit 0).
+
+Only the owner can approve the pending runs or merge this protected PR; AUTO-03 remains `IN_PROGRESS`.
+
 ## Verified GitHub Actions evidence
 
 - Hardware branch head `4385fb6` (before the close-out commit): Python checks [#42204589092](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42204589092) passed Windows Python 3.11–3.14, **184 tests per job, 11 skipped**. No Windows desktop (Qt/PyInstaller) run existed for that head: `desktop.yml` triggers only on PRs to `main` or manual dispatch, so a stacked PR into PR #5's branch needs a manual dispatch. The result for the close-out head is reported on the stacked PR.
