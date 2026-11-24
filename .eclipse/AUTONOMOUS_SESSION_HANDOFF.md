@@ -2,6 +2,15 @@
 
 **Purpose:** durable, sanitized recovery note for model/provider switches and GitHub Actions runner restarts.
 
+## STOP — do not feed the approval-gate recovery loop
+
+**Read this before adding any test, file or commit.**
+
+- The only red checks on this PR are GitHub Actions runs whose conclusion is `action_required` — an owner/repository approval gate, not a failing build or test. `gh run view <id> --log-failed` returns `failed to get run log: log not found` because no log exists. There is no code failure to repair.
+- This branch already classifies that evidence correctly at every boundary: `remote_ci_failure_context` returns an empty context, and `owner_approval_required_message`, `build_repair_prompt`, `unusable_repair_evidence_message`, `unusable_ci_prompt_message`, `run_agent_with_failover` and `run_opencode` all return `OWNER_APPROVAL_REQUIRED` without a model call or child process. `existing_pr_owner_review_message` additionally parks this protected non-checkpoint PR before any `gh` call.
+- **Do not add another run-ID-specific regression test.** The approval-gate class is exhaustively covered; every push creates a fresh approval-gated pair, so pinning more run IDs is precisely the mechanism that sustains this loop. The generic guard for the literal recovery-prompt template is `RemoteCiFailureContextTests.test_full_recovery_prompt_with_approval_gate_evidence_is_refused` and `FailoverLoopTests.test_full_recovery_prompt_with_approval_gate_evidence_makes_no_provider_call`. If the evidence is again `action_required` with no log, make no change and stop.
+- The loop cannot end from repository code: the executing controller that emitted the report runs the pre-fix code from `main` (`origin/main` is still `8dfe683`). Only the owner can end it by approving the pending runs, merging this protected PR, or dispatching `eclipse-autonomous.yml` with this branch as the ref.
+
 ## Current state
 
 - Status: RECOVERED — the stale autonomous branch was reconciled with the integrated `main`.

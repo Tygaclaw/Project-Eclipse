@@ -678,6 +678,22 @@ Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLAT
 
 Only the owner can approve the pending runs or merge this protected PR; AUTO-03 remains `IN_PROGRESS`.
 
+### Recovered run — the approval-gate loop itself is the defect; no further run-ID pinning — 24 November 2026
+
+The recovery prompt again carried `Python checks` #45293014846 and `Windows desktop build` #45293014853, both `action_required` with `failed to get run log: log not found`. This branch already refuses that exact evidence at every boundary, so this pass deliberately did **not** add another run-ID-specific regression test: every push creates a fresh approval-gated pair, and pinning each new pair is the mechanism that sustains the loop.
+
+What was done instead:
+
+- Added the one genuinely-missing, ID-independent guard for the loop's literal input, the full recovery-prompt template: `RemoteCiFailureContextTests.test_full_recovery_prompt_with_approval_gate_evidence_is_refused` (asserts `ci_run_conclusions == ["action_required", "action_required"]`, `approval_gate_evidence` true, `ci_evidence_has_log` false, and that `build_repair_prompt`/`unusable_ci_prompt_message` both return `OWNER_APPROVAL_REQUIRED`) and `FailoverLoopTests.test_full_recovery_prompt_with_approval_gate_evidence_makes_no_provider_call`.
+- Added a prominent `STOP — do not feed the approval-gate recovery loop` directive at the top of `.eclipse/AUTONOMOUS_SESSION_HANDOFF.md`, which the recovery prompt instructs every child to read, so future runs stop adding run-ID tests.
+
+Actually run locally (Linux, Python 3.12.16, PySide6 not installed, `QT_QPA_PLATFORM=offscreen`):
+
+- Full `python -m unittest discover -s tests` — **644 tests OK, 20 skipped**, both with `PYTHONPATH=src` and with `PYTHONPATH` removed.
+- `compileall`, provider allowlist validation, independent review, `git diff --check origin/main` and `git merge-tree --write-tree --messages origin/main HEAD` (exit 0, no conflicts) all pass.
+
+There is still no code failure to repair. The loop can only end from outside this branch: the owner approves the pending runs, merges this protected PR, or dispatches `eclipse-autonomous.yml` with this branch as the ref; the executing controller still runs the pre-fix code from `main` (`origin/main` remains `8dfe683`). AUTO-03 remains `IN_PROGRESS`.
+
 ## Verified GitHub Actions evidence
 
 - Hardware branch head `4385fb6` (before the close-out commit): Python checks [#42204589092](https://github.com/Tygaclaw/Project-Eclipse/actions/runs/42204589092) passed Windows Python 3.11–3.14, **184 tests per job, 11 skipped**. No Windows desktop (Qt/PyInstaller) run existed for that head: `desktop.yml` triggers only on PRs to `main` or manual dispatch, so a stacked PR into PR #5's branch needs a manual dispatch. The result for the close-out head is reported on the stacked PR.

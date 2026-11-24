@@ -954,6 +954,41 @@ class FailoverLoopTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertIn("OWNER_APPROVAL_REQUIRED", failure)
 
+    def test_full_recovery_prompt_with_approval_gate_evidence_makes_no_provider_call(self) -> None:
+        """The full recovery-prompt template cannot burn a free-model call on an approval gate."""
+        from scripts.eclipse_autonomous import run_agent_with_failover
+
+        calls = []
+        prompt = (
+            "RECOVER THE EXISTING ECLIPSE AUTONOMOUS PR — DO NOT START A NEW BACKLOG ITEM.\n\n"
+            "You are continuing work on existing PR "
+            "https://github.com/Tygaclaw/Project-Eclipse/pull/16, branch "
+            "feature/eclipse-autonomous-42307488690-1, against main.\n"
+            "Add regression coverage and record evidence. Do not create another\n"
+            "branch or another PR, do not commit/push/merge, and do not weaken tests.\n\n"
+            "Prior PR/checkpoint evidence:\n"
+            "===== Python checks run 45293014846 (action_required) =====\n"
+            "failed to get run log: log not found\n\n"
+            "===== Windows desktop build run 45293014853 (action_required) =====\n"
+            "failed to get run log: log not found\n"
+        )
+
+        def fake_call(route, prompt, session_id, run_title, **kwargs):
+            calls.append(route.open_code_id)
+            return RunResult(0, stdout='{"type":"session.updated"}'), "ses_full_recovery"
+
+        success, _session, _model, failure = run_agent_with_failover(
+            prompt, "gate-test", self.all_provider_secrets(),
+            call=fake_call,
+            validate=lambda: (True, "all passed"),
+            sleep=lambda _seconds: None,
+            rng=lambda: 0.0,
+        )
+
+        self.assertFalse(success)
+        self.assertEqual(calls, [])
+        self.assertIn("OWNER_APPROVAL_REQUIRED", failure)
+
     def test_raw_newest_approval_gate_ci_prompt_is_refused_before_any_provider_call(self) -> None:
         """A stale caller replaying the #44042810216/#44042810197 chunks cannot burn a model call."""
         from scripts.eclipse_autonomous import run_agent_with_failover
@@ -4561,6 +4596,36 @@ class RemoteCiFailureContextTests(unittest.TestCase):
         self.assertTrue(prompt.startswith("OWNER_APPROVAL_REQUIRED"))
         self.assertIn("Do not modify code", prompt)
         self.assertIn("OWNER_APPROVAL_REQUIRED", unusable_ci_prompt_message(replayed) or "")
+
+    def test_full_recovery_prompt_with_approval_gate_evidence_is_refused(self) -> None:
+        """The literal recovery-prompt template (not just raw chunks) must be refused.
+
+        This is the exact artifact the controller feeds back to the child on every loop
+        iteration: the recovery instructions wrap the approval-gated run chunks. Pinning
+        the template once — rather than one run id per pass — is the guard that stops the
+        approval-gate loop from being "repaired" as if it were a code failure.
+        """
+        prompt = (
+            "RECOVER THE EXISTING ECLIPSE AUTONOMOUS PR — DO NOT START A NEW BACKLOG ITEM.\n\n"
+            "You are continuing work on existing PR "
+            "https://github.com/Tygaclaw/Project-Eclipse/pull/16, branch "
+            "feature/eclipse-autonomous-42307488690-1, against main.\n"
+            "This PR is a partial-work checkpoint: False. Read the current diff, "
+            "AUTONOMOUS_BACKLOG.md,\n.eclipse/AUTONOMOUS_SESSION_HANDOFF.md, STATUS.md, "
+            "CONTINUATION.md and relevant tests.\n"
+            "Add regression coverage and record evidence. Do not create another\n"
+            "branch or another PR, do not commit/push/merge, and do not weaken tests.\n\n"
+            "Prior PR/checkpoint evidence:\n"
+            "===== Python checks run 45293014846 (action_required) =====\n"
+            "failed to get run log: log not found\n\n"
+            "===== Windows desktop build run 45293014853 (action_required) =====\n"
+            "failed to get run log: log not found\n"
+        )
+        self.assertEqual(ci_run_conclusions(prompt), ["action_required", "action_required"])
+        self.assertTrue(approval_gate_evidence(prompt))
+        self.assertFalse(ci_evidence_has_log(prompt))
+        self.assertTrue(build_repair_prompt(prompt).startswith("OWNER_APPROVAL_REQUIRED"))
+        self.assertIn("OWNER_APPROVAL_REQUIRED", unusable_ci_prompt_message(prompt) or "")
 
     def test_real_failure_log_still_builds_a_repair_prompt(self) -> None:
         evidence = (
